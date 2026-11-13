@@ -209,22 +209,22 @@ export function ImportPage() {
         </div>
       ) : !cands ? (
         <div className="space-y-3">
+          <button onClick={() => fileRef.current?.click()} className="card flex w-full items-center gap-4 p-5 text-left transition hover:bg-stone-50 dark:hover:bg-stone-800/60">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-900/40 dark:text-brand-300"><FileUp /></div>
+            <div>
+              <div className="font-semibold">Import all contacts (or a family tree file)</div>
+              <div className="text-sm text-stone-500">Export your contacts as a .vcf or .csv file (steps below) and choose it here. Everyone is pre-selected, so you can review and import them in one go. Family tree .ged files work too.</div>
+            </div>
+          </button>
           {picker && (
             <button onClick={onPick} className="card flex w-full items-center gap-4 p-5 text-left transition hover:bg-stone-50 dark:hover:bg-stone-800/60">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-900/40 dark:text-brand-300"><Smartphone /></div>
               <div>
                 <div className="font-semibold">Choose from this phone’s contacts</div>
-                <div className="text-sm text-stone-500">Pick the people you want — nothing else is read.</div>
+                <div className="text-sm text-stone-500">Tick a few people at a time. Your phone’s picker has no “select all”, so use the file option above for everyone. Nothing else is read.</div>
               </div>
             </button>
           )}
-          <button onClick={() => fileRef.current?.click()} className="card flex w-full items-center gap-4 p-5 text-left transition hover:bg-stone-50 dark:hover:bg-stone-800/60">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-900/40 dark:text-brand-300"><FileUp /></div>
-            <div>
-              <div className="font-semibold">Import a file</div>
-              <div className="text-sm text-stone-500">Contacts as vCard (.vcf) or CSV from Android, iPhone, Google or Outlook, or a family tree (.ged).</div>
-            </div>
-          </button>
           <input ref={fileRef} type="file" accept=".vcf,.vcard,.csv,.ged,.gedcom,text/vcard,text/csv" multiple className="hidden"
             onChange={(e) => { onFiles(e.target.files); e.target.value = ''; }} />
 
@@ -241,8 +241,8 @@ export function ImportPage() {
           <div className="mb-3 flex items-center justify-between gap-2">
             <div className="text-sm text-stone-500">{cands.length} found · {newCount} new · {cands.length - newCount} already known</div>
             <div className="flex gap-1">
-              <button className="btn-ghost px-3 py-1.5" onClick={() => setCands(cands.map((c) => ({ ...c, selected: true })))}>All</button>
-              <button className="btn-ghost px-3 py-1.5" onClick={() => setCands(cands.map((c) => ({ ...c, selected: false })))}>None</button>
+              <button className="btn-ghost px-3 py-1.5" onClick={() => setCands(cands.map((c) => ({ ...c, selected: true })))}>Select all</button>
+              <button className="btn-ghost px-3 py-1.5" onClick={() => setCands(cands.map((c) => ({ ...c, selected: false })))}>Select none</button>
               <button className="btn-ghost px-3 py-1.5" onClick={() => setCands(cands.map((c) => ({ ...c, selected: !c.match })))}>Only new</button>
             </div>
           </div>
