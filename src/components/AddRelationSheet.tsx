@@ -1,9 +1,9 @@
 import { ArrowLeft, Search, UserPlus } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { addRelationship, db, ensureRelationship, savePerson } from '../lib/db';
+import { addRelationship, db, ensureRelationship, findRelationship, savePerson } from '../lib/db';
 import { useData } from '../lib/data';
 import { emptyPerson, formatPlace, matchesQuery } from '../lib/person';
-import type { Gender, ParentSubtype, Person, RelType, SpouseSubtype } from '../lib/types';
+import type { Gender, ParentSubtype, Person, RelType, Relationship, SpouseSubtype } from '../lib/types';
 import { PersonRow } from './PersonRow';
 import { Sheet } from './Sheet';
 
@@ -110,9 +110,15 @@ function AddRelationBody({ person, preset, familyOnly, onClose }: { person: Pers
         if (create) await savePerson(other);
         else if (info.gender && other.gender === 'unknown') await savePerson({ ...other, gender: info.gender });
         const sub = subtype || undefined;
+        // The edge the user picked: a chosen subtype/note updates an existing edge, but the default
+        // subtype only applies to a new edge (so re-linking never turns adoptive into biological).
+        const userEdge = async (r: Parameters<typeof addRelationship>[0], fallback?: Relationship['subtype']) => {
+          const exists = await findRelationship(r.fromId, r.toId, r.type);
+          await addRelationship({ ...r, subtype: r.subtype ?? (exists ? undefined : fallback) });
+        };
         if (info.type === 'parent') {
           const [from, to] = info.dir === 'in' ? [other.id, person.id] : [person.id, other.id];
-          await addRelationship({ fromId: from, toId: to, type: 'parent', subtype: (sub as ParentSubtype) ?? 'biological', note: note || undefined });
+          await userEdge({ fromId: from, toId: to, type: 'parent', subtype: sub as ParentSubtype | undefined, note: note || undefined }, 'biological');
           if (otherParent && alsoSpouse && other.id !== otherParent.id) {
             await ensureRelationship({ fromId: otherParent.id, toId: other.id, type: 'spouse', subtype: 'married' });
           }
@@ -133,7 +139,7 @@ function AddRelationBody({ person, preset, familyOnly, onClose }: { person: Pers
             await addRelationship({ fromId: person.id, toId: other.id, type: 'sibling', subtype: sub as never, note: note || undefined });
           }
         } else {
-          await addRelationship({ fromId: person.id, toId: other.id, type: info.type, subtype: (sub as SpouseSubtype) || (info.type === 'spouse' ? 'married' : undefined), note: note || undefined });
+          await userEdge({ fromId: person.id, toId: other.id, type: info.type, subtype: sub as SpouseSubtype | undefined, note: note || undefined }, info.type === 'spouse' ? 'married' : undefined);
         }
       });
       onClose();
