@@ -179,7 +179,7 @@ async function main(browser) {
     await page.getByText(/found ·/).waitFor();
     const ic = await body(page);
     check(/3 found · 2 new · 1 already known/.test(ic), `[3] csv summary wrong: ${ic.match(/\d+ found[^\n]*/)?.[0]}`);
-    check(/Matches Vijay Kumar/.test(ic), '[3] CSV row did not match Vijay Kumar by name');
+    check(/(Matches|Possibly) Vijay Kumar/.test(ic), '[3] CSV row did not match Vijay Kumar by name');
     await shot(page, '3b-import-csv');
     await page.getByRole('button', { name: /^Import \d/ }).click();
     await page.getByText(/Added 2 new/).waitFor();

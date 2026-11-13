@@ -1,4 +1,4 @@
-import type { Gender, ParentSubtype, Person, Relationship, SpouseSubtype } from './types';
+import type { Gender, ParentSubtype, Person, Relationship, SiblingSubtype, SpouseSubtype } from './types';
 
 /**
  * Family graph built from stored relationships.
@@ -16,7 +16,9 @@ export class FamilyGraph {
   readonly parents = new Map<string, Edge<ParentSubtype>[]>();
   readonly children = new Map<string, Edge<ParentSubtype>[]>();
   readonly spouses = new Map<string, Edge<SpouseSubtype>[]>();
-  /** Explicit sibling groups (union-find root per person). */
+  /** Explicit step/half sibling edges. They are direct neighbours only and never share parents. */
+  readonly looseSiblings = new Map<string, Edge<SiblingSubtype>[]>();
+  /** Explicit full/adoptive/untyped sibling groups (union-find root per person); they share parents. */
   private sibRoot = new Map<string, string>();
 
   constructor(people: Person[] | Map<string, Person>, rels: Relationship[]) {
@@ -30,7 +32,11 @@ export class FamilyGraph {
         push(this.spouses, r.fromId, { id: r.toId, subtype: r.subtype as SpouseSubtype });
         push(this.spouses, r.toId, { id: r.fromId, subtype: r.subtype as SpouseSubtype });
       } else if (r.type === 'sibling') {
-        this.union(r.fromId, r.toId);
+        const sub = r.subtype as SiblingSubtype | undefined;
+        if (sub === 'step' || sub === 'half') {
+          push(this.looseSiblings, r.fromId, { id: r.toId, subtype: sub });
+          push(this.looseSiblings, r.toId, { id: r.fromId, subtype: sub });
+        } else this.union(r.fromId, r.toId);
       }
     }
   }
@@ -76,13 +82,14 @@ export class FamilyGraph {
     return this.spouses.get(id) ?? [];
   }
 
-  /** Blood/legal (non-step) parents, including parents inferred via explicit siblings. */
+  /** Blood/legal parents (biological or adoptive; not step or foster), including parents inferred via
+   * explicit full siblings. */
   bloodParents(id: string): string[] {
-    const set = new Set(this.parentsOf(id).filter((e) => e.subtype !== 'step').map((e) => e.id));
-    // Explicit siblings are assumed to share parents unless parents are recorded for this person.
+    const set = new Set(this.parentsOf(id).filter((e) => isBloodEdge(e.subtype)).map((e) => e.id));
+    // Explicit full siblings are assumed to share parents unless parents are recorded for this person.
     if (set.size === 0) {
       for (const s of this.explicitGroup(id)) {
-        for (const e of this.parentsOf(s)) if (e.subtype !== 'step') set.add(e.id);
+        for (const e of this.parentsOf(s)) if (isBloodEdge(e.subtype)) set.add(e.id);
       }
     }
     return [...set];
@@ -119,21 +126,24 @@ export class FamilyGraph {
     return out;
   }
 
-  /** Siblings: share at least one non-step parent, or explicit sibling edge. */
-  siblingsOf(id: string): { id: string; half: boolean }[] {
+  /** Siblings: share at least one blood parent, or an explicit sibling edge (step/half edges win). */
+  siblingsOf(id: string): { id: string; half: boolean; step?: boolean }[] {
     const mine = new Set(this.bloodParents(id));
-    const res = new Map<string, boolean>();
+    const res = new Map<string, { half: boolean; step?: boolean }>();
     for (const p of mine) {
       for (const c of this.childrenOf(p)) {
-        if (c.id === id || c.subtype === 'step') continue;
+        if (c.id === id || !isBloodEdge(c.subtype)) continue;
         const theirs = new Set(this.bloodParents(c.id));
         const shared = [...mine].filter((x) => theirs.has(x)).length;
         const half = shared < 2 && mine.size >= 2 && theirs.size >= 2;
-        res.set(c.id, (res.get(c.id) ?? true) && half);
+        res.set(c.id, { half: (res.get(c.id)?.half ?? true) && half });
       }
     }
-    for (const s of this.explicitGroup(id)) if (!res.has(s)) res.set(s, false);
-    return [...res].map(([sid, half]) => ({ id: sid, half }));
+    for (const s of this.explicitGroup(id)) if (!res.has(s)) res.set(s, { half: false });
+    for (const e of this.looseSiblings.get(id) ?? []) {
+      res.set(e.id, e.subtype === 'step' ? { half: false, step: true } : { half: true });
+    }
+    return [...res].map(([sid, v]) => ({ id: sid, ...v }));
   }
 
   /** Everyone reachable through family edges only (friends are never included). */
@@ -158,9 +168,14 @@ export class FamilyGraph {
     for (const e of this.parentsOf(id)) out.push({ id: e.id, step: { kind: 'parent', sub: e.subtype } });
     for (const e of this.childrenOf(id)) out.push({ id: e.id, step: { kind: 'child', sub: e.subtype } });
     for (const e of this.spousesOf(id)) out.push({ id: e.id, step: { kind: 'spouse', sub: e.subtype } });
-    for (const s of this.siblingsOf(id)) out.push({ id: s.id, step: { kind: 'sibling', half: s.half } });
+    for (const s of this.siblingsOf(id)) out.push({ id: s.id, step: { kind: 'sibling', half: s.half, step: s.step } });
     return out;
   }
+}
+
+/** Parent edges that carry blood/legal descent. Step and foster do not. */
+function isBloodEdge(sub: ParentSubtype | undefined) {
+  return sub !== 'step' && sub !== 'foster';
 }
 
 function push<K, V>(m: Map<K, V[]>, k: K, v: V) {
@@ -174,7 +189,7 @@ export type Step =
   | { kind: 'parent'; sub?: ParentSubtype }
   | { kind: 'child'; sub?: ParentSubtype }
   | { kind: 'spouse'; sub?: SpouseSubtype }
-  | { kind: 'sibling'; half?: boolean };
+  | { kind: 'sibling'; half?: boolean; step?: boolean };
 
 // ---------------------------------------------------------------------------
 // Words
@@ -213,14 +228,20 @@ function lowerFirst(s: string) {
 function stepWord(step: Step, gender: Gender): string {
   switch (step.kind) {
     case 'parent':
-      return (step.sub === 'step' ? 'Step' : step.sub === 'adoptive' ? 'Adoptive ' : step.sub === 'foster' ? 'Foster ' : '') +
-        (step.sub === 'step' ? g(gender, W.parent).toLowerCase() : g(gender, W.parent));
+      return step.sub === 'step' ? 'Step' + g(gender, W.parent).toLowerCase()
+        : step.sub === 'adoptive' ? 'Adoptive ' + g(gender, W.parent).toLowerCase()
+          : step.sub === 'foster' ? 'Foster ' + g(gender, W.parent).toLowerCase()
+            : g(gender, W.parent);
     case 'child':
-      return (step.sub === 'step' ? 'Step' + g(gender, W.child).toLowerCase() : (step.sub === 'adoptive' ? 'Adopted ' + g(gender, W.child).toLowerCase() : g(gender, W.child)));
+      return step.sub === 'step' ? 'Step' + g(gender, W.child).toLowerCase()
+        : step.sub === 'adoptive' ? 'Adopted ' + g(gender, W.child).toLowerCase()
+          : step.sub === 'foster' ? 'Foster ' + g(gender, W.child).toLowerCase()
+            : g(gender, W.child);
     case 'spouse':
       return (step.sub === 'divorced' ? 'Ex-' + g(gender, W.spouse).toLowerCase() : g(gender, W.spouse));
     case 'sibling':
-      return (step.half ? 'Half-' + g(gender, W.sibling).toLowerCase() : g(gender, W.sibling));
+      return step.step ? 'Step' + g(gender, W.sibling).toLowerCase()
+        : step.half ? 'Half-' + g(gender, W.sibling).toLowerCase() : g(gender, W.sibling);
   }
 }
 
@@ -396,11 +417,14 @@ export function kinship(graph: FamilyGraph, a: string, b: string, aAnc = graph.a
   if (direct?.kind === 'spouse') {
     return { label: stepWord(direct, gender), path: path.text, category: 'spouse', generation: 0, degree: 1, blood: false };
   }
-  if (direct?.kind === 'parent' && direct.sub === 'step') {
+  if (direct?.kind === 'parent' && !isBloodEdge(direct.sub)) {
     return { label: stepWord(direct, gender), path: path.text, category: 'parents', generation: 1, degree: 1, blood: false };
   }
-  if (direct?.kind === 'child' && direct.sub === 'step') {
+  if (direct?.kind === 'child' && !isBloodEdge(direct.sub)) {
     return { label: stepWord(direct, gender), path: path.text, category: 'children', generation: -1, degree: 1, blood: false };
+  }
+  if (direct?.kind === 'sibling' && direct.step) {
+    return { label: stepWord(direct, gender), path: path.text, category: 'siblings', generation: 0, degree: 3, blood: false };
   }
 
   const bl = bloodRelation(graph, a, b, aAnc);
@@ -409,7 +433,17 @@ export function kinship(graph: FamilyGraph, a: string, b: string, aAnc = graph.a
     let lab = label;
     if (direct?.kind === 'parent' && direct.sub && direct.sub !== 'biological') lab = stepWord(direct, gender);
     if (direct?.kind === 'child' && direct.sub && direct.sub !== 'biological') lab = stepWord(direct, gender);
+    if (direct?.kind === 'sibling' && direct.half) lab = stepWord(direct, gender);
     return { label: lab, path: path.text, category, side: bl.side, generation: bl.up - bl.down, degree: bl.up + bl.down, blood: true };
+  }
+  // Explicit half-sibling with no recorded shared parent: still a blood sibling.
+  if (direct?.kind === 'sibling' && direct.half) {
+    return { label: stepWord(direct, gender), path: path.text, category: 'siblings', generation: 0, degree: 2, blood: true };
+  }
+
+  // Step-sibling: child of my step-parent / my parent's spouse (or the reverse).
+  if (areStepSiblings(graph, a, b) || areStepSiblings(graph, b, a)) {
+    return { label: 'Step' + g(gender, W.sibling).toLowerCase(), path: path.text, category: 'siblings', generation: 0, degree: 3, blood: false };
   }
 
   // Affinal: through a spouse (mine or theirs).
@@ -424,6 +458,23 @@ export function kinship(graph: FamilyGraph, a: string, b: string, aAnc = graph.a
     degree: path.steps.length + 2,
     blood: false,
   };
+}
+
+/** True when one of b's parents is a's step-parent or the (non-divorced) spouse of a's parent. */
+function areStepSiblings(graph: FamilyGraph, a: string, b: string): boolean {
+  const aSide = new Set<string>();
+  for (const p of graph.parentsOf(a)) {
+    if (p.subtype === 'step') aSide.add(p.id);
+    else if (isBloodEdge(p.subtype)) {
+      for (const sp of graph.spousesOf(p.id)) if (sp.subtype !== 'divorced') aSide.add(sp.id);
+    }
+  }
+  const aBlood = new Set(graph.bloodParents(a));
+  for (const p of graph.parentsOf(b)) {
+    if (!isBloodEdge(p.subtype)) continue;
+    if (aSide.has(p.id) && !aBlood.has(p.id)) return true;
+  }
+  return false;
 }
 
 function affinalLabel(graph: FamilyGraph, a: string, b: string, aAnc: ReturnType<FamilyGraph['ancestors']>):
@@ -517,7 +568,7 @@ export function directLine(graph: FamilyGraph, id: string, side: 'paternal' | 'm
   const seen = new Set([id]);
   let cur = id;
   for (;;) {
-    const parents = graph.parentsOf(cur).filter((e) => e.subtype !== 'step').map((e) => graph.person(e.id)!).filter(Boolean);
+    const parents = graph.parentsOf(cur).filter((e) => isBloodEdge(e.subtype)).map((e) => graph.person(e.id)!).filter(Boolean);
     const next = parents.find((p) => p.gender === want);
     if (!next || seen.has(next.id)) break;
     line.push(next);
@@ -549,10 +600,10 @@ export function lineageStats(graph: FamilyGraph, ego: string, relatives = relati
     if (-generation > down) down = -generation;
     if (r.kin.blood && ['parents', 'grandparents', 'ancestors'].includes(r.kin.category)) anc++;
     if (r.kin.blood && ['children', 'grandchildren', 'descendants'].includes(r.kin.category)) desc++;
+    // Only ancestors with a known birth year qualify; otherwise there is no meaningful "earliest".
     const by = parseInt(r.person.birthDate ?? '', 10);
-    const key = Number.isFinite(by) ? by : 10000 - generation * 100;
-    if (r.kin.blood && r.kin.generation > 0 && key < earliestKey) {
-      earliestKey = key;
+    if (r.kin.blood && r.kin.generation > 0 && Number.isFinite(by) && by < earliestKey) {
+      earliestKey = by;
       earliest = r.person;
     }
   }
