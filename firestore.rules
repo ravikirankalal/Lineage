@@ -1,0 +1,202 @@
+rules_version = '2';
+
+// Lineage authorization layer. Roles and layout: src/lib/cloud/contract.ts.
+// Deny by default: anything not matched below is refused.
+//
+//   owner  : everything in their space; manages members and invites; deletes the space.
+//   editor : reads the space doc; reads/creates/updates (soft-deletes) scope == 'family' records.
+//   viewer : reads the space doc and scope == 'family' records.
+//   invitee: (verified email == invite id) reads own invite, joins with exactly the invited role,
+//            deletes own invite.
+//   others : nothing.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- helpers ----------
+    function signedIn() {
+      return request.auth != null;
+    }
+    function verifiedEmail() {
+      return signedIn()
+        && request.auth.token.email is string
+        && request.auth.token.email_verified == true;
+    }
+    function myEmail() {
+      return request.auth.token.email.lower();
+    }
+    function spacePath(spaceId) {
+      return /databases/$(database)/documents/spaces/$(spaceId);
+    }
+    // Caller's role in a space, or '' (works for missing spaces: get() on a missing doc fails closed).
+    function roleIn(spaceId) {
+      return signedIn() ? get(spacePath(spaceId)).data.members.get(request.auth.uid, '') : '';
+    }
+    function isOwner(spaceId) { return roleIn(spaceId) == 'owner'; }
+    function canEdit(spaceId) { return roleIn(spaceId) in ['owner', 'editor']; }
+    function isMember(spaceId) { return roleIn(spaceId) in ['owner', 'editor', 'viewer']; }
+
+    function validMemberInfoEntry(e) {
+      return e is map
+        && e.keys().hasAll(['email'])
+        && e.keys().hasOnly(['email', 'name'])
+        && e.email is string
+        && (!('name' in e) || e.name is string);
+    }
+
+    // Shape of a space doc: exactly one owner (== ownerUid), every other member editor/viewer.
+    function validSpace(d) {
+      return d.keys().hasAll(['name', 'ownerUid', 'members', 'createdAt'])
+        && d.keys().hasOnly(['name', 'ownerUid', 'members', 'memberInfo', 'createdAt'])
+        && d.name is string && d.name.size() <= 200
+        && d.ownerUid is string
+        && d.createdAt is number
+        && d.members is map
+        && d.members.get(d.ownerUid, '') == 'owner'
+        && d.members.values().hasOnly(['owner', 'editor', 'viewer'])
+        && d.members.values().removeAll(['editor', 'viewer']).size() == 1
+        && (!('memberInfo' in d) || d.memberInfo is map);
+    }
+
+    function memberInfoOf(d) {
+      return d.get('memberInfo', {});
+    }
+
+    // ---------- spaces ----------
+    match /spaces/{spaceId} {
+      // get: members; also the caller's own personal-space id (so the app can check whether it exists).
+      // list: only queries constrained to the caller's membership (listMySpaces).
+      allow get: if signedIn()
+        && (spaceId == request.auth.uid
+            || resource.data.members.get(request.auth.uid, '') in ['owner', 'editor', 'viewer']);
+      allow list: if signedIn()
+        && resource.data.members[request.auth.uid] in ['owner', 'editor', 'viewer'];
+
+      // Only a personal space: id == caller, caller is sole owner.
+      allow create: if signedIn()
+        && spaceId == request.auth.uid
+        && validSpace(request.resource.data)
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.members == { (request.auth.uid): 'owner' }
+        && (!('memberInfo' in request.resource.data)
+            || (request.resource.data.memberInfo.keys().hasOnly([request.auth.uid])
+                && validMemberInfoEntry(request.resource.data.memberInfo[request.auth.uid])));
+
+      allow update: if signedIn()
+        && validSpace(request.resource.data)
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.createdAt == resource.data.createdAt
+        && (ownerUpdate() || memberLeaves() || inviteeJoins());
+
+      allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid
+        && resource.data.members.get(request.auth.uid, '') == 'owner';
+
+      // Owner: rename, change roles of existing members, remove members, edit display info.
+      // Cannot add arbitrary uids (people join through invites) or create a second owner.
+      function ownerUpdate() {
+        return resource.data.ownerUid == request.auth.uid
+          && resource.data.members.get(request.auth.uid, '') == 'owner'
+          && request.resource.data.members.keys().hasOnly(resource.data.members.keys());
+      }
+
+      // Editor/viewer removes only their own entry.
+      function memberLeaves() {
+        return resource.data.members.get(request.auth.uid, '') in ['editor', 'viewer']
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberInfo'])
+          && request.resource.data.members.diff(resource.data.members).affectedKeys().hasOnly([request.auth.uid])
+          && !(request.auth.uid in request.resource.data.members)
+          && memberInfoOf(request.resource.data).diff(memberInfoOf(resource.data)).affectedKeys().hasOnly([request.auth.uid])
+          && memberInfoOf(request.resource.data).diff(memberInfoOf(resource.data)).addedKeys().size() == 0
+          && memberInfoOf(request.resource.data).diff(memberInfoOf(resource.data)).changedKeys().size() == 0;
+      }
+
+      // Invitee adds only their own uid, with exactly the invited role, and needs a verified email
+      // matching an existing invite.
+      function inviteeJoins() {
+        let invitePath = /databases/$(database)/documents/spaces/$(spaceId)/invites/$(myEmail());
+        let memberDiff = request.resource.data.members.diff(resource.data.members);
+        let infoDiff = memberInfoOf(request.resource.data).diff(memberInfoOf(resource.data));
+        return verifiedEmail()
+          && !(request.auth.uid in resource.data.members)
+          && exists(invitePath)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberInfo'])
+          && memberDiff.addedKeys() == [request.auth.uid].toSet()
+          && memberDiff.changedKeys().size() == 0
+          && memberDiff.removedKeys().size() == 0
+          && request.resource.data.members[request.auth.uid] == get(invitePath).data.role
+          && infoDiff.affectedKeys().hasOnly([request.auth.uid])
+          && infoDiff.removedKeys().size() == 0
+          && (!(request.auth.uid in memberInfoOf(request.resource.data))
+              || (validMemberInfoEntry(memberInfoOf(request.resource.data)[request.auth.uid])
+                  && memberInfoOf(request.resource.data)[request.auth.uid].email == myEmail()));
+      }
+
+      // ---------- records ----------
+      function validRecord(d, recId) {
+        return d.keys().hasAll(['data', 'scope', 'updatedAt', 'updatedBy'])
+          && d.keys().hasOnly(['data', 'scope', 'updatedAt', 'updatedBy', 'deleted'])
+          && d.data is map
+          && (!('id' in d.data) || d.data.id == recId)
+          && d.scope in ['family', 'private']
+          && d.updatedAt is number
+          && d.updatedBy == request.auth.uid
+          && (!('deleted' in d) || d.deleted is bool);
+      }
+
+      function recordRead() {
+        return isOwner(spaceId)
+          || (isMember(spaceId) && resource.data.scope == 'family');
+      }
+      function recordCreate(recId) {
+        return validRecord(request.resource.data, recId)
+          && (isOwner(spaceId)
+              || (canEdit(spaceId) && request.resource.data.scope == 'family'));
+      }
+      function recordUpdate(recId) {
+        return validRecord(request.resource.data, recId)
+          && (isOwner(spaceId)
+              || (canEdit(spaceId)
+                  && resource.data.scope == 'family'
+                  && request.resource.data.scope == 'family'));
+      }
+
+      match /people/{recId} {
+        allow read: if recordRead();
+        allow create: if recordCreate(recId);
+        allow update: if recordUpdate(recId);
+        allow delete: if isOwner(spaceId);
+      }
+      match /relationships/{recId} {
+        allow read: if recordRead();
+        allow create: if recordCreate(recId);
+        allow update: if recordUpdate(recId);
+        allow delete: if isOwner(spaceId);
+      }
+
+      // ---------- invites ----------
+      function validInvite(d, emailId) {
+        return d.keys().hasAll(['email', 'role', 'invitedBy', 'spaceName', 'createdAt'])
+          && d.keys().hasOnly(['email', 'role', 'invitedBy', 'spaceName', 'createdAt'])
+          && d.email == emailId
+          && d.email == d.email.lower()
+          && d.email.matches('^[^@/ ]+@[^@/ ]+$')
+          && d.role in ['editor', 'viewer']
+          && d.invitedBy == request.auth.uid
+          && d.spaceName is string && d.spaceName.size() <= 200
+          && d.createdAt is number;
+      }
+
+      match /invites/{emailId} {
+        allow read: if isOwner(spaceId)
+          || (verifiedEmail() && myEmail() == emailId);
+        allow create, update: if isOwner(spaceId) && validInvite(request.resource.data, emailId);
+        allow delete: if isOwner(spaceId)
+          || (verifiedEmail() && myEmail() == emailId);
+      }
+    }
+
+    // collectionGroup('invites') where email == my verified email (myPendingInvites).
+    match /{path=**}/invites/{emailId} {
+      allow read: if verifiedEmail() && resource.data.email == myEmail();
+    }
+  }
+}
