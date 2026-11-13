@@ -350,6 +350,21 @@ async function planMerge(keepId: string, dropId: string): Promise<MergePlan> {
   }
   const keptMoved = moved.filter((m) => !contradicted.has(m.id));
 
+  // Warn first if the two people are already related to each other (before the merge). A more
+  // distant ancestor/descendant pair never gets here: it would create a parent cycle (thrown above).
+  const between = all.filter(
+    (r) => (r.fromId === keepId && r.toId === dropId) || (r.fromId === dropId && r.toId === keepId),
+  );
+  const roles: string[] = [];
+  if (between.some((r) => r.type === 'parent' && r.fromId === dropId)) roles.push('parent');
+  else if (between.some((r) => r.type === 'parent' && r.fromId === keepId)) roles.push('child');
+  for (const t of ['spouse', 'sibling'] as const) if (between.some((r) => r.type === t)) roles.push(t);
+  if (roles.length) {
+    conflicts.unshift(
+      `Warning: ${fullName(drop)} is ${fullName(keep)}'s ${roles.join(' and ')} — merging treats them as the same person.`,
+    );
+  }
+
   // Fills on edges that are themselves being moved are carried in the moved row.
   const fills = [...fill]
     .filter(([id]) => !movedIds.has(id) && !contradicted.has(id))

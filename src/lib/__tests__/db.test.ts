@@ -496,6 +496,60 @@ describe('mergePeople', () => {
     expect(await db.relationships.count()).toBe(0);
   });
 
+  it('merging a child with their father drops the father\'s spouse link to the mother, with a warning first', async () => {
+    // Keep Kiran (K), drop his father (F). M is K's mother and F's spouse.
+    await db.people.bulkPut([
+      person('K', { firstName: 'Kiran', lastName: 'Example' }),
+      person('F', { firstName: 'Pater', lastName: 'Example' }),
+      person('M', { firstName: 'Mater', lastName: 'Example' }),
+    ]);
+    await db.relationships.bulkPut([rel('fk', 'F', 'K', 'parent'), rel('mk', 'M', 'K', 'parent'), rel('fm', 'F', 'M', 'spouse')]);
+    const preview = await previewMerge('K', 'F');
+    expect(preview).toMatchObject({ relationshipsMoved: 0, duplicatesDropped: 2 });
+    expect(preview.conflicts).toEqual([
+      "Warning: Pater Example is Kiran Example's parent — merging treats them as the same person.",
+      'First name: Kiran kept, Pater dropped',
+      'Removed spouse link to Mater Example: they are also a parent',
+    ]);
+    await mergePeople('K', 'F');
+    expect((await db.relationships.toArray()).map((r) => [r.id, r.fromId, r.toId, r.type])).toEqual([['mk', 'M', 'K', 'parent']]);
+
+    // The reverse: keep a parent, drop his child whose spouse is also the parent's child.
+    await db.people.bulkPut([person('C', { firstName: 'Kid', lastName: 'Example' }), person('W', { firstName: 'Wife', lastName: 'Example' })]);
+    await db.relationships.bulkPut([rel('kc', 'K', 'C', 'parent'), rel('cw', 'C', 'W', 'spouse'), rel('kw', 'K', 'W', 'parent')]);
+    // W is K's child and C's spouse: merging C into K would make K the spouse of his own child.
+    const p2 = await previewMerge('K', 'C');
+    expect(p2.conflicts).toEqual([
+      "Warning: Kid Example is Kiran Example's child — merging treats them as the same person.",
+      'First name: Kiran kept, Kid dropped',
+      'Removed spouse link to Wife Example: they are also a child',
+    ]);
+  });
+
+  it('warns first when the two people are spouses or siblings; rejects distant ancestor merges', async () => {
+    await db.people.bulkPut([
+      person('K', { firstName: 'Kiran' }),
+      person('G', { firstName: 'Grand' }),
+      person('P', { firstName: 'Mid' }),
+      person('S', { firstName: 'Sib' }),
+      person('W', { firstName: 'Wed' }),
+      person('U', { firstName: 'Kiran' }),
+    ]);
+    await db.relationships.bulkPut([
+      rel('gp', 'G', 'P', 'parent'),
+      rel('pk', 'P', 'K', 'parent'),
+      rel('ks', 'K', 'S', 'sibling'),
+      rel('kw', 'W', 'K', 'spouse'),
+    ]);
+    const w = (keep: string, drop: string) => previewMerge(keep, drop).then((p) => p.conflicts[0]);
+    // A grandparent/grandchild merge would create a parent cycle and is rejected outright.
+    await expect(previewMerge('K', 'G')).rejects.toThrow('Merging would make someone their own ancestor.');
+    await expect(previewMerge('G', 'K')).rejects.toThrow('Merging would make someone their own ancestor.');
+    expect(await w('K', 'S')).toBe("Warning: Sib is Kiran's sibling — merging treats them as the same person.");
+    expect(await w('K', 'W')).toBe("Warning: Wed is Kiran's spouse — merging treats them as the same person.");
+    expect((await previewMerge('K', 'U')).conflicts).toEqual([]); // unrelated: no warning
+  });
+
   it('rejects merging a person with themselves or a missing person', async () => {
     await db.people.bulkPut([person('K')]);
     await expect(mergePeople('K', 'K')).rejects.toThrow();
