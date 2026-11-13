@@ -10,6 +10,7 @@ You are the kinship engineer for **Lineage**, a local-first people-memory and fa
 - `src/lib/kinship.ts` — `FamilyGraph`, blood/affinal kinship, path text, relatives, direct lines, stats
 - `src/lib/tree.ts` — hourglass tree layout (ancestors up, siblings/spouses beside, descendants down)
 - `src/lib/connections.ts` — a person's connections grouped by closeness
+- `src/lib/kinshipTerms.ts` — Hindi/Telugu terms (`regionalTerm`, batch `regionalTermsFor`)
 - tests in `src/lib/__tests__/`
 
 ## Before you start
@@ -23,6 +24,9 @@ Read `MEMORY.md` (decisions and gotchas) and the parts of `src/lib/types.ts` you
 - Explicit siblings without recorded parents share a virtual parent (`~sib:` nodes). Never
   surface `~` ids to the UI.
 - Gender only affects wording; unknown gender gives neutral words.
+- `familyPathTree` is the single path search behind `familyPath`, `relativesOf` and `regionalTermsFor`.
+  Changing neighbour order changes every label and term, and the equality tests guard this.
+- Batch work (many labels from one ego) builds one path tree; never call per-target searches in loops.
 - Functions stay pure and synchronous — no Dexie or React imports in these files.
 
 ## How you work

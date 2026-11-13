@@ -63,3 +63,27 @@ Read this before changing code. Append new learnings at the bottom.
   backups, GEDCOM files or screenshots of a real family. Test fixtures and the sample family must
   stay invented. `smoke-output/` is gitignored, so keep it that way.
 - User data itself is unaffected: it lives only in each browser's IndexedDB, never in the repo.
+
+## Decisions & gotchas — 2026-11-13 (second fleet round)
+- **Merge: the kept person's values win.** The dropped person's names go to `otherNames`; edge
+  subtypes (adoptive/divorced/half) carry over; sibling/spouse links that would point at an
+  ancestor/descendant after the merge are removed; merges that create a parent cycle are rejected;
+  `previewMerge` warns when the two are directly related.
+- **GEDCOM export defaults to "Family tree only (safe to share)"**, which omits phones, emails,
+  street lines, notes, how-we-met and facts. "Everything (private backup)" is opt-in.
+  `_LINEAGE_ME` marks the user and is honoured on import only when no local "me" exists.
+  Half/step/other sibling edges travel as `ASSO` + `RELA`.
+- **Re-importing a GEDCOM file adds duplicates** by design for now; merge them. Matching existing
+  people is a backlog item.
+- **`parseGedcomDate` no longer returns a date for BEF/AFT/BET/FROM/TO.** Approximate ranges never
+  become exact birth/death dates (deceased is still set). ABT/CAL/EST keep the year plus the qualifier.
+- **`familyPathTree` is the single path search** (used by `familyPath`, `pathInTree`, `knownPath`
+  and `regionalTermsFor`). Changing its `order()` changes every path and every regional term.
+  Don't add a second search. For longer term patterns raise `MAX_PATTERN` in `kinshipTerms.ts`.
+- **`FamilyGraph` must stay immutable.** It caches explicit sibling groups; mutate it and the cache
+  goes stale. Build a new graph instead.
+- **Batch callers pass `pathInTree(...) ?? null` into `kinship()`** so it reuses the shared search.
+  Equality tests check batch results against per-target `kinship()` / `regionalTerm()`.
+- Tree cards show the regional term first ("Dadi · Grandmother") so it isn't truncated on phones.
+- **GitHub Pages source must be "GitHub Actions".** "Deploy from a branch" serves the raw source
+  `index.html`, which is a blank page. Live site: https://ravikirankalal.github.io/Lineage/ (deploys `master`).

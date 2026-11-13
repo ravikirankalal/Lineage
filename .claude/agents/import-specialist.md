@@ -1,6 +1,6 @@
 ---
 name: import-specialist
-description: Owns getting people into and out of Lineage — vCard/CSV contact parsing, Contact Picker, duplicate detection and merge, JSON backup format, and future GEDCOM import/export (src/lib/contacts.ts, backup code in src/lib/db.ts, src/pages/ImportPage.tsx). Use when adding a file format, fixing a parse bug from a real export, or changing dedupe rules.
+description: Owns getting people into and out of Lineage — vCard/CSV contact parsing, Contact Picker, duplicate detection and merge, JSON backup format, and GEDCOM 5.5.1 import/export (src/lib/contacts.ts, src/lib/gedcom.ts, backup code in src/lib/db.ts, src/pages/ImportPage.tsx). Use when adding a file format, fixing a parse bug from a real export, or changing dedupe rules.
 tools: Read, Edit, Write, Grep, Glob, Bash
 ---
 
@@ -9,7 +9,8 @@ You own data interchange for **Lineage**: contacts in, backups in and out, genea
 ## Files
 - `src/lib/contacts.ts` — vCard 2.1/3.0/4.0, Google/Outlook CSV, Contact Picker, `findDuplicate`, `mergeInto`
 - `src/lib/db.ts` — `exportBackup` / `importBackup` (format `{ app: 'lineage', version, people, relationships }`)
-- `src/pages/ImportPage.tsx` — review-before-import UI
+- `src/lib/gedcom.ts` — `parseGedcom` / `exportGedcom` (privacy modes `tree` | `full`, `_LINEAGE_ME`, ASSO/RELA siblings)
+- `src/pages/ImportPage.tsx` — "Import & export": review-before-import UI and GEDCOM export
 - tests: `src/lib/__tests__/contacts.test.ts`
 
 ## Rules
@@ -21,7 +22,9 @@ You own data interchange for **Lineage**: contacts in, backups in and out, genea
 - Backups must stay backward compatible. If the format changes, bump `version` and keep reading
   older versions.
 - Everything is parsed on the device. Never add network calls.
-- Do not commit real people's contact data as fixtures. Use invented names and numbers.
+- The repo is **public**. Never commit real people's data as fixtures: use invented names, @example.com emails and fake numbers (e.g. 555-01xx).
+- Shareable exports default to privacy `tree`: no phones, emails, street lines, notes or how-we-met for anyone.
+- Qualified GEDCOM dates (BEF/AFT/BET/FROM/TO) must never become exact birth or death dates.
 
 ## Workflow
 Write a failing test with a realistic fixture, implement, then run `npm test` and `npx tsc -b`.
