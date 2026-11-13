@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findDuplicate, mergeInto, parseContactsCSV, parseVCard } from '../contacts';
+import { findDuplicate, mergeInto, parseContactsCSV, parseContactsFile, parseVCard, planImport } from '../contacts';
 import { emptyPerson } from '../person';
 
 const VCF = `BEGIN:VCARD
@@ -73,11 +73,75 @@ describe('dedupe', () => {
   it('matches by phone ignoring country code and merges gaps', () => {
     const existing = emptyPerson({ firstName: 'Anil', phones: [{ label: 'm', value: '9876543210' }], appearance: 'tall' });
     const incoming = emptyPerson({ firstName: 'Anil S', phones: [{ label: 'mobile', value: '+91 98765 43210' }], emails: [{ label: 'e', value: 'a@b.c' }] });
-    expect(findDuplicate(incoming, [existing])?.id).toBe(existing.id);
+    expect(findDuplicate(incoming, [existing])).toEqual({ person: existing, strength: 'strong' });
     const m = mergeInto(existing, incoming);
     expect(m.firstName).toBe('Anil');
     expect(m.phones).toHaveLength(1);
     expect(m.emails).toHaveLength(1);
     expect(m.appearance).toBe('tall');
+  });
+
+  it('matches by email as strong', () => {
+    const existing = emptyPerson({ firstName: 'Meena', emails: [{ label: 'e', value: 'Meena@Example.com' }] });
+    const incoming = emptyPerson({ firstName: 'M', emails: [{ label: 'home', value: 'meena@example.com ' }] });
+    expect(findDuplicate(incoming, [existing])?.strength).toBe('strong');
+  });
+
+  it('does not merge same-name people whose phones disagree', () => {
+    const existing = emptyPerson({ firstName: 'Ravi', lastName: 'Kumar', phones: [{ label: 'm', value: '98480 11111' }] });
+    const incoming = emptyPerson({ firstName: 'Ravi', lastName: 'Kumar', phones: [{ label: 'mobile', value: '90000 22222' }] });
+    expect(findDuplicate(incoming, [existing])).toBeUndefined();
+  });
+
+  it('treats a name-only match as possible when one side has no phone or email', () => {
+    const bare = emptyPerson({ firstName: 'Ravi', lastName: 'Kumar' });
+    const withPhone = emptyPerson({ firstName: 'ravi', lastName: 'kumar', phones: [{ label: 'm', value: '90000 22222' }] });
+    expect(findDuplicate(withPhone, [bare])).toEqual({ person: bare, strength: 'possible' });
+    expect(findDuplicate(bare, [withPhone])).toEqual({ person: withPhone, strength: 'possible' });
+  });
+
+  it('prefers a phone match over an earlier name match', () => {
+    const sameName = emptyPerson({ firstName: 'Ravi', lastName: 'Kumar' });
+    const samePhone = emptyPerson({ firstName: 'RK', phones: [{ label: 'm', value: '9000022222' }] });
+    const incoming = emptyPerson({ firstName: 'Ravi', lastName: 'Kumar', phones: [{ label: 'm', value: '+91 90000 22222' }] });
+    expect(findDuplicate(incoming, [sameName, samePhone])).toEqual({ person: samePhone, strength: 'strong' });
+  });
+
+  it('fills an empty address or origin object from the import', () => {
+    const existing = emptyPerson({ firstName: 'Lata', address: {}, origin: { city: undefined, area: '  ' } });
+    const incoming = emptyPerson({ firstName: 'Lata', address: { city: 'Pune' }, origin: { city: 'Nashik' } });
+    const m = mergeInto(existing, incoming);
+    expect(m.address).toEqual({ city: 'Pune' });
+    expect(m.origin).toEqual({ city: 'Nashik' });
+    const typed = mergeInto(emptyPerson({ firstName: 'Lata', address: { city: 'Mumbai' } }), incoming);
+    expect(typed.address).toEqual({ city: 'Mumbai' });
+  });
+});
+
+describe('planImport', () => {
+  const vcf = 'BEGIN:VCARD\nVERSION:3.0\nFN:Kiran Rao\nTEL;TYPE=CELL:+91 91234 56789\nEND:VCARD\n';
+  const csv = 'First Name,Last Name,Mobile Phone,E-mail Address,Home City\nKiran,Rao,9123456789,kiran@z.com,Mysuru\n';
+
+  it('collapses the same contact from a .vcf and a .csv into one new row', () => {
+    const plan = planImport([...parseContactsFile('a.vcf', vcf), ...parseContactsFile('b.csv', csv)], []);
+    expect(plan).toHaveLength(1);
+    expect(plan[0].match).toBeUndefined();
+    expect(plan[0].person.phones).toHaveLength(1);
+    expect(plan[0].person.emails[0].value).toBe('kiran@z.com');
+    expect(plan[0].person.address?.city).toBe('Mysuru');
+  });
+
+  it('collapses duplicates that match the same existing person', () => {
+    const existing = emptyPerson({ firstName: 'Kiran', phones: [{ label: 'm', value: '9123456789' }] });
+    const plan = planImport([...parseContactsFile('a.vcf', vcf), ...parseContactsFile('b.csv', csv)], [existing]);
+    expect(plan).toHaveLength(1);
+    expect(plan[0].match).toEqual({ person: existing, strength: 'strong' });
+    expect(plan[0].person.emails[0].value).toBe('kiran@z.com');
+  });
+
+  it('keeps same-name contacts with different numbers apart', () => {
+    const a = emptyPerson({ firstName: 'Ravi', lastName: 'Kumar', phones: [{ label: 'm', value: '9848011111' }] });
+    const b = emptyPerson({ firstName: 'Ravi', lastName: 'Kumar', phones: [{ label: 'm', value: '9000022222' }] });
+    expect(planImport([a, b], [])).toHaveLength(2);
   });
 });

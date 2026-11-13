@@ -2,7 +2,7 @@ import { Check, ChevronDown, FileUp, Smartphone } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Avatar } from '../components/Avatar';
-import { contactPickerSupported, findDuplicate, mergeInto, parseContactsFile, pickContacts } from '../lib/contacts';
+import { contactPickerSupported, mergeInto, parseContactsFile, pickContacts, planImport, type DuplicateMatch } from '../lib/contacts';
 import { db } from '../lib/db';
 import { useData } from '../lib/data';
 import { displayName } from '../lib/person';
@@ -10,7 +10,7 @@ import type { Person } from '../lib/types';
 
 interface Candidate {
   person: Person;
-  match?: Person;
+  match?: DuplicateMatch;
   selected: boolean;
 }
 
@@ -30,10 +30,8 @@ export function ImportPage() {
       return;
     }
     setError('');
-    setCands(list.map((p) => {
-      const match = findDuplicate(p, people);
-      return { person: p, match, selected: true };
-    }));
+    // Strong (phone/email) and possible (same name, nothing conflicting) matches are both pre-selected.
+    setCands(planImport(list, people).map((c) => ({ ...c, selected: true })));
   };
 
   async function onFiles(files: FileList | null) {
@@ -54,25 +52,32 @@ export function ImportPage() {
   async function doImport() {
     if (!cands) return;
     setBusy(true);
-    let added = 0;
-    let updated = 0;
-    const toPut: Person[] = [];
-    const mergedById = new Map<string, Person>();
-    for (const c of cands) {
-      if (!c.selected) continue;
-      if (c.match) {
-        const base = mergedById.get(c.match.id) ?? c.match;
-        mergedById.set(c.match.id, { ...mergeInto(base, c.person), updatedAt: Date.now() });
-        updated++;
-      } else {
-        toPut.push(c.person);
-        added++;
+    setError('');
+    try {
+      let added = 0;
+      let updated = 0;
+      const toPut: Person[] = [];
+      const mergedById = new Map<string, Person>();
+      for (const c of cands) {
+        if (!c.selected) continue;
+        if (c.match) {
+          const id = c.match.person.id;
+          const base = mergedById.get(id) ?? c.match.person;
+          mergedById.set(id, { ...mergeInto(base, c.person), updatedAt: Date.now() });
+          updated++;
+        } else {
+          toPut.push(c.person);
+          added++;
+        }
       }
+      await db.people.bulkPut([...toPut, ...mergedById.values()]);
+      setCands(null);
+      setDone({ added, updated });
+    } catch (e) {
+      setError(`Import failed: ${(e as Error).message || 'could not save contacts.'}`);
+    } finally {
+      setBusy(false);
     }
-    await db.people.bulkPut([...toPut, ...mergedById.values()]);
-    setBusy(false);
-    setCands(null);
-    setDone({ added, updated });
   }
 
   const selectedCount = cands?.filter((c) => c.selected).length ?? 0;
@@ -141,7 +146,7 @@ export function ImportPage() {
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium">{displayName(c.person)}</div>
                   <div className="truncate text-sm text-stone-500">
-                    {c.match ? <span className="text-amber-600">Matches {displayName(c.match)} — will fill gaps</span> : c.person.phones[0]?.value || c.person.emails[0]?.value}
+                    {c.match ? <span className="text-amber-600">{c.match.strength === 'strong' ? 'Matches' : 'Possibly'} {displayName(c.match.person)} — will fill gaps</span> : c.person.phones[0]?.value || c.person.emails[0]?.value}
                   </div>
                 </div>
               </label>

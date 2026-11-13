@@ -1,6 +1,6 @@
 import { ArrowLeft, Search, UserPlus } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { addRelationship, findRelationship, savePerson } from '../lib/db';
+import { addRelationship, db, ensureRelationship, savePerson } from '../lib/db';
 import { useData } from '../lib/data';
 import { emptyPerson, formatPlace, matchesQuery } from '../lib/person';
 import type { Gender, ParentSubtype, Person, RelType, SpouseSubtype } from '../lib/types';
@@ -84,9 +84,14 @@ function AddRelationBody({ person, preset, familyOnly, onClose }: { person: Pers
   // Helpful extra links.
   const spouses = graph.spousesOf(person.id).filter((s) => s.subtype !== 'divorced').map((s) => byId.get(s.id)!).filter(Boolean);
   const parents = graph.parentsOf(person.id).filter((e) => e.subtype !== 'step').map((e) => byId.get(e.id)!).filter(Boolean);
+  // Parents a full/adoptive sibling would share: only biological or adoptive edges (not step/foster).
+  const sharedParents = graph.parentsOf(person.id)
+    .filter((e) => !e.subtype || e.subtype === 'biological' || e.subtype === 'adoptive')
+    .map((e) => byId.get(e.id)!).filter(Boolean);
   const otherParent = info?.dir === 'in' && parents.length === 1 ? parents[0] : undefined;
   const [alsoSpouse, setAlsoSpouse] = useState(true);
-  const coParent = info?.dir === 'out' && spouses.length === 1 ? spouses[0] : undefined;
+  // A step/foster child of this person is not automatically the spouse's child.
+  const coParent = info?.dir === 'out' && spouses.length === 1 && subtype !== 'step' && subtype !== 'foster' ? spouses[0] : undefined;
   const [alsoCoParent, setAlsoCoParent] = useState(true);
 
   const candidates = useMemo(() => {
@@ -95,32 +100,42 @@ function AddRelationBody({ person, preset, familyOnly, onClose }: { person: Pers
     return list.slice(0, 50);
   }, [people, person.id, q, info?.gender]);
 
-  async function link(other: Person) {
+  /** Writes every edge for linking `other`, inside one transaction (optionally creating them first). */
+  async function link(other: Person, create = false) {
     if (!info || !choice) return;
     setBusy(true);
     setError('');
     try {
-      if (info.gender && other.gender === 'unknown') await savePerson({ ...other, gender: info.gender });
-      const sub = subtype || undefined;
-      if (info.type === 'parent') {
-        const [from, to] = info.dir === 'in' ? [other.id, person.id] : [person.id, other.id];
-        await addRelationship({ fromId: from, toId: to, type: 'parent', subtype: (sub as ParentSubtype) ?? 'biological', note: note || undefined });
-        if (otherParent && alsoSpouse && !(await findRelationship(other.id, otherParent.id, 'spouse'))) {
-          await addRelationship({ fromId: otherParent.id, toId: other.id, type: 'spouse', subtype: 'married' });
-        }
-        if (coParent && alsoCoParent) {
-          await addRelationship({ fromId: coParent.id, toId: other.id, type: 'parent', subtype: (sub as ParentSubtype) ?? 'biological' });
-        }
-      } else if (info.type === 'sibling') {
-        // Prefer linking to the same parents so the tree is complete; fall back to a sibling edge.
-        if (parents.length && sub !== 'step' && sub !== 'half') {
-          for (const p of parents) await addRelationship({ fromId: p.id, toId: other.id, type: 'parent', subtype: 'biological' });
+      await db.transaction('rw', db.people, db.relationships, async () => {
+        if (create) await savePerson(other);
+        else if (info.gender && other.gender === 'unknown') await savePerson({ ...other, gender: info.gender });
+        const sub = subtype || undefined;
+        if (info.type === 'parent') {
+          const [from, to] = info.dir === 'in' ? [other.id, person.id] : [person.id, other.id];
+          await addRelationship({ fromId: from, toId: to, type: 'parent', subtype: (sub as ParentSubtype) ?? 'biological', note: note || undefined });
+          if (otherParent && alsoSpouse && other.id !== otherParent.id) {
+            await ensureRelationship({ fromId: otherParent.id, toId: other.id, type: 'spouse', subtype: 'married' });
+          }
+          if (coParent && alsoCoParent && sub !== 'step' && sub !== 'foster') {
+            await ensureRelationship({ fromId: coParent.id, toId: other.id, type: 'parent', subtype: sub === 'adoptive' ? 'adoptive' : 'biological' });
+          }
+        } else if (info.type === 'sibling') {
+          // Full/adoptive siblings: link to the same (biological/adoptive) parents so the tree is complete.
+          // Step/half siblings, or no known parents: store an explicit sibling edge.
+          const viaParents = (!sub || sub === 'full' || sub === 'adoptive') && sharedParents.length > 0;
+          if (viaParents) {
+            const parentSub: ParentSubtype = sub === 'adoptive' ? 'adoptive' : 'biological';
+            for (const p of sharedParents) {
+              if (p.id === other.id) continue;
+              await ensureRelationship({ fromId: p.id, toId: other.id, type: 'parent', subtype: parentSub });
+            }
+          } else {
+            await addRelationship({ fromId: person.id, toId: other.id, type: 'sibling', subtype: sub as never, note: note || undefined });
+          }
         } else {
-          await addRelationship({ fromId: person.id, toId: other.id, type: 'sibling', subtype: sub as never, note: note || undefined });
+          await addRelationship({ fromId: person.id, toId: other.id, type: info.type, subtype: (sub as SpouseSubtype) || (info.type === 'spouse' ? 'married' : undefined), note: note || undefined });
         }
-      } else {
-        await addRelationship({ fromId: person.id, toId: other.id, type: info.type, subtype: (sub as SpouseSubtype) || (info.type === 'spouse' ? 'married' : undefined), note: note || undefined });
-      }
+      });
       onClose();
     } catch (e) {
       setError((e as Error).message);
@@ -137,8 +152,7 @@ function AddRelationBody({ person, preset, familyOnly, onClose }: { person: Pers
       gender: info?.gender ?? 'unknown',
     });
     if (!p.firstName) return;
-    await savePerson(p);
-    await link(p);
+    await link(p, true);
   }
 
   if (!choice || !info) {

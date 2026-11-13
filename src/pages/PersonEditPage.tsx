@@ -97,6 +97,8 @@ function Editor({ initial, isNew }: { initial: Person; isNew: boolean }) {
       education: p.education.filter((x) => x.institution.trim()),
       facts: p.facts.filter((x) => x.label.trim() || x.value.trim()),
       tags: [...p.tags, ...tagInput.split(',').map((t) => t.trim().replace(/^#/, '')).filter(Boolean)],
+      origin: cleanPlace(p.origin),
+      address: cleanPlace(p.address),
     };
     await savePerson(clean);
     nav(`/people/${clean.id}`, { replace: true });
@@ -317,4 +319,15 @@ function LVList({ label, items, onChange, type, defaultLabel }: {
       <AddBtn onClick={() => onChange([...items, { label: defaultLabel, value: '' }])}>Add {label.toLowerCase()}</AddBtn>
     </div>
   );
+}
+
+/** Trim a place's fields; drop it entirely when nothing is filled in. */
+function cleanPlace(pl?: Place): Place | undefined {
+  if (!pl) return undefined;
+  const out: Place = {};
+  for (const [k, v] of Object.entries(pl) as [keyof Place, string | undefined][]) {
+    const t = typeof v === 'string' ? v.trim() : '';
+    if (t) out[k] = t;
+  }
+  return Object.keys(out).length ? out : undefined;
 }

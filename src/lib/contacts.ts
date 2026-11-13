@@ -388,15 +388,40 @@ export function phoneKey(v: string): string {
   return d.length > 10 ? d.slice(-10) : d;
 }
 
-export function findDuplicate(candidate: Person, existing: Person[]): Person | undefined {
-  const phones = new Set(candidate.phones.map((x) => phoneKey(x.value)).filter((x) => x.length >= 6));
-  const emails = new Set(candidate.emails.map((x) => norm(x.value)));
+export type MatchStrength = 'strong' | 'possible';
+export interface DuplicateMatch {
+  person: Person;
+  /** strong = shared phone or email; possible = same full name and one side has no phone/email to compare. */
+  strength: MatchStrength;
+}
+
+const phoneKeys = (p: Person) => p.phones.map((x) => phoneKey(x.value)).filter((x) => x.length >= 6);
+const emailKeys = (p: Person) => p.emails.map((x) => norm(x.value)).filter(Boolean);
+const hasContactInfo = (p: Person) => phoneKeys(p).length > 0 || emailKeys(p).length > 0;
+
+/**
+ * Find an existing person that `candidate` duplicates.
+ * Order: phone (last 10 digits) → email → exact normalised full name. A name-only match counts
+ * only when one side has no phone or email; two people with the same name and different numbers
+ * are treated as different people.
+ */
+export function findDuplicate(candidate: Person, existing: Person[]): DuplicateMatch | undefined {
+  const phones = new Set(phoneKeys(candidate));
+  const emails = new Set(emailKeys(candidate));
+  const strong =
+    existing.find((e) => phoneKeys(e).some((k) => phones.has(k))) ??
+    existing.find((e) => emailKeys(e).some((k) => emails.has(k)));
+  if (strong) return { person: strong, strength: 'strong' };
   const name = norm(fullName(candidate));
-  return (
-    existing.find((e) => e.phones.some((x) => phones.has(phoneKey(x.value)))) ??
-    existing.find((e) => e.emails.some((x) => emails.has(norm(x.value)))) ??
-    existing.find((e) => norm(fullName(e)) === name)
-  );
+  if (!name) return undefined;
+  const candHasInfo = hasContactInfo(candidate);
+  const possible = existing.find((e) => norm(fullName(e)) === name && (!candHasInfo || !hasContactInfo(e)));
+  return possible ? { person: possible, strength: 'possible' } : undefined;
+}
+
+/** A Place with no non-empty values counts as missing. */
+function placeOrUndefined(p: Place | undefined): Place | undefined {
+  return p && Object.values(p).some((v) => typeof v === 'string' && v.trim() !== '') ? p : undefined;
 }
 
 /** Fill gaps in `base` with data from `incoming`. Never overwrites what the user typed. */
@@ -414,13 +439,50 @@ export function mergeInto(base: Person, incoming: Person): Person {
     birthDate: base.birthDate || incoming.birthDate,
     phones: mergeLV(base.phones, incoming.phones, phoneKey),
     emails: mergeLV(base.emails, incoming.emails, norm),
-    address: base.address ?? incoming.address,
+    address: placeOrUndefined(base.address) ?? placeOrUndefined(incoming.address) ?? base.address,
+    origin: placeOrUndefined(base.origin) ?? placeOrUndefined(incoming.origin) ?? base.origin,
     occupation: base.occupation || incoming.occupation,
     work: base.work.length ? base.work : incoming.work,
     notes: base.notes || incoming.notes,
     photo: base.photo || incoming.photo,
     facts: [...base.facts, ...incoming.facts.filter((f) => !base.facts.some((b) => b.label === f.label))],
   };
+}
+
+export interface ImportCandidate {
+  person: Person;
+  match?: DuplicateMatch;
+}
+
+/**
+ * Pair each incoming contact with an existing person, and collapse duplicates within the import
+ * itself (e.g. a .vcf and a .csv of the same phone book) into one candidate via `mergeInto`.
+ */
+export function planImport(incoming: Person[], existing: Person[]): ImportCandidate[] {
+  const out: ImportCandidate[] = [];
+  for (const p of incoming) {
+    const ex = findDuplicate(p, existing);
+    const unmatched = out.filter((c) => !c.match);
+    const prev = findDuplicate(p, unmatched.map((c) => c.person));
+    if (prev && ex?.strength !== 'strong' && (prev.strength === 'strong' || !ex)) {
+      const target = unmatched.find((c) => c.person === prev.person)!;
+      target.person = mergeInto(target.person, p);
+      // The merged contact may now share a phone/email with someone already saved.
+      const again = findDuplicate(target.person, existing);
+      if (again?.strength === 'strong') target.match = again;
+      continue;
+    }
+    if (ex) {
+      const same = out.find((c) => c.match?.person.id === ex.person.id);
+      if (same) {
+        same.person = mergeInto(same.person, p);
+        if (ex.strength === 'strong') same.match = ex;
+        continue;
+      }
+    }
+    out.push({ person: p, match: ex });
+  }
+  return out;
 }
 
 export function parseContactsFile(name: string, text: string): Person[] {
