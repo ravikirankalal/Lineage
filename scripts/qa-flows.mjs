@@ -306,11 +306,182 @@ async function dark(browser) {
   await ctx.close();
 }
 
+// Merge duplicates, regional family terms and the GEDCOM round-trip, on the sample family.
+async function features(browser) {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, acceptDownloads: true });
+  const page = await ctx.newPage();
+  watch(page, 'features');
+  const relCount = async () => (await body(page)).match(/(\d+) people and (\d+) relationships/);
+  await page.goto(BASE);
+  await page.getByText('Try a sample family').click();
+  await page.getByText('Ravi Rao').first().waitFor();
+
+  await flow('7 merge duplicate Prakash, parent merge allowed, cycle refused', async () => {
+    await page.goto(BASE + '#/people/new');
+    await page.getByLabel('First name *').fill('Prakash');
+    await page.getByLabel('Last name / surname').fill('Rao');
+    await page.getByLabel('Born').fill('1962');
+    await page.getByText('Add phone').click();
+    await page.getByPlaceholder('Phone', { exact: true }).fill('98765 43210');
+    await page.getByRole('button', { name: 'Save' }).first().click();
+    await page.getByText('Connections').first().waitFor();
+    await profileAdd(page, 'Daughter', 'Latha Rao');
+    await page.goto(BASE + '#/');
+    await page.getByPlaceholder(/Search names/).fill('Prakash');
+    await page.locator('a', { hasText: 'Prakash' }).filter({ hasText: 'fertiliser' }).first().click();
+    await page.getByText('Connections').first().waitFor();
+    await page.getByRole('button', { name: /Merge with a duplicate/ }).click();
+    const dlg = page.getByRole('dialog');
+    const sug = dlg.getByRole('button', { name: /Prakash Rao/ });
+    check(/Possible duplicates[\s\S]*Same name/i.test(await dlg.innerText()), '[7] duplicate not suggested');
+    await sug.first().click();
+    await dlg.getByText(/relationship will move/).waitFor();
+    const pv = await dlg.innerText();
+    check(/Birth date: 1961 kept, 1962 dropped/.test(pv), '[7] preview missing birth-date conflict');
+    await shot(page, '7a-merge-preview');
+    await dlg.getByRole('button', { name: /Merge into/ }).click();
+    await dlg.waitFor({ state: 'detached' });
+    const pp = await body(page);
+    check(pp.includes('98765 43210'), '[7] phone not carried over');
+    check(/Born 1961/.test(pp), '[7] kept birth year lost');
+    check(/Latha Rao\s*Daughter/.test(pp) && /Kiran Rao\s*Son/.test(pp) && /Venkata Rao[\s\S]{0,30}Father/.test(pp), '[7] relationships lost after merge');
+    await page.goto(BASE + '#/');
+    await page.getByPlaceholder(/Search names/).fill('Prakash');
+    await page.waitForTimeout(300);
+    check(await page.getByText('Prakash Rao', { exact: true }).count() === 1, '[7] duplicate still listed');
+    await openProfile(page, 'Ravi Rao');
+    check(/Prakash Rao\s*Uncle/.test(await body(page)), '[7] Ravi lost uncle Prakash');
+    await page.goto(BASE + '#/family');
+    await page.getByText('Earliest ancestor').waitFor();
+    await shot(page, '7b-tree-after-merge');
+
+    // Cycle: keeping Aarav (Kiran's son) and dropping great-grandparent Venkata must be refused.
+    await openProfile(page, 'Aarav Rao');
+    await page.getByRole('button', { name: /Merge with a duplicate/ }).click();
+    await dlg.getByLabel('Search people').fill('Venkata');
+    await dlg.getByRole('button', { name: /Venkata Rao/ }).first().click();
+    await dlg.getByText('Merging would make someone their own ancestor.').waitFor();
+    check(await dlg.getByRole('button', { name: /Merge into/ }).isDisabled(), '[7] merge button enabled on cycle');
+    await shot(page, '7c-merge-cycle-refused');
+    await dlg.getByRole('button', { name: 'Close' }).click();
+
+    // A person with their own parent is allowed (the link between them is dropped).
+    await openProfile(page, 'Aarav Rao');
+    await page.getByRole('button', { name: /Merge with a duplicate/ }).click();
+    await dlg.getByLabel('Search people').fill('Kiran');
+    await dlg.getByRole('button', { name: /Kiran Rao/ }).first().click();
+    await dlg.getByText(/1 duplicate link removed/).waitFor();
+    await dlg.getByRole('button', { name: /Merge into/ }).click();
+    await dlg.waitFor({ state: 'detached' });
+    const ap = await body(page);
+    check(/Prakash Rao\s*Father/.test(ap) && /Also known as\s*Kiran Rao/i.test(ap) && !/Kiran Rao\s*Father/.test(ap), '[7] parent merge result wrong: ' + ap.slice(0, 600).replace(/\n/g, ' | '));
+  });
+
+  await flow('8 Hindi/Telugu family terms', async () => {
+    await page.goto(BASE + '#/settings');
+    await page.getByRole('radio', { name: 'Hindi' }).click();
+    const expectHi = { 'Prakash Rao': 'Uncle · Chacha', 'Suresh Gupta': 'Uncle · Mama', 'Kamala Gupta': 'Grandmother · Nani', 'Divya Sharma': 'Sister · Didi' };
+    for (const [n, t] of Object.entries(expectHi)) {
+      await openProfile(page, n);
+      check((await body(page)).includes(t), `[8] ${n} chip not "${t}"`);
+    }
+    await openProfile(page, 'Sandeep Kumar');
+    check(!/ · (Chacha|Mama|Bhai|Dost)/.test(await body(page)), '[8] friend got a family term');
+    await openProfile(page, 'Ravi Rao');
+    check(/Kamala Gupta\s*Grandmother · Nani/.test(await body(page)), '[8] connection row lacks term');
+    await page.goto(BASE + '#/family');
+    await page.getByText('Earliest ancestor').waitFor();
+    check(/Father · Pitaji/.test(await body(page)), '[8] tree card lacks term');
+    await page.getByRole('button', { name: /Relatives \(/ }).click();
+    const rl = await body(page);
+    check(/Uncle · Mama · Mother's brother/.test(rl) && /Uncle · Chacha · Father's brother/.test(rl), '[8] Relatives list lacks terms');
+    await shot(page, '8a-relatives-hindi');
+    await page.goto(BASE + '#/settings');
+    await page.getByRole('radio', { name: 'Telugu' }).click();
+    await page.reload();
+    await page.getByRole('radio', { name: 'Telugu' }).waitFor();
+    check(await page.getByRole('radio', { name: 'Telugu' }).getAttribute('aria-checked') === 'true', '[8] Telugu not persisted');
+    const expectTe = { 'Prakash Rao': 'Uncle · Babai', 'Suresh Gupta': 'Uncle · Mavayya', 'Kamala Gupta': 'Grandmother · Ammamma' };
+    for (const [n, t] of Object.entries(expectTe)) {
+      await openProfile(page, n);
+      check((await body(page)).includes(t), `[8] ${n} chip not "${t}"`);
+    }
+    await shot(page, '8b-kamala-telugu');
+  });
+
+  await flow('9 GEDCOM export, delete all, re-import; hand-written ABT/PEDI', async () => {
+    const dir = join(OUT, 'files');
+    mkdirSync(dir, { recursive: true });
+    await page.goto(BASE + '#/settings');
+    const before = await relCount();
+    await page.goto(BASE + '#/import');
+    const save = async (text) => {
+      const dl = page.waitForEvent('download');
+      await page.getByText(text).click();
+      const d = await dl;
+      const path = join(dir, d.suggestedFilename());
+      await d.saveAs(path);
+      return path;
+    };
+    const famPath = await save('Download my family tree (.ged)');
+    const fam = readFileSync(famPath, 'utf8');
+    check(/^0 HEAD/.test(fam) && /0 TRLR\s*$/.test(fam), '[9] .ged missing HEAD/TRLR');
+    check(!/Sandeep|Farhan|Priya|Venu|Harish/.test(fam), '[9] friend exported in family tree .ged');
+    check(!/98480|PHON/.test(fam), '[9] phone in "safe to share" export');
+    const allText = readFileSync(await save(/Download everyone/), 'utf8');
+    check(allText.includes('Sandeep'), '[9] "everyone" export missing friends');
+    const famIndi = (fam.match(/^0 @[^@]+@ INDI/gm) || []).length;
+
+    await page.goto(BASE + '#/settings');
+    await page.getByText('Delete all data').click();
+    await page.getByRole('button', { name: 'Delete everything' }).click();
+    await page.getByText('All data deleted.').waitFor();
+    await page.goto(BASE + '#/import');
+    await page.locator('input[type=file]').setInputFiles(famPath);
+    await page.getByText('Family tree ready to import').waitFor();
+    check((await body(page)).includes(`${famIndi} people`), '[9] import preview count mismatch');
+    await page.getByRole('button', { name: /^Import \d/ }).click();
+    await page.getByText(/Added \d+ new people/).waitFor();
+    await page.goto(BASE + '#/settings');
+    const after = await relCount();
+    check(Number(after[1]) === famIndi && Number(after[1]) < Number(before[1]), `[9] people after import ${after[0]}`);
+    await page.goto(BASE + '#/family');
+    await page.getByRole('button', { name: /Ravi Rao/ }).first().click(); // "Who are you?" picker
+    await page.getByText('Earliest ancestor').waitFor();
+    const fb = await body(page);
+    check(/5\s*Generations/.test(fb), '[9] generations not restored');
+    check(/Anjali R\.\s*Wife/.test(fb) && /Grandmother · Ammamma/.test(fb), '[9] spouse/kinship labels missing after import');
+    await shot(page, '9a-tree-after-ged');
+    await openProfile(page, 'Prakash Rao');
+    check(/Uncle · Babai/.test(await body(page)), '[9] Prakash not uncle after import');
+
+    const hand = join(dir, 'hand.ged');
+    writeFileSync(hand, ['0 HEAD', '1 GEDC', '2 VERS 5.5.1', '1 CHAR UTF-8',
+      '0 @I1@ INDI', '1 NAME Gopal /Iyer/', '1 SEX M', '1 BIRT', '2 DATE ABT 1940', '1 FAMS @F1@',
+      '0 @I2@ INDI', '1 NAME Meenakshi /Iyer/', '1 SEX F', '1 FAMS @F1@',
+      '0 @I3@ INDI', '1 NAME Ramesh /Iyer/', '1 SEX M', '1 FAMC @F1@',
+      '0 @I4@ INDI', '1 NAME Lakshmi /Iyer/', '1 SEX F', '1 BIRT', '2 DATE ABT JUN 1975', '1 FAMC @F1@', '2 PEDI adopted',
+      '0 @F1@ FAM', '1 HUSB @I1@', '1 WIFE @I2@', '1 CHIL @I3@', '1 CHIL @I4@', '0 TRLR', ''].join('\n'));
+    await page.goto(BASE + '#/import');
+    await page.locator('input[type=file]').setInputFiles(hand);
+    await page.getByText('Family tree ready to import').waitFor();
+    await page.getByRole('button', { name: /^Import \d/ }).click();
+    await page.getByText(/Added 4 new people/).waitFor();
+    await openProfile(page, 'Lakshmi Iyer');
+    const lk = await body(page);
+    check(/Gopal Iyer[\s\S]{0,20}Adoptive father/.test(lk) && /Ramesh Iyer\s*Brother/.test(lk), '[9] PEDI adopted not imported');
+    check(/about Jun 1975/.test(lk), '[9] ABT date qualifier lost');
+    await shot(page, '9b-adopted-child');
+  });
+  await ctx.close();
+}
+
 try {
   await waitForServer();
   const browser = await chromium.launch();
   await main(browser);
   await dark(browser);
+  await features(browser);
   await browser.close();
 } catch (e) {
   failures.push('crashed: ' + e.message);
