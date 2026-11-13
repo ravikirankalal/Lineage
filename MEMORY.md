@@ -54,3 +54,12 @@ Read this before changing code. Append new learnings at the bottom.
 - Spawn vite in scripts via `node node_modules/vite/bin/vite.js`, not `npx`, so `kill()` stops the
   real server (npx left orphan servers behind).
 - TS build info (`*.tsbuildinfo`) is gitignored.
+
+## Repository is public (2026-11-13)
+- `ravikirankalal/Lineage` is a **public** GitHub repo. GitHub Pages works on the free plan, and the
+  site is served from `https://ravikirankalal.github.io/Lineage/` once Pages is enabled
+  (Settings → Pages → Source: GitHub Actions).
+- Everything committed is world-readable. Never commit real people's data: no real contacts,
+  backups, GEDCOM files or screenshots of a real family. Test fixtures and the sample family must
+  stay invented. `smoke-output/` is gitignored, so keep it that way.
+- User data itself is unaffected: it lives only in each browser's IndexedDB, never in the repo.
