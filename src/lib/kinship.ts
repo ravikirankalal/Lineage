@@ -126,10 +126,36 @@ export class FamilyGraph {
     return out;
   }
 
-  /** Siblings: share at least one blood parent, or an explicit sibling edge (step/half edges win). */
+  /** Siblings: share at least one blood parent, or an explicit sibling edge (step/half edges win).
+   * An explicit half edge A–B also makes A a half-sibling of B's full siblings (they share B's parents);
+   * step edges are never chained. */
   siblingsOf(id: string): { id: string; half: boolean; step?: boolean }[] {
+    const res: Map<string, { half: boolean; step?: boolean }> = this.sharedParentSiblings(id);
+    const loose = this.looseSiblings.get(id) ?? [];
+    // Half edge from me to B: B's full siblings are my half-siblings too.
+    for (const e of loose) {
+      if (e.subtype !== 'half') continue;
+      for (const [c, v] of this.sharedParentSiblings(e.id)) {
+        if (c !== id && !v.half && !res.has(c)) res.set(c, { half: true });
+      }
+    }
+    // Reverse: my full sibling B has a half edge to A.
+    for (const [b, v] of [...res]) {
+      if (v.half) continue;
+      for (const e of this.looseSiblings.get(b) ?? []) {
+        if (e.subtype === 'half' && e.id !== id && !res.has(e.id)) res.set(e.id, { half: true });
+      }
+    }
+    for (const e of loose) {
+      res.set(e.id, e.subtype === 'step' ? { half: false, step: true } : { half: true });
+    }
+    return [...res].map(([sid, v]) => ({ id: sid, ...v }));
+  }
+
+  /** Siblings through shared blood parents or an explicit full/adoptive/untyped group (no loose edges). */
+  private sharedParentSiblings(id: string): Map<string, { half: boolean }> {
     const mine = new Set(this.bloodParents(id));
-    const res = new Map<string, { half: boolean; step?: boolean }>();
+    const res = new Map<string, { half: boolean }>();
     for (const p of mine) {
       for (const c of this.childrenOf(p)) {
         if (c.id === id || !isBloodEdge(c.subtype)) continue;
@@ -140,10 +166,7 @@ export class FamilyGraph {
       }
     }
     for (const s of this.explicitGroup(id)) if (!res.has(s)) res.set(s, { half: false });
-    for (const e of this.looseSiblings.get(id) ?? []) {
-      res.set(e.id, e.subtype === 'step' ? { half: false, step: true } : { half: true });
-    }
-    return [...res].map(([sid, v]) => ({ id: sid, ...v }));
+    return res;
   }
 
   /** Everyone reachable through family edges only (friends are never included). */
@@ -398,8 +421,13 @@ export function familyPath(graph: FamilyGraph, a: string, b: string): { steps: {
   return { steps, text };
 }
 
+/** Neighbour preference for path search; within a kind, blood/current links beat step/foster/ex links. */
 function order(s: Step) {
-  return s.kind === 'sibling' ? 0 : s.kind === 'parent' ? 1 : s.kind === 'child' ? 2 : 3;
+  const base = s.kind === 'sibling' ? 0 : s.kind === 'parent' ? 1 : s.kind === 'child' ? 2 : 3;
+  const weak = s.kind === 'sibling' ? !!s.step
+    : s.kind === 'spouse' ? s.sub === 'divorced'
+      : !isBloodEdge(s.sub);
+  return base + (weak ? 0.5 : 0);
 }
 
 /** Full kinship of `b` from `a`'s point of view, or undefined if not family-connected. */
@@ -441,6 +469,11 @@ export function kinship(graph: FamilyGraph, a: string, b: string, aAnc = graph.a
     return { label: stepWord(direct, gender), path: path.text, category: 'siblings', generation: 0, degree: 2, blood: true };
   }
 
+  // Foster sibling: we share a parent and at least one of us is that parent's foster child.
+  if (areFosterSiblings(graph, a, b)) {
+    return { label: 'Foster ' + g(gender, W.sibling).toLowerCase(), path: path.text, category: 'siblings', generation: 0, degree: 3, blood: false };
+  }
+
   // Step-sibling: child of my step-parent / my parent's spouse (or the reverse).
   if (areStepSiblings(graph, a, b) || areStepSiblings(graph, b, a)) {
     return { label: 'Step' + g(gender, W.sibling).toLowerCase(), path: path.text, category: 'siblings', generation: 0, degree: 3, blood: false };
@@ -450,14 +483,27 @@ export function kinship(graph: FamilyGraph, a: string, b: string, aAnc = graph.a
   const affinal = affinalLabel(graph, a, b, aAnc);
   if (affinal) return { ...affinal, path: path.text, blood: false };
 
+  // No named relation: the path itself ("Son's half-sister") says more than "Relative".
   return {
-    label: 'Relative',
+    label: path.text,
     path: path.text,
     category: 'other',
     generation: 0,
     degree: path.steps.length + 2,
     blood: false,
   };
+}
+
+/** True when a and b share a parent and at least one of them is that parent's foster child (never step). */
+function areFosterSiblings(graph: FamilyGraph, a: string, b: string): boolean {
+  const bParents = new Map(graph.parentsOf(b).map((e) => [e.id, e.subtype]));
+  for (const e of graph.parentsOf(a)) {
+    if (!bParents.has(e.id)) continue;
+    const bs = bParents.get(e.id);
+    if (e.subtype === 'step' || bs === 'step') continue;
+    if (e.subtype === 'foster' || bs === 'foster') return true;
+  }
+  return false;
 }
 
 /** True when one of b's parents is a's step-parent or the (non-divorced) spouse of a's parent. */

@@ -1,9 +1,11 @@
-import { Download, FlaskConical, ShieldCheck, Trash2, Upload } from 'lucide-react';
+import { Download, FlaskConical, Languages, ShieldCheck, Trash2, Upload } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Sheet } from '../components/Sheet';
 import { clearAll, exportBackup, importBackup } from '../lib/db';
 import { useData } from '../lib/data';
 import { loadDemo } from '../lib/demo';
+import { KIN_LANGUAGES } from '../lib/kinshipTerms';
+import { useKinLang } from '../lib/prefs';
 
 export function SettingsPage() {
   const { people, rels } = useData();
@@ -11,6 +13,7 @@ export function SettingsPage() {
   const [msg, setMsg] = useState('');
   const [pending, setPending] = useState<unknown>(null);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [kinLang, setKinLang] = useKinLang();
 
   async function download() {
     const data = await exportBackup();
@@ -50,6 +53,24 @@ export function SettingsPage() {
           <div>
             <h2 className="font-semibold">Private by design</h2>
             <p className="mt-1 text-sm text-stone-500">Everything is stored only in this browser on this device — no account, no server. {people.length} people and {rels.length} relationships saved. Back up regularly so you never lose your family history.</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="card mt-4 p-5">
+        <div className="flex items-start gap-3">
+          <Languages className="mt-0.5 shrink-0 text-stone-500" />
+          <div className="min-w-0 flex-1">
+            <h2 id="kin-terms-title" className="font-semibold">Family terms</h2>
+            <p className="mt-1 text-sm text-stone-500">Show terms like Chacha, Mama, Bua alongside English labels.</p>
+            <div role="radiogroup" aria-labelledby="kin-terms-title" className="mt-3 inline-flex max-w-full flex-wrap gap-1 rounded-xl bg-stone-200/60 p-1 dark:bg-stone-800">
+              {KIN_LANGUAGES.map((l) => (
+                <button key={l.id} role="radio" aria-checked={kinLang === l.id} onClick={() => setKinLang(l.id)}
+                  className={`min-h-[40px] rounded-lg px-4 text-sm font-medium transition ${kinLang === l.id ? 'bg-white text-stone-900 shadow-sm dark:bg-stone-700 dark:text-stone-50' : 'text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200'}`}>
+                  {l.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </section>
