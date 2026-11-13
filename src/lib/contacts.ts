@@ -460,29 +460,123 @@ export interface ImportCandidate {
  */
 export function planImport(incoming: Person[], existing: Person[]): ImportCandidate[] {
   const out: ImportCandidate[] = [];
+  // Indexes replace the O(n²) scans of `findDuplicate`; results are identical.
+  const existingIdx = new DuplicateIndex();
+  existing.forEach((e, i) => existingIdx.set(i, e));
+  /** Unmatched candidates only, keyed by their position in `out`. */
+  const unmatchedIdx = new DuplicateIndex();
+  /** existing person id → lowest `out` position matched to it. */
+  const byMatchId = new Map<string, number>();
+  const setMatch = (i: number, match: DuplicateMatch) => {
+    out[i].match = match;
+    unmatchedIdx.delete(i);
+    const prior = byMatchId.get(match.person.id);
+    if (prior === undefined || i < prior) byMatchId.set(match.person.id, i);
+  };
+
   for (const p of incoming) {
-    const ex = findDuplicate(p, existing);
-    const unmatched = out.filter((c) => !c.match);
-    const prev = findDuplicate(p, unmatched.map((c) => c.person));
+    const keys = dupKeys(p);
+    const exHit = existingIdx.find(keys);
+    const ex = exHit && { person: existing[exHit.index], strength: exHit.strength };
+    const prev = unmatchedIdx.find(keys);
     if (prev && ex?.strength !== 'strong' && (prev.strength === 'strong' || !ex)) {
-      const target = unmatched.find((c) => c.person === prev.person)!;
+      const target = out[prev.index];
       target.person = mergeInto(target.person, p);
       // The merged contact may now share a phone/email with someone already saved.
-      const again = findDuplicate(target.person, existing);
-      if (again?.strength === 'strong') target.match = again;
+      const again = existingIdx.find(dupKeys(target.person));
+      if (again?.strength === 'strong') setMatch(prev.index, { person: existing[again.index], strength: 'strong' });
+      else unmatchedIdx.set(prev.index, target.person); // merging may add phones, emails or name parts
       continue;
     }
     if (ex) {
-      const same = out.find((c) => c.match?.person.id === ex.person.id);
-      if (same) {
+      const sameIdx = byMatchId.get(ex.person.id);
+      if (sameIdx !== undefined) {
+        const same = out[sameIdx];
         same.person = mergeInto(same.person, p);
         if (ex.strength === 'strong') same.match = ex;
         continue;
       }
     }
-    out.push({ person: p, match: ex });
+    const i = out.push({ person: p, match: ex }) - 1;
+    if (ex) setMatch(i, ex);
+    else unmatchedIdx.set(i, p);
   }
   return out;
+}
+
+interface DupKeys {
+  phones: string[];
+  emails: string[];
+  name: string;
+  hasInfo: boolean;
+}
+
+function dupKeys(p: Person): DupKeys {
+  const phones = phoneKeys(p);
+  const emails = emailKeys(p);
+  return { phones, emails, name: norm(fullName(p)), hasInfo: phones.length > 0 || emails.length > 0 };
+}
+
+/**
+ * Lookup tables answering `findDuplicate` for a numbered list of people in O(keys) instead of
+ * O(n). Ties resolve to the lowest number, matching `findDuplicate`'s first-in-array rule.
+ */
+class DuplicateIndex {
+  private byPhone = new Map<string, Set<number>>();
+  private byEmail = new Map<string, Set<number>>();
+  private byName = new Map<string, Set<number>>();
+  private keys = new Map<number, DupKeys>();
+
+  set(i: number, p: Person): void {
+    this.delete(i);
+    const k = dupKeys(p);
+    this.keys.set(i, k);
+    for (const x of k.phones) add(this.byPhone, x, i);
+    for (const x of k.emails) add(this.byEmail, x, i);
+    if (k.name) add(this.byName, k.name, i);
+  }
+
+  delete(i: number): void {
+    const k = this.keys.get(i);
+    if (!k) return;
+    this.keys.delete(i);
+    for (const x of k.phones) remove(this.byPhone, x, i);
+    for (const x of k.emails) remove(this.byEmail, x, i);
+    if (k.name) remove(this.byName, k.name, i);
+  }
+
+  find(c: DupKeys): { index: number; strength: MatchStrength } | undefined {
+    const phone = lowest(this.byPhone, c.phones);
+    if (phone !== undefined) return { index: phone, strength: 'strong' };
+    const email = lowest(this.byEmail, c.emails);
+    if (email !== undefined) return { index: email, strength: 'strong' };
+    if (!c.name) return undefined;
+    const name = lowest(this.byName, [c.name], (i) => !c.hasInfo || !this.keys.get(i)!.hasInfo);
+    return name !== undefined ? { index: name, strength: 'possible' } : undefined;
+  }
+}
+
+function add(map: Map<string, Set<number>>, key: string, i: number) {
+  const s = map.get(key);
+  if (s) s.add(i);
+  else map.set(key, new Set([i]));
+}
+
+function remove(map: Map<string, Set<number>>, key: string, i: number) {
+  const s = map.get(key);
+  if (!s) return;
+  s.delete(i);
+  if (!s.size) map.delete(key);
+}
+
+function lowest(map: Map<string, Set<number>>, keys: string[], ok?: (i: number) => boolean): number | undefined {
+  let best: number | undefined;
+  for (const k of keys) {
+    const s = map.get(k);
+    if (!s) continue;
+    for (const i of s) if ((best === undefined || i < best) && (!ok || ok(i))) best = i;
+  }
+  return best;
 }
 
 export function parseContactsFile(name: string, text: string): Person[] {

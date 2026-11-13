@@ -19,7 +19,7 @@ _Last updated: 2026-11-13_
 | GitHub Pages workflow | ✅ added | not yet run (Pages must be enabled) |
 | Agent fleet (`.claude/agents/`, AGENTS.md), smoke + QA scripts | ✅ done | first fleet run, see AGENTS.md → Fleet log |
 
-`npm test` → 55 passing across 4 files (db 18, contacts 15, kinship-step 15, kinship 7).
+`npm test` → 56 passing across 4 files (db 18, contacts 16, kinship-step 15, kinship 7).
 `npm run build` → clean. `npm run smoke` and `npm run qa` → passed at HEAD (`399d50c`).
 
 ## Known limitations
@@ -31,7 +31,6 @@ _Last updated: 2026-11-13_
 - Explicit step/half sibling edges are not transitive (A–B, B–C doesn't make A–C).
 - Foster siblings show as "Relative".
 - An explicit half-sibling's ancestors are not reachable as blood relatives.
-- `planImport` is O(n²); very large contact files (many thousands) will be slow.
 - The Contact Picker API only exists in Chrome on Android; elsewhere use a .vcf export.
 
 ## Next up (see PLAN.md backlog)

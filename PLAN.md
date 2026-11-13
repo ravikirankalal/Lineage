@@ -111,4 +111,4 @@
 - [ ] Merge two people into one
 - [ ] Kinship: parent's view of child's explicit step/half sibling, transitive step/half
       sibling edges, foster sibling labels, half-sibling's ancestors as blood
-- [ ] Faster `planImport` for very large contact files (currently O(n²))
+- [x] Faster `planImport`: indexed matching, 5000 contacts in ~30 ms (was ~3 s)

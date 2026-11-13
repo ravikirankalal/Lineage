@@ -68,4 +68,5 @@ bug and an "arbitrary earliest ancestor" UX nit, and both were fixed. Four fixer
 on separate areas: data-steward (patch-only updates, `ensureRelationship`, cycle rejection, backup
 checks), import-specialist (strong/possible dedupe, in-file dedupe), ui-builder (subtype-aware helper
 links, one transaction per add) and kinship-engineer (sibling subtypes, foster, step/half labels).
-Result: 55 tests passing; smoke and qa pass. Remaining limitations are in STATE.md.
+Result: 55 tests passing; smoke and qa pass.
+Follow-up review of the fixes: 2 more findings (re-linking reset subtypes → fixed directly; `planImport` O(n²) → import-specialist, 100× faster). Final: 56 tests, smoke + qa pass.

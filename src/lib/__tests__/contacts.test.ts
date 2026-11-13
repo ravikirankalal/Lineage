@@ -145,3 +145,25 @@ describe('planImport', () => {
     expect(planImport([a, b], [])).toHaveLength(2);
   });
 });
+
+describe('planImport performance', () => {
+  it('plans 5000 contacts (half duplicates by phone) in well under a second', () => {
+    const uniq = 2500;
+    const contact = (i: number, src: string) =>
+      emptyPerson({ firstName: `Test${i}`, lastName: src, phones: [{ label: 'm', value: `+91 90000 ${String(i).padStart(5, '0')}` }] });
+    // Every number appears twice: once as "Vcf", once later as "Csv" with a different surname.
+    const incoming = [
+      ...Array.from({ length: uniq }, (_, i) => contact(i, 'Vcf')),
+      ...Array.from({ length: uniq }, (_, i) => contact(i, 'Csv')),
+    ];
+    const existing = Array.from({ length: 200 }, (_, i) =>
+      emptyPerson({ firstName: `Saved${i}`, phones: [{ label: 'm', value: `+91 80000 ${String(i).padStart(5, '0')}` }] }),
+    );
+    const t0 = performance.now();
+    const plan = planImport(incoming, existing);
+    const ms = performance.now() - t0;
+    expect(plan).toHaveLength(uniq);
+    expect(plan.every((c) => !c.match && c.person.phones.length === 1)).toBe(true);
+    expect(ms).toBeLessThan(500);
+  });
+});
