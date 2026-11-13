@@ -6,8 +6,8 @@ rules_version = '2';
 //   owner  : everything in their space; manages members and invites; deletes the space.
 //   editor : reads the space doc; reads/creates/updates (soft-deletes) scope == 'family' records.
 //   viewer : reads the space doc and scope == 'family' records.
-//   invitee: (verified email == invite id) reads own invite, joins with exactly the invited role,
-//            deletes own invite.
+//   invitee: (verified email == invite id) reads own invite, joins with exactly the invited role
+//            while deleting the invite in the same batch (single use), or declines (deletes) it.
 //   others : nothing.
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -110,7 +110,8 @@ service cloud.firestore {
       }
 
       // Invitee adds only their own uid, with exactly the invited role, and needs a verified email
-      // matching an existing invite.
+      // matching an existing invite. The invite must be consumed (deleted) in the same batch, so an
+      // invite can be used once: a removed or downgraded member cannot replay it.
       function inviteeJoins() {
         let invitePath = /databases/$(database)/documents/spaces/$(spaceId)/invites/$(myEmail());
         let memberDiff = request.resource.data.members.diff(resource.data.members);
@@ -118,6 +119,7 @@ service cloud.firestore {
         return verifiedEmail()
           && !(request.auth.uid in resource.data.members)
           && exists(invitePath)
+          && !existsAfter(invitePath)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberInfo'])
           && memberDiff.addedKeys() == [request.auth.uid].toSet()
           && memberDiff.changedKeys().size() == 0
@@ -131,6 +133,18 @@ service cloud.firestore {
       }
 
       // ---------- records ----------
+      // Max clock skew accepted for updatedAt (ms). A far-future updatedAt would freeze every
+      // client's pull watermark (pull is "updatedAt > since").
+      function maxUpdatedAt() {
+        return request.time.toMillis() + 300000;
+      }
+      // Photos: only inline base64 PNG/JPEG/WebP data URLs, bounded in size (no remote URLs/trackers).
+      function validPhoto(data) {
+        return !('photo' in data)
+          || (data.photo is string
+              && data.photo.size() < 300000
+              && data.photo.matches('^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$'));
+      }
       function validRecord(d, recId) {
         return d.keys().hasAll(['data', 'scope', 'updatedAt', 'updatedBy'])
           && d.keys().hasOnly(['data', 'scope', 'updatedAt', 'updatedBy', 'deleted'])
@@ -138,8 +152,16 @@ service cloud.firestore {
           && (!('id' in d.data) || d.data.id == recId)
           && d.scope in ['family', 'private']
           && d.updatedAt is number
+          && d.updatedAt <= maxUpdatedAt()
           && d.updatedBy == request.auth.uid
-          && (!('deleted' in d) || d.deleted is bool);
+          && (!('deleted' in d) || d.deleted is bool)
+          && validPhoto(d.data);
+      }
+      // Only the owner decides who "me" is (it roots the family component and so decides scope).
+      // Non-owners may not set data.isMe on create, nor change it on update.
+      function isMeUnchanged(d) {
+        return d.data.get('isMe', false)
+          == (resource == null ? false : resource.data.data.get('isMe', false));
       }
 
       function recordRead() {
@@ -149,14 +171,18 @@ service cloud.firestore {
       function recordCreate(recId) {
         return validRecord(request.resource.data, recId)
           && (isOwner(spaceId)
-              || (canEdit(spaceId) && request.resource.data.scope == 'family'));
+              || (canEdit(spaceId)
+                  && request.resource.data.scope == 'family'
+                  && isMeUnchanged(request.resource.data)));
       }
       function recordUpdate(recId) {
         return validRecord(request.resource.data, recId)
+          && request.resource.data.updatedAt > resource.data.updatedAt
           && (isOwner(spaceId)
               || (canEdit(spaceId)
                   && resource.data.scope == 'family'
-                  && request.resource.data.scope == 'family'));
+                  && request.resource.data.scope == 'family'
+                  && isMeUnchanged(request.resource.data)));
       }
 
       match /people/{recId} {
@@ -174,13 +200,15 @@ service cloud.firestore {
 
       // ---------- invites ----------
       function validInvite(d, emailId) {
-        return d.keys().hasAll(['email', 'role', 'invitedBy', 'spaceName', 'createdAt'])
-          && d.keys().hasOnly(['email', 'role', 'invitedBy', 'spaceName', 'createdAt'])
+        return d.keys().hasAll(['email', 'role', 'invitedBy', 'invitedByEmail', 'spaceName', 'createdAt'])
+          && d.keys().hasOnly(['email', 'role', 'invitedBy', 'invitedByEmail', 'spaceName', 'createdAt'])
           && d.email == emailId
           && d.email == d.email.lower()
           && d.email.matches('^[^@/ ]+@[^@/ ]+$')
           && d.role in ['editor', 'viewer']
           && d.invitedBy == request.auth.uid
+          && d.invitedByEmail is string
+          && d.invitedByEmail == request.auth.token.email
           && d.spaceName is string && d.spaceName.size() <= 200
           && d.createdAt is number;
       }

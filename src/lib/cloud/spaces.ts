@@ -67,7 +67,11 @@ export async function invite(spaceId: string, email: string, role: MemberRole): 
   const addr = normEmail(email);
   if (!/^[^@\s/]+@[^@\s/]+\.[^@\s/]+$/.test(addr)) throw new Error('Enter a valid email address.');
   if (role !== 'editor' && role !== 'viewer') throw new Error('Role must be editor or viewer.');
-  const uid = await currentUid();
+  const auth = await getFirebaseAuth();
+  const uid = auth.currentUser?.uid;
+  const inviterEmail = auth.currentUser?.email;
+  if (!uid) throw new Error('Sign in first.');
+  if (!inviterEmail) throw new Error('Your account has no email address, so you cannot send invites.');
   const db = await getDb();
   const { doc, getDoc, setDoc } = await fs();
   try {
@@ -76,6 +80,8 @@ export async function invite(spaceId: string, email: string, role: MemberRole): 
       email: addr,
       role,
       invitedBy: uid,
+      // Must equal the auth token's email exactly (rules), so it is not normalised here.
+      invitedByEmail: inviterEmail,
       spaceName: (space.data() as SpaceDoc | undefined)?.name ?? '',
       createdAt: Date.now(),
     };
@@ -141,12 +147,29 @@ export async function acceptInvite(user: CloudUser, spaceId: string): Promise<vo
   }
 }
 
+/**
+ * Invites are single use, but a stale one (e.g. re-sent after the member joined) would let a
+ * removed or downgraded member rejoin at the invited role. So the owner's membership changes also
+ * delete any invite for that member's email, in the same batch.
+ */
+async function memberEmail(spaceId: string, uid: string): Promise<string | undefined> {
+  const db = await getDb();
+  const { doc, getDoc } = await fs();
+  const snap = await getDoc(doc(db, 'spaces', spaceId));
+  const email = (snap.data() as SpaceDoc | undefined)?.memberInfo?.[uid]?.email;
+  return email ? normEmail(email) : undefined;
+}
+
 export async function setRole(spaceId: string, uid: string, role: MemberRole): Promise<void> {
   if (role !== 'editor' && role !== 'viewer') throw new Error('Role must be editor or viewer.');
   const db = await getDb();
-  const { doc, updateDoc, FieldPath } = await fs();
+  const { doc, writeBatch, FieldPath } = await fs();
   try {
-    await updateDoc(doc(db, 'spaces', spaceId), new FieldPath('members', uid), role);
+    const email = await memberEmail(spaceId, uid);
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'spaces', spaceId), new FieldPath('members', uid), role);
+    if (email) batch.delete(doc(db, 'spaces', spaceId, 'invites', email));
+    await batch.commit();
   } catch (e) {
     throw wrap(e, "change members' roles");
   }
@@ -155,15 +178,21 @@ export async function setRole(spaceId: string, uid: string, role: MemberRole): P
 /** Owner removes a member, or a member leaves (uid == self). */
 export async function removeMember(spaceId: string, uid: string): Promise<void> {
   const db = await getDb();
-  const { doc, updateDoc, deleteField, FieldPath } = await fs();
+  const { doc, writeBatch, deleteField, FieldPath } = await fs();
   try {
-    await updateDoc(
+    const self = (await currentUid()) === uid;
+    // Owner path: also revoke any pending invite for the removed member (see memberEmail).
+    const email = self ? undefined : await memberEmail(spaceId, uid);
+    const batch = writeBatch(db);
+    batch.update(
       doc(db, 'spaces', spaceId),
       new FieldPath('members', uid),
       deleteField(),
       new FieldPath('memberInfo', uid),
       deleteField(),
     );
+    if (email) batch.delete(doc(db, 'spaces', spaceId, 'invites', email));
+    await batch.commit();
   } catch (e) {
     throw wrap(e, 'remove this member');
   }

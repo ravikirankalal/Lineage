@@ -12,7 +12,7 @@
     "smoke": "node scripts/smoke.mjs",
     "verify": "npm test && npm run build && npm run smoke",
     "qa": "node scripts/qa-flows.mjs",
-    "test:rules": "firebase emulators:exec --only firestore --project demo-lineage 'vitest run --config vitest.rules.config.ts'"
+    "test:rules": "firebase emulators:exec --config firebase.rules-test.json --only firestore --project demo-lineage 'vitest run --config vitest.rules.config.ts'"
   },
   "dependencies": {
     "dexie": "^4.4.7",

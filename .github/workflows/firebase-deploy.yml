@@ -66,11 +66,12 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
           SA_FILE="$RUNNER_TEMP/firebase-sa.json"
+          trap 'rm -f "$SA_FILE"' EXIT
+          umask 077
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$SA_FILE"
-          chmod 600 "$SA_FILE"
           export GOOGLE_APPLICATION_CREDENTIALS="$SA_FILE"
-          npx firebase-tools deploy --only firestore --project "$VITE_FIREBASE_PROJECT_ID" --non-interactive
-          rm -f "$SA_FILE"
+          # The firebase-tools pinned in package-lock.json (devDependency), never a fresh download.
+          npx --no-install firebase deploy --only firestore --project "$VITE_FIREBASE_PROJECT_ID" --non-interactive
 
       - name: Deploy Hosting
         if: steps.check.outputs.enabled == 'true'

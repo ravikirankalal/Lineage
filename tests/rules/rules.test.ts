@@ -54,12 +54,14 @@ const person = (id: string, firstName = 'Test') => ({ id, firstName, gender: 'un
 const rel = (id: string) => ({ id, fromId: 'p1', toId: 'p2', type: 'parent', createdAt: 1 });
 const rec = (data: object, scope: 'family' | 'private', by: string, extra: object = {}) => ({ data, scope, updatedAt: 100, updatedBy: by, ...extra });
 
-function invite(email: string, role: string, by = 'alice') {
-  return { email, role, invitedBy: by, spaceName: "Alice's family", createdAt: 1 };
+function invite(email: string, role: string, by = 'alice', byEmail = `${by}@example.com`) {
+  return { email, role, invitedBy: by, invitedByEmail: byEmail, spaceName: "Alice's family", createdAt: 1 };
 }
 
+const FUTURE = () => Date.now() + 10 * 60 * 1000; // beyond the 5-minute skew allowance
+
 beforeAll(async () => {
-  const [host, port] = (process.env.FIRESTORE_EMULATOR_HOST ?? '127.0.0.1:8080').split(':');
+  const [host, port] = (process.env.FIRESTORE_EMULATOR_HOST ?? '127.0.0.1:8180').split(':');
   env = await initializeTestEnvironment({
     projectId: 'demo-lineage',
     firestore: { rules: readFileSync(resolve(process.cwd(), 'firestore.rules'), 'utf8'), host, port: Number(port) },
@@ -134,7 +136,7 @@ describe('owner', () => {
     const db = as('owner');
     await assertSucceeds(setDoc(recRef(db, 'people', 'n1'), rec(person('n1'), 'private', 'alice')));
     await assertSucceeds(setDoc(recRef(db, 'people', 'n1'), rec(person('n1'), 'family', 'alice', { updatedAt: 200 })));
-    await assertSucceeds(setDoc(recRef(db, 'people', 'fam1'), rec(person('fam1'), 'family', 'alice', { deleted: true })));
+    await assertSucceeds(setDoc(recRef(db, 'people', 'fam1'), rec(person('fam1'), 'family', 'alice', { deleted: true, updatedAt: 200 })));
     await assertSucceeds(deleteDoc(recRef(db, 'relationships', 'privrel')));
   });
 
@@ -155,6 +157,35 @@ describe('owner', () => {
     await assertFails(setDoc(doc(db, 'spaces', SPACE, 'secrets', 'x'), rec({}, 'family', 'alice')));
   });
 
+  it('updatedAt is bounded by server time and must increase on update (watermark freeze)', async () => {
+    const db = as('owner');
+    await assertFails(setDoc(recRef(db, 'people', 'n1'), rec(person('n1'), 'private', 'alice', { updatedAt: 9e15 })));
+    await assertFails(setDoc(recRef(db, 'people', 'n1'), rec(person('n1'), 'private', 'alice', { updatedAt: FUTURE() })));
+    await assertFails(setDoc(recRef(db, 'people', 'fam1'), rec(person('fam1'), 'family', 'alice', { updatedAt: FUTURE() })));
+    await assertFails(setDoc(recRef(db, 'people', 'fam1'), rec(person('fam1'), 'private', 'alice'))); // same updatedAt (100)
+    await assertFails(setDoc(recRef(db, 'people', 'fam1'), rec(person('fam1'), 'family', 'alice', { updatedAt: 50 }))); // older
+    await assertSucceeds(setDoc(recRef(db, 'people', 'fam1'), rec(person('fam1'), 'family', 'alice', { updatedAt: Date.now() })));
+    await assertSucceeds(setDoc(recRef(db, 'people', 'n2'), rec(person('n2'), 'private', 'alice', { updatedAt: Date.now() + 60_000 }))); // small skew ok
+  });
+
+  it('may set data.isMe', async () => {
+    const db = as('owner');
+    await assertSucceeds(setDoc(recRef(db, 'people', 'me'), rec({ ...person('me'), isMe: true }, 'family', 'alice')));
+    await assertSucceeds(setDoc(recRef(db, 'people', 'fam1'), rec({ ...person('fam1'), isMe: true }, 'family', 'alice', { updatedAt: 200 })));
+  });
+
+  it('photo must be an inline base64 png/jpeg/webp data URL of bounded size', async () => {
+    const db = as('owner');
+    const withPhoto = (photo: unknown) => rec({ ...person('n1'), photo }, 'family', 'alice');
+    await assertFails(setDoc(recRef(db, 'people', 'n1'), withPhoto('https://tracker.example.com/pixel.png')));
+    await assertFails(setDoc(recRef(db, 'people', 'n1'), withPhoto('data:image/svg+xml;base64,PHN2Zz4=')));
+    await assertFails(setDoc(recRef(db, 'people', 'n1'), withPhoto('data:image/png;base64,AAAA"><script>')));
+    await assertFails(setDoc(recRef(db, 'people', 'n1'), withPhoto(42)));
+    await assertFails(setDoc(recRef(db, 'people', 'n1'), withPhoto(`data:image/jpeg;base64,${'A'.repeat(300000)}`)));
+    await assertSucceeds(setDoc(recRef(db, 'people', 'n1'), withPhoto('data:image/jpeg;base64,/9j/4AAQSkZJRg==')));
+    await assertSucceeds(setDoc(recRef(db, 'people', 'n2'), rec({ ...person('n2'), photo: 'data:image/webp;base64,UklGRg==' }, 'family', 'alice')));
+  });
+
   it('manages invites (validated)', async () => {
     const db = as('owner');
     await assertSucceeds(setDoc(invRef(db, 'new@example.com'), invite('new@example.com', 'editor')));
@@ -163,6 +194,9 @@ describe('owner', () => {
     await assertFails(setDoc(invRef(db, 'x@example.com'), invite('y@example.com', 'viewer'))); // id mismatch
     await assertFails(setDoc(invRef(db, 'X@example.com'), invite('X@example.com', 'viewer'))); // not lower-case
     await assertFails(setDoc(invRef(db, 'x@example.com'), invite('x@example.com', 'viewer', 'erin'))); // invitedBy spoof
+    await assertFails(setDoc(invRef(db, 'x@example.com'), invite('x@example.com', 'viewer', 'alice', 'erin@example.com'))); // invitedByEmail spoof
+    const { invitedByEmail: _omit, ...legacy } = invite('x@example.com', 'viewer');
+    await assertFails(setDoc(invRef(db, 'x@example.com'), legacy)); // invitedByEmail required
   });
 
   it('changes roles, removes members and renames the space', async () => {
@@ -244,7 +278,36 @@ describe('editor', () => {
     const db = as('editor');
     await assertSucceeds(setDoc(recRef(db, 'people', 'n1'), rec(person('n1'), 'family', 'erin')));
     await assertSucceeds(setDoc(recRef(db, 'people', 'fam1'), rec(person('fam1', 'Granny'), 'family', 'erin', { updatedAt: 300 })));
-    await assertSucceeds(setDoc(recRef(db, 'relationships', 'famrel'), rec(rel('famrel'), 'family', 'erin', { deleted: true })));
+    await assertSucceeds(setDoc(recRef(db, 'relationships', 'famrel'), rec(rel('famrel'), 'family', 'erin', { deleted: true, updatedAt: 200 })));
+  });
+
+  it('cannot write a future or non-increasing updatedAt (watermark freeze)', async () => {
+    const db = as('editor');
+    await assertFails(setDoc(recRef(db, 'people', 'n1'), rec(person('n1'), 'family', 'erin', { updatedAt: 9e15 })));
+    await assertFails(setDoc(recRef(db, 'people', 'fam1'), rec(person('fam1'), 'family', 'erin', { updatedAt: FUTURE() })));
+    await assertFails(setDoc(recRef(db, 'people', 'fam1'), rec(person('fam1', 'Granny'), 'family', 'erin'))); // same (100)
+    await assertFails(setDoc(recRef(db, 'people', 'fam1'), rec(person('fam1', 'Granny'), 'family', 'erin', { updatedAt: 99 })));
+    await assertSucceeds(setDoc(recRef(db, 'people', 'fam1'), rec(person('fam1', 'Granny'), 'family', 'erin', { updatedAt: Date.now() })));
+  });
+
+  it('cannot claim or change data.isMe (hijacking the owner\'s "me")', async () => {
+    const db = as('editor');
+    await assertFails(setDoc(recRef(db, 'people', 'n1'), rec({ ...person('n1'), isMe: true }, 'family', 'erin')));
+    await assertFails(setDoc(recRef(db, 'people', 'fam1'), rec({ ...person('fam1'), isMe: true }, 'family', 'erin', { updatedAt: 200 })));
+    await assertFails(updateDoc(recRef(db, 'people', 'fam1'), { 'data.isMe': true, updatedAt: 200, updatedBy: 'erin' }));
+    await assertSucceeds(setDoc(recRef(db, 'people', 'n2'), rec({ ...person('n2'), isMe: false }, 'family', 'erin')));
+    // The owner's "me" stays: editors may edit it but not clear the flag.
+    await env.withSecurityRulesDisabled((ctx) =>
+      setDoc(doc(ctx.firestore() as unknown as Firestore, 'spaces', SPACE, 'people', 'me'), rec({ ...person('me'), isMe: true }, 'family', 'alice')),
+    );
+    await assertFails(setDoc(recRef(db, 'people', 'me'), rec({ ...person('me'), isMe: false }, 'family', 'erin', { updatedAt: 200 })));
+    await assertFails(setDoc(recRef(db, 'people', 'me'), rec(person('me'), 'family', 'erin', { updatedAt: 200 })));
+    await assertSucceeds(setDoc(recRef(db, 'people', 'me'), rec({ ...person('me', 'Alice'), isMe: true }, 'family', 'erin', { updatedAt: 200 })));
+  });
+
+  it('cannot write a non-data-URL photo', async () => {
+    const db = as('editor');
+    await assertFails(setDoc(recRef(db, 'people', 'fam1'), rec({ ...person('fam1'), photo: 'http://tracker.example.com/x.jpg' }, 'family', 'erin', { updatedAt: 200 })));
   });
 
   it('cannot create, read-modify or overwrite private records, or flip scope', async () => {
@@ -336,8 +399,17 @@ describe('viewer', () => {
 
 // ---------------------------------------------------------------------------
 describe('invitee', () => {
-  const join = (db: Firestore, uid: string, role: string, info: object = { email: 'ivy@example.com' }) =>
+  // A plain join that leaves the invite in place (must always fail: invites are single use).
+  const joinKeepingInvite = (db: Firestore, uid: string, role: string, info: object = { email: 'ivy@example.com' }) =>
     updateDoc(spaceRef(db), new FieldPath('members', uid), role, new FieldPath('memberInfo', uid), info);
+  // A well-formed join as acceptInvite does it: member entry plus deleting the invite, in one batch.
+  // Negative tests use this so they fail for the reason they name, not for keeping the invite.
+  const join = (db: Firestore, uid: string, role: string, info: object = { email: 'ivy@example.com' }, inviteId = 'ivy@example.com') => {
+    const b = writeBatch(db);
+    b.update(spaceRef(db), new FieldPath('members', uid), role, new FieldPath('memberInfo', uid), info);
+    b.delete(invRef(db, inviteId));
+    return b.commit();
+  };
 
   it('reads own invite (direct and via collectionGroup) but not the space or records', async () => {
     const db = as('invitee');
@@ -364,8 +436,49 @@ describe('invitee', () => {
     await assertFails(getDoc(recRef(db, 'people', 'priv1')));
   });
 
-  it('joins as editor when invited as editor', async () => {
-    await assertSucceeds(join(as('invitee2'), 'ed', 'editor', { email: 'ed@example.com' }));
+  it('joins as editor when invited as editor (consuming the invite)', async () => {
+    const db = as('invitee2');
+    const batch = writeBatch(db);
+    batch.update(spaceRef(db), new FieldPath('members', 'ed'), 'editor', new FieldPath('memberInfo', 'ed'), { email: 'ed@example.com' });
+    batch.delete(invRef(db, 'ed@example.com'));
+    await assertSucceeds(batch.commit());
+  });
+
+  it('cannot join while keeping the invite (invites are single use)', async () => {
+    await assertFails(joinKeepingInvite(as('invitee2'), 'ed', 'editor', { email: 'ed@example.com' }));
+    await assertFails(joinKeepingInvite(as('invitee'), 'ivy', 'viewer'));
+  });
+
+  it('cannot rejoin after being removed (no invite left to replay)', async () => {
+    const db = as('invitee');
+    const batch = writeBatch(db);
+    batch.update(spaceRef(db), new FieldPath('members', 'ivy'), 'viewer', new FieldPath('memberInfo', 'ivy'), { email: 'ivy@example.com' });
+    batch.delete(invRef(db, 'ivy@example.com'));
+    await assertSucceeds(batch.commit());
+    await assertSucceeds(updateDoc(spaceRef(as('owner')), new FieldPath('members', 'ivy'), deleteField(), new FieldPath('memberInfo', 'ivy'), deleteField()));
+    await assertFails(join(db, 'ivy', 'viewer'));
+    const again = writeBatch(db);
+    again.update(spaceRef(db), new FieldPath('members', 'ivy'), 'viewer');
+    again.delete(invRef(db, 'ivy@example.com'));
+    await assertFails(again.commit());
+    await assertFails(getDoc(spaceRef(db)));
+  });
+
+  it('owner removes a member and revokes their invite in one batch (spaces.removeMember)', async () => {
+    // A stale invite for an existing member (e.g. re-sent) must go with the membership.
+    await env.withSecurityRulesDisabled((ctx) =>
+      setDoc(doc(ctx.firestore() as unknown as Firestore, 'spaces', SPACE, 'invites', 'erin@example.com'), invite('erin@example.com', 'editor')),
+    );
+    const db = as('owner');
+    const batch = writeBatch(db);
+    batch.update(spaceRef(db), new FieldPath('members', 'erin'), deleteField(), new FieldPath('memberInfo', 'erin'), deleteField());
+    batch.delete(invRef(db, 'erin@example.com'));
+    await assertSucceeds(batch.commit());
+    const erin = as('editor');
+    const rejoin = writeBatch(erin);
+    rejoin.update(spaceRef(erin), new FieldPath('members', 'erin'), 'editor');
+    rejoin.delete(invRef(erin, 'erin@example.com'));
+    await assertFails(rejoin.commit());
   });
 
   it('cannot join with a different role than invited', async () => {
@@ -387,7 +500,7 @@ describe('invitee', () => {
 
   it('cannot join without a verified email', async () => {
     const db = as('unverified');
-    await assertFails(join(db, 'uma', 'editor', { email: 'uma@example.com' }));
+    await assertFails(join(db, 'uma', 'editor', { email: 'uma@example.com' }, 'uma@example.com'));
     await assertFails(getDoc(invRef(db, 'uma@example.com')));
     await assertFails(getDocs(query(collectionGroup(db, 'invites'), where('email', '==', 'uma@example.com'))));
   });
@@ -413,7 +526,7 @@ describe('invitee', () => {
     await env.withSecurityRulesDisabled((ctx) =>
       setDoc(doc(ctx.firestore() as unknown as Firestore, 'spaces', SPACE, 'invites', 'victor@example.com'), invite('victor@example.com', 'editor')),
     );
-    await assertFails(updateDoc(spaceRef(as('viewer')), new FieldPath('members', 'victor'), 'editor'));
+    await assertFails(join(as('viewer'), 'victor', 'editor', { email: 'victor@example.com' }, 'victor@example.com'));
   });
 });
 
