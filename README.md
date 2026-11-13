@@ -44,7 +44,7 @@ npm run qa         # exploratory browser flows (import, backup/restore, dark mod
 ```
 
 On a phone: open the hosted site and choose **Add to Home screen**.
-A GitHub Pages workflow (`.github/workflows/deploy.yml`) deploys `main` once Pages is enabled
+A GitHub Pages workflow (`.github/workflows/deploy.yml`) deploys `master` once Pages is enabled
 (repo Settings → Pages → Source: GitHub Actions).
 
 Want to look around first? Settings → **Try a sample family** (only offered while the app is empty).
