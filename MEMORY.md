@@ -34,3 +34,23 @@ Read this before changing code. Append new learnings at the bottom.
 - vCard 2.1 from older Android uses QUOTED-PRINTABLE with soft line breaks — handled in `unfold`.
 - iPhone vCards label phones via `itemN.X-ABLabel` lines — handled.
 - Playwright in this environment: `require('playwright')` works; no install needed.
+
+## Decisions & gotchas — 2026-11-13 (first fleet run)
+- **Automatic helper links use `ensureRelationship`, never `addRelationship`.** Helper links
+  (co-parent, "Also <spouse>'s child", sibling → shared parents) must not overwrite an existing
+  edge's subtype/note. `addRelationship` patches only the fields passed.
+- **`isBloodEdge()` in `kinship.ts` is the single place that decides which parent subtypes count
+  as descent.** Foster is not blood and has its own labels. Change it there, nowhere else.
+- **Sibling subtype matters.** Only full/adoptive/untyped siblings share parents. Explicit
+  step/half siblings get Step-/Half- labels. Adoptive siblings are linked as adoptive. No co-parent
+  link is created for step/foster parents.
+- Parent cycles of any length are rejected by the DB layer. Only one person can be `isMe`
+  (enforced on import/restore too). Restore drops dangling relationships and checks the backup version.
+- Import dedupe: `findDuplicate` returns `{ person, strength: 'strong' | 'possible' }`. A name-only
+  match counts only when one side has no phone/email. Empty `Place` counts as missing when merging.
+- "Earliest ancestor" is shown only when a birth year is known (otherwise it was arbitrary).
+- Dexie: one `rw` transaction can wrap the helper calls; the UI does one transaction per add.
+- **Port 4190 is browser-blocked**; don't use it for preview servers.
+- Spawn vite in scripts via `node node_modules/vite/bin/vite.js`, not `npx`, so `kill()` stops the
+  real server (npx left orphan servers behind).
+- TS build info (`*.tsbuildinfo`) is gitignored.

@@ -37,8 +37,10 @@ with a dedicated section for your own family tree and ancestors.
 ```bash
 npm install
 npm run dev        # http://localhost:5173
-npm test           # unit tests (kinship engine, contact parsers)
+npm test           # unit tests (kinship engine, contact parsers, database)
 npm run build      # static site in dist/ — host anywhere
+npm run verify     # tests + build + browser smoke test (needs Playwright + Chromium)
+npm run qa         # exploratory browser flows (import, backup/restore, dark mode…)
 ```
 
 On a phone: open the hosted site and choose **Add to Home screen**.
@@ -55,3 +57,4 @@ Want to look around first? Settings → **Try a sample family** (only offered wh
 | [STATE.md](STATE.md) | What's done, what's verified, what's next |
 | [MEMORY.md](MEMORY.md) | Decisions, conventions, gotchas — read before changing code |
 | [CLAUDE.md](CLAUDE.md) | Working agreement for AI-assisted sessions |
+| [AGENTS.md](AGENTS.md) | Subagent fleet: roster, routing, shared commands, fleet log |

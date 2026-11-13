@@ -49,7 +49,8 @@ finally:            docs-keeper  (STATE / PLAN / MEMORY)
 | `npm test` | Vitest unit tests (domain logic, parsers) |
 | `npm run build` | Type-check and production build to `dist/` |
 | `npm run smoke` | Serves `dist/`, drives main flows in Chromium at phone + desktop sizes, screenshots to `smoke-output/`, fails on any page/console error |
-| `npm run verify` | All three of the above, in order |
+| `npm run verify` | Tests, build and smoke, in order |
+| `npm run qa` | Exploratory browser flows written by qa-tester (`scripts/qa-flows.mjs`) |
 
 `npm run smoke` needs Playwright with Chromium. It is pre-installed in Claude Code cloud
 sessions. Locally, run `npm i -D playwright && npx playwright install chromium`.
@@ -58,3 +59,13 @@ sessions. Locally, run `npm i -D playwright && npx playwright install chromium`.
 Create `.claude/agents/<name>.md` with `name`, `description` (say *when* to use it) and
 `tools` frontmatter, then a system prompt covering: owned files, invariants, workflow,
 verification, and report format. Add it to the roster above.
+
+## Fleet log
+
+**2026-11-13: first run.** code-reviewer audited `src/` and found 12 issues (3 high). qa-tester
+ran 7 exploratory flows (`npm run qa`) and found no app bugs. It did find a smoke-script orphan-server
+bug and an "arbitrary earliest ancestor" UX nit, and both were fixed. Four fixers then ran in parallel
+on separate areas: data-steward (patch-only updates, `ensureRelationship`, cycle rejection, backup
+checks), import-specialist (strong/possible dedupe, in-file dedupe), ui-builder (subtype-aware helper
+links, one transaction per add) and kinship-engineer (sibling subtypes, foster, step/half labels).
+Result: 55 tests passing; smoke and qa pass. Remaining limitations are in STATE.md.

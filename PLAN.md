@@ -90,6 +90,17 @@
 - [x] Dark mode (follows system)
 - [x] GitHub Pages deploy workflow
 
+### Phase 8 — Quality & fleet ✅
+- [x] Subagent fleet in `.claude/agents/` + `AGENTS.md` roster and routing
+- [x] Browser smoke suite (`npm run smoke`) and `npm run verify`
+- [x] Exploratory QA flows (`npm run qa`)
+- [x] Whole-codebase review: 12 findings (3 high) fixed
+- [x] Data integrity: patch-only relationship updates, `ensureRelationship`, cycle rejection,
+      single isMe, backup normalisation + version check
+- [x] Import dedupe: strong/possible matches, in-file dedupe, origin merged
+- [x] Kinship: sibling subtypes, step-/half-sibling labels, foster not blood,
+      earliest ancestor only with a known birth year
+
 ### Backlog / ideas
 - [ ] Optional encrypted cloud sync between devices
 - [ ] GEDCOM import/export (standard genealogy format)
@@ -98,3 +109,6 @@
 - [ ] Reminders (birthdays, "haven't talked in a while")
 - [ ] Regional kinship vocabularies (e.g. Hindi/Telugu terms: chacha, mama, bua…)
 - [ ] Merge two people into one
+- [ ] Kinship: parent's view of child's explicit step/half sibling, transitive step/half
+      sibling edges, foster sibling labels, half-sibling's ancestors as blood
+- [ ] Faster `planImport` for very large contact files (currently O(n²))
