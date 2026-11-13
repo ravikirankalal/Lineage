@@ -5,11 +5,22 @@
  *   - editor: reads 'family' records; may create/update only when the new scope is 'family' and the
  *     stored record (if any) is 'family';
  *   - viewer: reads 'family' records; every push is rejected;
- *   - updatedBy is forced to the caller's uid (the rules require it).
+ *   - updatedBy is forced to the caller's uid (the rules require it);
+ *   - updatedAt must be a finite number no more than MAX_SKEW_MS ahead of the server clock, and
+ *     strictly greater than the stored record's updatedAt (no rewinds, no same-version overwrites).
+ *   - data.photo, if present, must be a png/jpeg/webp base64 data URL under MAX_PHOTO_CHARS;
+ *   - non-owners may not set data.isMe on create, nor change it on update.
+ * `cloud.write` bypasses these checks: use it to plant legacy or malicious data.
  * A rejected push writes nothing (like a failed Firestore batch).
  */
 import type { CloudCollection, CloudRecord, RemoteStore, Role } from '../cloud/contract';
 import type { Person, Relationship } from '../types';
+import { MAX_PHOTO_CHARS, MAX_SKEW_MS } from '../sync';
+
+const PHOTO_RE = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+const photoOk = (d: object | null) =>
+  !d || !('photo' in d) || (typeof d.photo === 'string' && d.photo.length < MAX_PHOTO_CHARS && PHOTO_RE.test(d.photo));
+const isMeOf = (d: unknown) => !!d && typeof d === 'object' && (d as { isMe?: unknown }).isMe === true;
 
 type Rec = CloudRecord<Person | Relationship>;
 
@@ -69,16 +80,23 @@ export class FakeRemote implements RemoteStore {
 
   async push(collection: CloudCollection, items: { id: string; rec: Rec }[]) {
     if (!items.length) return;
+    const now = Date.now();
     for (const { id, rec } of items) {
+      const stored = this.cloud.store[collection].get(id);
       const ok =
         typeof rec.updatedAt === 'number' &&
+        Number.isFinite(rec.updatedAt) &&
+        rec.updatedAt <= now + MAX_SKEW_MS &&
+        (!stored || rec.updatedAt > stored.updatedAt) &&
         (rec.scope === 'family' || rec.scope === 'private') &&
         (!rec.data || !('id' in rec.data) || rec.data.id === id) &&
+        photoOk(rec.data) &&
         (this.role === 'owner' ||
           (this.role === 'editor' &&
             rec.scope === 'family' &&
-            (this.cloud.store[collection].get(id)?.scope ?? 'family') === 'family'));
-      if (!ok) throw new Error(`permission-denied: ${this.role} cannot write ${collection}/${id} (${rec.scope})`);
+            (stored?.scope ?? 'family') === 'family' &&
+            isMeOf(rec.data) === isMeOf(stored?.data)));
+      if (!ok) throw new Error(`permission-denied: ${this.role} cannot write ${collection}/${id} (${rec.scope}, updatedAt ${rec.updatedAt})`);
     }
     this.cloud.write(this.uid, collection, items);
   }

@@ -4,7 +4,7 @@ import type { Role } from '../cloud/contract';
 import { activeSpaceId, addRelationship, db, dbNameFor, deletePerson, forgetSpace, mergePeople, openSpaceDb, savePerson } from '../db';
 import Dexie from 'dexie';
 import { emptyPerson } from '../person';
-import { computeScopes, PULL_OVERLAP_MS, syncOnce } from '../sync';
+import { computeScopes, MAX_SKEW_MS, PULL_OVERLAP_MS, syncOnce } from '../sync';
 import type { Person, Relationship } from '../types';
 import { FakeCloud } from './fakeRemote';
 
@@ -42,6 +42,8 @@ function device(label: string, uid = OWNER, role: Role = 'owner') {
 }
 
 const P = (id: string, extra: Partial<Person> = {}) => emptyPerson({ id, firstName: id, ...extra });
+/** Person data of a cloud record. */
+const cp = (id: string) => cloud.get('people', id)!.data as Person;
 
 beforeEach(() => {
   cloud = new FakeCloud();
@@ -162,11 +164,15 @@ describe('syncOnce', () => {
     await a.run(seedFamily);
     await a.sync();
     await b.sync();
-    const t = Date.now();
+    const tick = () => new Promise((r) => setTimeout(r, 2));
+    const edit = (id: string, firstName: string) => async () => {
+      await tick();
+      await savePerson({ ...(await db.people.get(id))!, firstName });
+    };
 
     // A edits first, B later; A syncs first.
-    await a.run(async () => db.people.update('mum', { firstName: 'Mum-from-A', updatedAt: t + 1000 }));
-    await b.run(async () => db.people.update('mum', { firstName: 'Mum-from-B', updatedAt: t + 2000 }));
+    await a.run(edit('mum', 'Mum-from-A'));
+    await b.run(edit('mum', 'Mum-from-B'));
     await a.sync();
     const rb = await b.sync();
     expect(rb.conflicts).toBe(1); // B ignored A's older version
@@ -175,8 +181,8 @@ describe('syncOnce', () => {
     expect((await b.db().people.get('mum'))!.firstName).toBe('Mum-from-B');
 
     // Now the later writer syncs first.
-    await a.run(async () => db.people.update('wife', { firstName: 'Wife-from-A', updatedAt: t + 4000 }));
-    await b.run(async () => db.people.update('wife', { firstName: 'Wife-from-B', updatedAt: t + 3000 }));
+    await b.run(edit('wife', 'Wife-from-B'));
+    await a.run(edit('wife', 'Wife-from-A'));
     await a.sync();
     await b.sync();
     await a.sync();
@@ -325,17 +331,27 @@ describe('syncOnce', () => {
     expect(await owner.sync()).toEqual({ pulled: 0, pushed: 0, conflicts: 0 });
   });
 
-  it('uses max remote updatedAt as the pull watermark and only advances it after success', async () => {
+  it('uses max remote updatedAt (capped at the local pull time) as the pull watermark and only advances it after success', async () => {
     const a = device('a');
     const b = device('b');
     await a.run(async () => {
-      await savePerson(P('skewed'));
-      await db.people.update('skewed', { updatedAt: Date.now() + 10 * 60_000 }); // a clock 10 min fast
+      await savePerson(P('old'));
+      await db.people.update('old', { updatedAt: Date.now() - 10 * 60_000 });
     });
     await a.sync();
     await b.sync();
+    expect((await b.db().meta.get('pull:space-1:people'))!.value).toBe(cloud.get('people', 'old')!.updatedAt);
+
+    // Another client whose clock is 4 min fast (still accepted by the rules).
+    const fast = Date.now() + 4 * 60_000;
+    cloud.write(OWNER, 'people', [{ id: 'skewed', rec: { data: P('skewed', { updatedAt: fast }), scope: 'private', updatedAt: fast, updatedBy: OWNER } }]);
+    const before = Date.now();
+    expect((await b.sync()).pulled).toBe(1);
     const mark = (await b.db().meta.get('pull:space-1:people'))!.value as number;
-    expect(mark).toBe(cloud.get('people', 'skewed')!.updatedAt);
+    // Capped at b's clock, so honest writes made after the skewed one are not skipped.
+    expect(mark).toBeGreaterThanOrEqual(before);
+    expect(mark).toBeLessThanOrEqual(Date.now());
+    expect(mark).toBeLessThan(cloud.get('people', 'skewed')!.updatedAt);
 
     // A record written by a slower clock, but within the overlap window, is still picked up.
     cloud.write(OWNER, 'people', [{ id: 'slow', rec: { data: P('slow', { updatedAt: mark - PULL_OVERLAP_MS / 2 }), scope: 'private', updatedAt: mark - PULL_OVERLAP_MS / 2, updatedBy: OWNER } }]);
@@ -367,6 +383,255 @@ describe('syncOnce', () => {
     expect(mes).toEqual(['newMe']);
     expect(await a.db().people.get('junk')).toBeUndefined();
     expect(await a.db().relationships.get('selfLink')).toBeUndefined();
+  });
+});
+
+describe('hostile or broken remote data', () => {
+  const FAR = 9e15;
+
+  it('a far-future record is rejected and does not freeze pulls or block the owner\'s pushes', async () => {
+    const a = device('a');
+    const b = device('b');
+    await a.run(seedFamily);
+    await a.sync();
+    await b.sync();
+    await a.sync(); // a now has a pull watermark too
+    // Planted with a far-future stamp (legacy data, or written before the rules were fixed).
+    const mum = cloud.get('people', 'mum')!;
+    cloud.write('uid-editor', 'people', [{ id: 'mum', rec: { ...mum, data: { ...mum.data, firstName: 'Hijacked' } as Person, updatedAt: FAR } }]);
+    cloud.write('uid-editor', 'people', [{ id: 'evil', rec: { data: P('evil'), scope: 'family', updatedAt: FAR, updatedBy: 'uid-editor' } }]);
+
+    const markBefore = (await a.db().meta.get('pull:space-1:people'))!.value as number;
+    const ra = await a.sync();
+    expect(ra.rejected).toBe(2);
+    expect(ra.pulled).toBe(0);
+    expect((await a.db().people.get('mum'))!.firstName).toBe('mum');
+    expect(await a.db().people.get('evil')).toBeUndefined();
+    const mark = (await a.db().meta.get('pull:space-1:people'))!.value as number;
+    expect(mark).toBe(markBefore);
+    expect(mark).toBeLessThanOrEqual(Date.now());
+    const synced = (await a.db().meta.get('synced:space-1'))!.value as Record<string, { u: number }>;
+    expect(Object.values(synced).every((e) => e.u < FAR)).toBe(true);
+
+    // The owner keeps editing on A; the edits push and reach B.
+    await a.run(async () => {
+      await savePerson({ ...(await db.people.get('wife'))!, firstName: 'Wife v2' });
+      await savePerson(P('newKid'));
+      await addRelationship({ fromId: 'me', toId: 'newKid', type: 'parent' });
+      // Editing the poisoned record itself cannot be pushed (the rules refuse it), but must not
+      // fail the batch for everything else.
+      await savePerson({ ...(await db.people.get('mum'))!, notes: 'edited' });
+    });
+    const ra2 = await a.sync();
+    expect(ra2.pushed).toBe(3);
+    expect(ra2.rejected).toBe(2);
+    expect(cp('wife').firstName).toBe('Wife v2');
+    expect(cloud.get('people', 'mum')!.updatedAt).toBe(FAR);
+
+    const rb = await b.sync();
+    expect(rb.rejected).toBe(2);
+    expect((await b.db().people.get('wife'))!.firstName).toBe('Wife v2');
+    expect(await b.db().people.get('newKid')).toBeDefined();
+    expect((await b.db().people.get('mum'))!.firstName).toBe('mum');
+
+    // Once the bad record is gone from the server, the owner's pending edit goes through.
+    cloud.store.people.set('mum', { ...mum, updatedAt: mum.updatedAt });
+    cloud.store.people.delete('evil');
+    const ra3 = await a.sync();
+    expect(ra3.rejected).toBeUndefined();
+    expect(cp('mum').notes).toBe('edited');
+  });
+
+  it('heals a device whose watermark and synced map were already poisoned', async () => {
+    const a = device('a');
+    await a.run(seedFamily);
+    await a.sync();
+    await a.run(async () => {
+      await db.meta.put({ key: 'pull:space-1:people', value: FAR });
+      const synced = (await db.meta.get('synced:space-1'))!.value as Record<string, { u: number; s: string }>;
+      await db.meta.put({ key: 'synced:space-1', value: { ...synced, 'people/wife': { u: FAR, s: 'family' } } });
+    });
+    // Another device of the owner writes after the poisoning.
+    cloud.write(OWNER, 'people', [{ id: 'late', rec: { data: P('late'), scope: 'private', updatedAt: Date.now(), updatedBy: OWNER } }]);
+    await a.run(async () => savePerson({ ...(await db.people.get('wife'))!, firstName: 'Wife v2' }));
+    const r = await a.sync();
+    expect(await a.db().people.get('late')).toBeDefined();
+    expect(r.pushed).toBe(1);
+    expect(cp('wife').firstName).toBe('Wife v2');
+    expect((await a.db().meta.get('pull:space-1:people'))!.value as number).toBeLessThanOrEqual(Date.now());
+    expect(await a.sync()).toEqual({ pulled: 0, pushed: 0, conflicts: 0 });
+  });
+
+  it('FakeRemote mirrors the rules: future and non-increasing updatedAt are refused', async () => {
+    const r = cloud.as(OWNER, 'owner');
+    const rec = (u: number) => ({ data: P('x'), scope: 'private' as const, updatedAt: u, updatedBy: OWNER });
+    await expect(r.push('people', [{ id: 'x', rec: rec(Date.now() + MAX_SKEW_MS + 60_000) }])).rejects.toThrow('permission-denied');
+    const t = Date.now();
+    await r.push('people', [{ id: 'x', rec: rec(t) }]);
+    await expect(r.push('people', [{ id: 'x', rec: rec(t) }])).rejects.toThrow('permission-denied');
+    await expect(r.push('people', [{ id: 'x', rec: rec(t - 1) }])).rejects.toThrow('permission-denied');
+    await r.push('people', [{ id: 'x', rec: rec(t + 1) }]);
+  });
+
+  it('an editor-planted isMe is ignored on the owner\'s device and scopes still use the real me', async () => {
+    const owner = device('owner');
+    const ed = device('editor', 'uid-editor', 'editor');
+    await owner.run(seedFamily);
+    await owner.sync();
+    await ed.sync();
+    // The editor marks mum as "me" locally and edits the owner's real me, dropping isMe from it. Its
+    // pushes conform to the rules: data.isMe is sent back exactly as the remote holds it.
+    await ed.run(async () => {
+      await db.people.update('mum', { isMe: true, updatedAt: Date.now() + 1 });
+      await db.people.update('me', { isMe: undefined, firstName: 'me (edited)', updatedAt: Date.now() + 1 });
+    });
+    expect((await ed.sync()).pushed).toBe(2); // FakeRemote refuses any isMe change by an editor
+    expect(cp('mum').isMe).toBeUndefined();
+    expect(cloud.get('people', 'me')!.data).toMatchObject({ isMe: true, firstName: 'me (edited)' });
+
+    // A legacy record (written before the rules) where an editor planted isMe on mum.
+    await new Promise((r) => setTimeout(r, 2));
+    const mum = cloud.get('people', 'mum')!;
+    cloud.write('uid-editor', 'people', [{ id: 'mum', rec: { ...mum, data: { ...mum.data, isMe: true } as Person, updatedAt: Date.now() } }]);
+
+    const ro = await owner.sync();
+    expect(ro.pushed).toBe(1); // the owner's corrected mum goes back to the server
+    expect(cp('mum').isMe).toBeUndefined();
+    expect(cp('me').isMe).toBe(true);
+    const people = await owner.db().people.toArray();
+    expect(people.filter((p) => p.isMe).map((p) => p.id)).toEqual(['me']);
+    expect((await owner.db().people.get('me'))!.firstName).toBe('me (edited)'); // the edit itself applies
+    const rels = await owner.db().relationships.toArray();
+    const scopes = computeScopes(people, rels, people.find((p) => p.isMe)?.id);
+    expect(scopes.get('pal')).toBe('private');
+    expect(scopes.get('mum')).toBe('family');
+    // And the owner's next push keeps the friend private on the server.
+    await owner.sync();
+    expect(cloud.get('people', 'pal')!.scope).toBe('private');
+
+    // The owner's own devices still move "me" between people.
+    const b = device('b');
+    await b.sync();
+    expect((await b.db().people.toArray()).filter((p) => p.isMe).map((p) => p.id)).toEqual(['me']);
+    await new Promise((r) => setTimeout(r, 5)); // a later millisecond than the re-stamp
+    await owner.run(async () => savePerson({ ...(await db.people.get('wife'))!, isMe: true }));
+    await owner.sync();
+    await b.sync();
+    expect((await b.db().people.toArray()).filter((p) => p.isMe).map((p) => p.id)).toEqual(['wife']);
+  });
+
+  it('a fresh owner device takes one "me" from foreign rows and never clears the real one remotely', async () => {
+    const owner = device('owner');
+    const ed = device('editor', 'uid-editor', 'editor');
+    await owner.run(seedFamily);
+    await owner.sync();
+    await ed.sync();
+    // The editor's legitimate edit of the owner's me (isMe preserved by the push rules) ...
+    await ed.run(async () => db.people.update('me', { firstName: 'me (edited)', updatedAt: Date.now() + 1 }));
+    await ed.sync();
+    // ... and a legacy plant on wife, written later.
+    const wife = cloud.get('people', 'wife')!;
+    cloud.write('uid-editor', 'people', [{ id: 'wife', rec: { ...wife, data: { ...wife.data, isMe: true } as Person, updatedAt: Date.now() + 2 } }]);
+    const b = device('b');
+    const r = await b.sync();
+    expect(r.pushed).toBe(0); // nothing "corrected" from a device that had no opinion
+    expect((await b.db().people.toArray()).filter((p) => p.isMe).map((p) => p.id)).toEqual(['me']);
+    expect(cp('me').isMe).toBe(true);
+  });
+
+  it('with ownerUid, members accept "me" only from the owner', async () => {
+    const owner = device('owner');
+    const ed = device('editor', 'uid-editor', 'editor');
+    const viewer = device('viewer', 'uid-viewer', 'viewer');
+    await owner.run(seedFamily);
+    await owner.sync();
+    await ed.sync();
+    const vsync = () => syncOnce(viewer.db(), cloud.as('uid-viewer', 'viewer'), { uid: 'uid-viewer', role: 'viewer', spaceKey: 'space-1', ownerUid: OWNER });
+    await vsync();
+    expect((await viewer.db().people.toArray()).filter((p) => p.isMe).map((p) => p.id)).toEqual(['me']);
+    // Legacy data: another editor planted isMe on wife.
+    const wife = cloud.get('people', 'wife')!;
+    cloud.write('uid-editor', 'people', [{ id: 'wife', rec: { ...wife, data: { ...wife.data, isMe: true } as Person, updatedAt: wife.updatedAt + 1 } }]);
+    expect((await vsync()).pulled).toBe(1);
+    expect((await viewer.db().people.toArray()).filter((p) => p.isMe).map((p) => p.id)).toEqual(['me']);
+  });
+
+  it('pushes always conform: strictly increasing, never in the future, valid photo only', async () => {
+    const a = device('a');
+    const b = device('b');
+    await a.run(seedFamily);
+    await a.sync();
+    await b.sync();
+    // Local rows stamped in the future (a fast clock, or rows poisoned before this fix).
+    await a.run(async () => {
+      await db.people.update('mum', { firstName: 'Mum v2', updatedAt: Date.now() + 60 * 60_000 });
+      await db.people.update('wife', {
+        photo: 'DATA:IMAGE/JPG;BASE64,iVBO\nRw0K',
+        updatedAt: Date.now(),
+      });
+      await savePerson(P('gif', { photo: 'data:image/gif;base64,R0lGODlh' }));
+    });
+    const before = cloud.log.length;
+    const r = await a.sync(); // FakeRemote would throw on any non-conforming write
+    expect(r.pushed).toBe(3);
+    const now = Date.now();
+    for (const l of cloud.log.slice(before)) expect(l.rec.updatedAt).toBeLessThanOrEqual(now);
+    expect(cp('mum').firstName).toBe('Mum v2');
+    expect((await a.db().people.get('mum'))!.updatedAt).toBeLessThanOrEqual(now); // re-stamped locally
+    expect(cp('wife').photo).toBe('data:image/jpeg;base64,iVBORw0K');
+    expect('photo' in cloud.get('people', 'gif')!.data).toBe(false);
+    expect((await a.db().people.get('gif'))!.photo).toBe('data:image/gif;base64,R0lGODlh'); // kept locally
+    expect(await a.sync()).toEqual({ pulled: 0, pushed: 0, conflicts: 0 });
+
+    // A delete in the same millisecond as the remote version is pushed with +1.
+    const pal = cloud.get('people', 'pal')!;
+    await a.run(async () => {
+      await deletePerson('pal');
+      await db.tombstones.update('pal', { deletedAt: pal.updatedAt });
+    });
+    await a.sync();
+    expect(cloud.get('people', 'pal')).toMatchObject({ deleted: true, updatedAt: pal.updatedAt + 1 });
+  });
+
+  it('an editor never pushes a delete of the owner\'s "me" (it would clear isMe)', async () => {
+    const owner = device('owner');
+    const ed = device('editor', 'uid-editor', 'editor');
+    await owner.run(seedFamily);
+    await owner.sync();
+    await ed.sync();
+    await ed.run(async () => {
+      await deletePerson('me');
+      await deletePerson('wife');
+    });
+    const r = await ed.sync();
+    expect(r.pushed).toBe(1 + 2); // wife + the two edges touching me (mum-me, me-wife)
+    expect(cloud.get('people', 'me')!.deleted).toBeUndefined();
+    expect(cloud.get('people', 'wife')!.deleted).toBe(true);
+  });
+
+  it('drops pulled photos that are not a small png/jpeg/webp data URL', async () => {
+    const a = device('a');
+    const good = 'data:image/png;base64,iVBORw0KGgo=';
+    const bad: Record<string, unknown> = {
+      svg: 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=',
+      remote: 'https://tracker.example/pixel.png',
+      js: 'javascript:alert(1)',
+      junk: 'data:image/png;base64,abc"onerror=alert(1)',
+      huge: 'data:image/jpeg;base64,' + 'A'.repeat(300_000),
+      notString: 42,
+    };
+    const t = Date.now();
+    cloud.write(OWNER, 'people', [
+      { id: 'good', rec: { data: P('good', { photo: good }), scope: 'private', updatedAt: t, updatedBy: OWNER } },
+      ...Object.entries(bad).map(([id, photo]) => ({ id, rec: { data: { ...P(id), photo } as Person, scope: 'private' as const, updatedAt: t, updatedBy: OWNER } })),
+    ]);
+    expect((await a.sync()).pulled).toBe(7);
+    expect((await a.db().people.get('good'))!.photo).toBe(good);
+    for (const id of Object.keys(bad)) {
+      const p = await a.db().people.get(id);
+      expect(p, id).toBeDefined();
+      expect(p!.photo, id).toBeUndefined();
+    }
   });
 });
 

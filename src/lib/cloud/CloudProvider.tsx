@@ -337,6 +337,8 @@ export function CloudProvider({ children }: { children: ReactNode }) {
     }
     const spaceId = remoteSpaceId;
     const spaceName = activeSpace?.name;
+    // Members accept "me" only from themselves or the family's owner (planted isMe defence).
+    const ownerUid = isShared ? activeSpace?.ownerUid : uid;
     const p = (async () => {
       syncing.current = true;
       changedDuringSync.current = false;
@@ -346,7 +348,7 @@ export function CloudProvider({ children }: { children: ReactNode }) {
         const full = isShared && (forceFull || Date.now() - lastFull > FULL_SYNC_EVERY);
         const meId = role === 'owner' && !isShared ? (await db.people.filter((x) => !!x.isMe).first())?.id : undefined;
         if (!syncAllowed(uid, spaceId)) { setStatus((s) => ({ ...s, state: 'idle' })); return; }
-        await syncOnce(db, remote, { uid, role, meId, spaceKey: spaceId, full });
+        await syncOnce(db, remote, { uid, role, meId, ownerUid, spaceKey: spaceId, full });
         if (full) lsSet(lsLastFull(spaceId), String(Date.now()));
         setStatus({ state: 'idle', lastSyncedAt: Date.now() });
       } catch (e) {
@@ -379,10 +381,10 @@ export function CloudProvider({ children }: { children: ReactNode }) {
             setSpaces(list);
             try {
               if (!syncAllowed(uid, spaceId)) return;
-              await syncOnce(db, remote, { uid, role, spaceKey: spaceId, full: true });
+              await syncOnce(db, remote, { uid, role, ownerUid, spaceKey: spaceId, full: true });
               lsSet(lsLastFull(spaceId), String(Date.now()));
               if (!syncAllowed(uid, spaceId)) return;
-              await syncOnce(db, remote, { uid, role, spaceKey: spaceId });
+              await syncOnce(db, remote, { uid, role, ownerUid, spaceKey: spaceId });
               setStatus({ state: 'idle', lastSyncedAt: Date.now() });
             } catch (e2) {
               // Never wipe here: the notice below explains it; other errors show as usual.

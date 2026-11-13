@@ -3,7 +3,8 @@
  * RemoteStore (Firestore in the app, an in-memory fake in tests). Pure apart from the two stores.
  *
  * Bookkeeping lives in the local `meta` table, keyed by `spaceKey`:
- *   pull:<spaceKey>:<collection>  number  pull watermark = max remote updatedAt seen (not the local clock)
+ *   pull:<spaceKey>:<collection>  number  pull watermark = max accepted remote updatedAt, capped at the
+ *                                         local time the pull started
  *   synced:<spaceKey>             map     per record, the version/scope the remote is known to hold
  *   lastPushedAt:<spaceKey>       number  local time of the last successful push (status only)
  *
@@ -20,6 +21,29 @@ import { isFamilyType, type Person, type Relationship } from './types';
 /** Re-pull this much before the watermark, to tolerate small clock skew between writers. Re-applying
  * is idempotent (only strictly newer remote versions are applied). */
 export const PULL_OVERLAP_MS = 60_000;
+
+/** Pulled records stamped further than this into the future (by the local clock) are rejected: not
+ * applied, not remembered, and never used to advance the pull watermark. Mirrors firestore.rules. */
+export const MAX_SKEW_MS = 5 * 60_000;
+
+/** Pulled photos must be a small inline image data URL; anything else is dropped. */
+const PHOTO_RE = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+export const MAX_PHOTO_CHARS = 300_000;
+const safePhoto = (x: unknown): x is string => typeof x === 'string' && x.length < MAX_PHOTO_CHARS && PHOTO_RE.test(x);
+
+/** The photo as the rules accept it (media type lower-cased, jpg -> jpeg, whitespace removed from
+ * the base64), or undefined if it cannot conform. Used on push; the local copy is left alone. */
+export function pushablePhoto(x: unknown): string | undefined {
+  if (typeof x !== 'string') return undefined;
+  const m = /^data:image\/(png|jpe?g|webp);base64,([\s\S]*)$/i.exec(x.trim());
+  if (!m) return undefined;
+  const type = m[1].toLowerCase() === 'jpg' ? 'jpeg' : m[1].toLowerCase();
+  const out = `data:image/${type};base64,${m[2].replace(/\s+/g, '')}`;
+  return safePhoto(out) ? out : undefined;
+}
+
+/** Remote isMe flag of pushed/pulled person data. */
+const dataIsMe = (data: unknown) => !!data && typeof data === 'object' && (data as { isMe?: unknown }).isMe === true;
 
 const COLLECTIONS: CloudCollection[] = ['people', 'relationships'];
 
@@ -38,6 +62,13 @@ export interface SyncOptions {
    * Owners never prune: with `full` they just re-pull everything.
    */
   full?: boolean;
+  /**
+   * The space owner's uid. Pulled records only set or clear `isMe` when written by the current user
+   * (their own devices) or by this uid. When omitted: owners trust only themselves; editors/viewers
+   * keep the legacy behaviour (trust any writer), because without the owner's "me" a member's own
+   * friends would be scoped 'family' and pushed into the shared space.
+   */
+  ownerUid?: string;
 }
 
 export interface SyncResult {
@@ -49,6 +80,8 @@ export interface SyncResult {
   conflicts: number;
   /** Full resync only: local rows removed because the remote no longer returns them. */
   pruned?: number;
+  /** Remote records ignored as invalid (updatedAt too far in the future). Present only when > 0. */
+  rejected?: number;
 }
 
 /** What the remote is known to hold for a record. */
@@ -56,8 +89,28 @@ interface SyncedEntry {
   u: number; // updatedAt
   s: Scope;
   d?: true; // tombstone
+  /** People only: whether the remote's data.isMe is true. Undefined in entries written before this
+   * field existed (then the local row's isMe, itself pulled from the remote, is used instead). */
+  m?: boolean;
 }
 type SyncedMap = Record<string, SyncedEntry>;
+
+/** Read the synced map, dropping entries poisoned by a far-future updatedAt (from before the
+ * MAX_SKEW check existed): they would otherwise block every later push of that record. */
+async function readSynced(local: LineageDB, key: string, now = Date.now()): Promise<SyncedMap> {
+  const raw = (await local.meta.get(key))?.value;
+  const out: SyncedMap = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const [k, e] of Object.entries(raw as SyncedMap)) {
+    if (e && typeof e.u === 'number' && Number.isFinite(e.u) && e.u <= now + MAX_SKEW_MS) out[k] = e;
+  }
+  return out;
+}
+
+/** A usable pull watermark, or undefined (pull everything) if missing, malformed or in the future. */
+function validMark(v: unknown, now: number): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= now + MAX_SKEW_MS ? v : undefined;
+}
 
 const entryKey = (c: CloudCollection, id: string) => `${c}/${id}`;
 const keys = (spaceKey: string) => ({
@@ -111,29 +164,35 @@ export async function syncOnce(local: LineageDB, remote: RemoteStore, opts: Sync
   const result: SyncResult = full ? { pulled: 0, pushed: 0, conflicts: 0, pruned: 0 } : { pulled: 0, pushed: 0, conflicts: 0 };
 
   // ---- Pull ---------------------------------------------------------------------------------------
+  const pullStartedAt = Date.now();
   const pulled = new Map<CloudCollection, Item[]>();
   for (const c of COLLECTIONS) {
-    const mark = (await local.meta.get(K.pull(c)))?.value;
-    const since = !full && typeof mark === 'number' ? Math.max(0, mark - PULL_OVERLAP_MS) : 0;
+    const mark = validMark((await local.meta.get(K.pull(c)))?.value, pullStartedAt);
+    const since = !full && mark !== undefined ? Math.max(0, mark - PULL_OVERLAP_MS) : 0;
     pulled.set(c, await remote.pull(c, since));
   }
-  await applyRemote(local, pulled, K, result, { full, prune });
+  // Ids the remote holds with a future updatedAt. They are re-pulled (and rejected) on every sync, so
+  // this set is complete; pushing them would be refused by the rules and fail the whole batch.
+  const blocked = new Set<string>();
+  await applyRemote(local, pulled, K, result, { full, prune, pullStartedAt, blocked, opts });
 
   // ---- Push ---------------------------------------------------------------------------------------
   if (opts.role === 'viewer') return result;
-  const batches = await planPush(local, opts, K);
+  const batches = await planPush(local, opts, K, blocked);
   for (const c of COLLECTIONS) {
     const items = batches.get(c)!;
     if (!items.length) continue;
     await remote.push(c, items);
     result.pushed += items.length;
     await local.transaction('rw', local.meta, async () => {
-      const synced = ((await local.meta.get(K.synced))?.value ?? {}) as SyncedMap;
+      const synced = await readSynced(local, K.synced);
       for (const { id, rec } of items) {
         const k = entryKey(c, id);
         const prev = synced[k];
         if (!prev || prev.u <= rec.updatedAt) {
-          synced[k] = rec.deleted ? { u: rec.updatedAt, s: rec.scope, d: true } : { u: rec.updatedAt, s: rec.scope };
+          const e: SyncedEntry = rec.deleted ? { u: rec.updatedAt, s: rec.scope, d: true } : { u: rec.updatedAt, s: rec.scope };
+          if (c === 'people') e.m = dataIsMe(rec.data);
+          synced[k] = e;
         }
       }
       await local.meta.put({ key: K.synced, value: synced });
@@ -153,14 +212,19 @@ async function applyRemote(
   pulled: Map<CloudCollection, Item[]>,
   K: ReturnType<typeof keys>,
   result: SyncResult,
-  mode: { full: boolean; prune: boolean },
+  mode: { full: boolean; prune: boolean; pullStartedAt: number; blocked: Set<string>; opts: SyncOptions },
 ) {
+  const { opts } = mode;
+  // Who may set or clear `isMe` on this device (see SyncOptions.ownerUid).
+  const trustsMe = (by: unknown) =>
+    by === opts.uid || (opts.ownerUid !== undefined ? by === opts.ownerUid : opts.role !== 'owner');
   await local.transaction('rw', [local.people, local.relationships, local.tombstones, local.meta], async () => {
-    const synced = ((await local.meta.get(K.synced))?.value ?? {}) as SyncedMap;
-    let syncedChanged = false;
+    const synced = await readSynced(local, K.synced, mode.pullStartedAt);
+    // Entries dropped by readSynced must be persisted as dropped.
+    let syncedChanged = JSON.stringify(synced) !== JSON.stringify((await local.meta.get(K.synced))?.value ?? {});
     const remember = (k: string, e: SyncedEntry) => {
       const prev = synced[k];
-      if (!prev || prev.u < e.u || (prev.u === e.u && (prev.s !== e.s || !!prev.d !== !!e.d))) {
+      if (!prev || prev.u < e.u || (prev.u === e.u && (prev.s !== e.s || !!prev.d !== !!e.d || prev.m !== e.m))) {
         synced[k] = e;
         syncedChanged = true;
       }
@@ -173,16 +237,22 @@ async function applyRemote(
       for (const { id, rec } of pulled.get(c) ?? []) {
         if (id) returned.add(id);
         if (!id || !rec || typeof rec.updatedAt !== 'number' || !Number.isFinite(rec.updatedAt)) continue;
+        const k = entryKey(c, id);
+        if (rec.updatedAt > mode.pullStartedAt + MAX_SKEW_MS) {
+          // Far-future stamp: applying it would win every later conflict and freeze the watermark.
+          result.rejected = (result.rejected ?? 0) + 1;
+          mode.blocked.add(k);
+          continue;
+        }
         maxU = maxU === undefined ? rec.updatedAt : Math.max(maxU, rec.updatedAt);
         const scope: Scope = rec.scope === 'family' ? 'family' : 'private';
-        const k = entryKey(c, id);
         const row = (await table.get(id)) as Person | Relationship | undefined;
         const localU = row ? rowUpdatedAt(row) : undefined;
         const tomb = await local.tombstones.get(id);
         const localTomb = tomb && tomb.table === c ? tomb : undefined;
 
         if (rec.deleted) {
-          remember(k, { u: rec.updatedAt, s: scope, d: true });
+          remember(k, c === 'people' ? { u: rec.updatedAt, s: scope, d: true, m: dataIsMe(rec.data) } : { u: rec.updatedAt, s: scope, d: true });
           if (!row) continue;
           if (localU! > rec.updatedAt) {
             result.conflicts++; // edited here after it was deleted elsewhere: keep, push later
@@ -193,7 +263,7 @@ async function applyRemote(
           continue;
         }
 
-        remember(k, { u: rec.updatedAt, s: scope });
+        remember(k, c === 'people' ? { u: rec.updatedAt, s: scope, m: dataIsMe(rec.data) } : { u: rec.updatedAt, s: scope });
         if (localTomb && localTomb.deletedAt >= rec.updatedAt && !row) {
           result.conflicts++; // deleted here after the remote edit: our tombstone wins
           continue;
@@ -209,7 +279,22 @@ async function applyRemote(
           if (!p) continue;
           p.id = id;
           p.updatedAt = rec.updatedAt;
-          if (p.isMe) {
+          if (p.photo !== undefined && !safePhoto(p.photo)) delete p.photo;
+          if (!trustsMe(rec.updatedBy)) {
+            // Another writer can neither plant nor clear "me" on a row we hold: keep this device's
+            // state, and if theirs differs, stamp our copy just past it so the correction is pushed.
+            // (The rules stop editors changing isMe, so a difference is legacy or hostile data.)
+            // A row new to this device may only fill a vacancy: an owner device without a "me" would
+            // scope everything private and un-share the family on its next push.
+            if (row) {
+              const keep = (row as Person).isMe === true;
+              if (keep !== (p.isMe === true)) p.updatedAt = rec.updatedAt + 1;
+              if (keep) p.isMe = true;
+              else delete p.isMe;
+            } else if (p.isMe && (await local.people.filter((x) => x.isMe === true).count()) > 0) {
+              delete p.isMe;
+            }
+          } else if (p.isMe) {
             // Only one "me": the more recently changed claim wins.
             const others = await local.people.filter((x) => x.isMe === true && x.id !== id).toArray();
             if (others.some((o) => rowUpdatedAt(o) > rec.updatedAt)) delete p.isMe;
@@ -249,12 +334,16 @@ async function applyRemote(
           }
         }
       }
+      // The watermark never passes the local time the pull started: a record stamped a little in the
+      // future (within MAX_SKEW_MS) must not make us skip honest writes made after it.
       if (mode.full) {
         if (maxU === undefined) await local.meta.delete(K.pull(c));
-        else await local.meta.put({ key: K.pull(c), value: maxU });
-      } else if (maxU !== undefined) {
-        const prev = (await local.meta.get(K.pull(c)))?.value;
-        await local.meta.put({ key: K.pull(c), value: typeof prev === 'number' ? Math.max(prev, maxU) : maxU });
+        else await local.meta.put({ key: K.pull(c), value: Math.min(maxU, mode.pullStartedAt) });
+      } else {
+        const prev = validMark((await local.meta.get(K.pull(c)))?.value, mode.pullStartedAt);
+        const next = maxU === undefined ? prev : Math.min(Math.max(prev ?? 0, maxU), mode.pullStartedAt);
+        if (next === undefined) await local.meta.delete(K.pull(c));
+        else await local.meta.put({ key: K.pull(c), value: next });
       }
     }
     if (syncedChanged) await local.meta.put({ key: K.synced, value: synced });
@@ -266,24 +355,28 @@ async function applyRemote(
  * without a local edit gets a fresh updatedAt (written locally in the same transaction) so other
  * devices and members pick the change up.
  */
-async function planPush(local: LineageDB, opts: SyncOptions, K: ReturnType<typeof keys>) {
+async function planPush(local: LineageDB, opts: SyncOptions, K: ReturnType<typeof keys>, blocked: Set<string>) {
   const owner = opts.role === 'owner';
   return local.transaction('rw', [local.people, local.relationships, local.tombstones, local.meta], async () => {
     const people = await local.people.toArray();
     const rels = await local.relationships.toArray();
     const tombs = await local.tombstones.toArray();
-    const synced = ((await local.meta.get(K.synced))?.value ?? {}) as SyncedMap;
+    // Everything pushed is stamped no later than this (the rules refuse updatedAt > server now + 5 min,
+    // and a stamp in the future would win conflicts it should not).
+    const now = Date.now();
+    const synced = await readSynced(local, K.synced, now);
     const meId = opts.meId ?? people.find((p) => p.isMe === true)?.id;
     const scopes = computeScopes(people, rels, meId, { shared: !owner });
-    let clock = Date.now();
 
     const out = new Map<CloudCollection, Item[]>(COLLECTIONS.map((c) => [c, []]));
     const live = { people: new Set(people.map((p) => p.id)), relationships: new Set(rels.map((r) => r.id)) };
 
     const consider = async (c: CloudCollection, row: Person | Relationship) => {
       const s = scopes.get(row.id) ?? 'private';
+      if (blocked.has(entryKey(c, row.id))) return; // the rules would refuse it and fail the batch
       const e = synced[entryKey(c, row.id)];
       let u = rowUpdatedAt(row);
+      let restamp = false;
       if (!owner) {
         // Editors: family records only, and never touch a record the remote holds as private.
         if (s !== 'family' || (e && e.s !== 'family')) return;
@@ -292,12 +385,29 @@ async function planPush(local: LineageDB, opts: SyncOptions, K: ReturnType<typeo
         if (e.s === s && !e.d) return; // remote already has this version
         if (u < e.u && !e.d) return; // remote is newer (should have been applied by the pull)
         // Same version but the scope changed (or a stale remote tombstone): re-stamp.
-        clock = Math.max(clock + 1, e.u + 1);
-        u = clock;
+        restamp = true;
+      }
+      if (!Number.isFinite(u) || u > now) restamp = true; // local stamp in the future: bring it back to now
+      if (restamp) {
+        // Strictly newer than the remote's version (the rules require it), and not in the future.
+        u = Math.max(now, e ? e.u + 1 : 0);
+        if (u > now) return; // the remote's version is itself slightly ahead: try again next sync
         const table = c === 'people' ? local.people : local.relationships;
         await table.update(row.id, { updatedAt: u });
       }
-      out.get(c)!.push({ id: row.id, rec: { data: clean({ ...row, updatedAt: u }), scope: s, updatedAt: u, updatedBy: opts.uid } });
+      const data = clean({ ...row, updatedAt: u }) as Person & Relationship;
+      if (c === 'people') {
+        const photo = pushablePhoto(data.photo);
+        if (photo === undefined) delete data.photo; // the rules refuse it; the local copy keeps it
+        else data.photo = photo;
+        if (!owner) {
+          // Only the owner may change data.isMe: send the remote's current value back unchanged.
+          const remoteMe = e ? (e.m ?? (row as Person).isMe === true) : false;
+          if (remoteMe) data.isMe = true;
+          else delete data.isMe;
+        }
+      }
+      out.get(c)!.push({ id: row.id, rec: { data, scope: s, updatedAt: u, updatedBy: opts.uid } });
     };
     for (const p of people) await consider('people', p);
     for (const r of rels) await consider('relationships', r);
@@ -306,13 +416,23 @@ async function planPush(local: LineageDB, opts: SyncOptions, K: ReturnType<typeo
       const c = t.table;
       if (c !== 'people' && c !== 'relationships') continue;
       if (live[c].has(t.id)) continue; // re-created since; the live row wins
+      if (blocked.has(entryKey(c, t.id))) continue;
       const e = synced[entryKey(c, t.id)];
       // Only ids the remote holds and still has alive, unless our delete is newer than its version.
       if (!e || e.d || e.u > t.deletedAt) continue;
       if (!owner && e.s !== 'family') continue;
+      // A tombstone's data is just { id }, so it would clear isMe, which only the owner may do: an
+      // editor's local delete of the owner's "me" stays local. Entries from before `m` existed are
+      // treated the same way (refusing would fail the whole batch).
+      if (!owner && c === 'people' && e.m !== false) continue;
+      // Strictly newer than the remote's version (a delete in the same millisecond gets +1), and
+      // never in the future.
+      const u = Math.max(Math.min(t.deletedAt, now), e.u + 1);
+      if (u > now) continue;
+      if (u !== t.deletedAt) await local.tombstones.update(t.id, { deletedAt: u });
       out.get(c)!.push({
         id: t.id,
-        rec: { data: { id: t.id } as Person | Relationship, scope: e.s, updatedAt: t.deletedAt, updatedBy: opts.uid, deleted: true },
+        rec: { data: { id: t.id } as Person | Relationship, scope: e.s, updatedAt: u, updatedBy: opts.uid, deleted: true },
       });
     }
     return out;
