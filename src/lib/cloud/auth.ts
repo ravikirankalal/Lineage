@@ -66,7 +66,14 @@ function preferRedirect(): boolean {
   const host = window.location.hostname;
   const authDomain = String(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ?? '');
   const project = String(import.meta.env.VITE_FIREBASE_PROJECT_ID ?? '');
-  return host === authDomain || host === `${project}.web.app` || host === `${project}.firebaseapp.com`;
+  void project;
+  // Redirect only works when the page itself is on the auth domain; elsewhere (web.app, github.io)
+  // mobile browsers partition storage and the user comes back signed out. Use the popup there.
+  return host === authDomain;
+}
+
+function onAuthDomain(): boolean {
+  return typeof window !== 'undefined' && window.location.hostname === String(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ?? '');
 }
 
 export async function signIn(): Promise<void> {
@@ -81,7 +88,8 @@ export async function signIn(): Promise<void> {
   } catch (e) {
     const code = (e as { code?: string }).code;
     if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') {
-      return signInWithRedirect(auth, provider);
+      if (onAuthDomain() || usingEmulators()) return signInWithRedirect(auth, provider);
+      throw new Error('Your browser blocked the Google sign-in window. Allow pop-ups for this site, then tap Sign in again.');
     }
     if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return;
     throw e;
