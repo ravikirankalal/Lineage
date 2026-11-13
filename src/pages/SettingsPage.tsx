@@ -1,6 +1,8 @@
 import { Download, FlaskConical, Languages, ShieldCheck, Trash2, Upload } from 'lucide-react';
 import { useRef, useState } from 'react';
+import { AccountCard } from '../components/AccountCard';
 import { Sheet } from '../components/Sheet';
+import { useCloud, usePermissions } from '../lib/cloud/CloudProvider';
 import { clearAll, exportBackup, importBackup } from '../lib/db';
 import { useData } from '../lib/data';
 import { loadDemo } from '../lib/demo';
@@ -14,6 +16,9 @@ export function SettingsPage() {
   const [pending, setPending] = useState<unknown>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const [kinLang, setKinLang] = useKinLang();
+  const { canEdit, isOwner } = usePermissions();
+  const cloud = useCloud();
+  const signedIn = cloud.configured && !!cloud.auth.user;
 
   async function download() {
     const data = await exportBackup();
@@ -47,12 +52,20 @@ export function SettingsPage() {
       <h1 className="mb-5 text-2xl font-bold tracking-tight sm:text-3xl">Settings</h1>
       {msg && <div className="mb-4 rounded-xl bg-brand-50 px-4 py-3 text-sm text-brand-800 dark:bg-brand-900/30 dark:text-brand-200">{msg}</div>}
 
-      <section className="card p-5">
+      <AccountCard />
+
+      <section className={`card p-5 ${cloud.configured ? 'mt-4' : ''}`}>
         <div className="flex items-start gap-3">
           <ShieldCheck className="mt-0.5 shrink-0 text-brand-600" />
           <div>
             <h2 className="font-semibold">Private by design</h2>
-            <p className="mt-1 text-sm text-stone-500">Everything is stored only in this browser on this device — no account, no server. {people.length} people and {rels.length} relationships saved. Back up regularly so you never lose your family history.</p>
+            <p className="mt-1 text-sm text-stone-500">
+              {cloud.isShared && cloud.activeSpace
+                ? `You’re viewing ${cloud.activeSpace.name}: ${people.length} people and ${rels.length} relationships. Only family is shared — never friends or private notes.`
+                : signedIn
+                  ? `Saved on this device and backed up to your Google account. ${people.length} people and ${rels.length} relationships. Only you can see them unless you share your family tree.`
+                  : `Everything is stored only in this browser on this device — no account, no server. ${people.length} people and ${rels.length} relationships saved. Back up regularly so you never lose your family history.`}
+            </p>
           </div>
         </div>
       </section>
@@ -77,9 +90,9 @@ export function SettingsPage() {
 
       <section className="card mt-4 divide-y divide-stone-100 dark:divide-stone-800">
         <Row icon={<Download size={19} />} title="Download backup" desc={lastBackup ? `Last backup ${new Date(lastBackup).toLocaleDateString()}` : 'Save everything as a file'} onClick={download} />
-        <Row icon={<Upload size={19} />} title="Restore from backup" desc="Load a Lineage backup file" onClick={() => fileRef.current?.click()} />
-        {people.length === 0 && <Row icon={<FlaskConical size={19} />} title="Try a sample family" desc="Loads a fictional family to explore the app" onClick={async () => { await loadDemo(); setMsg('Sample family loaded. Have a look at People and My Family.'); }} />}
-        <Row icon={<Trash2 size={19} />} title="Delete all data" desc="Remove every person and relationship" danger onClick={() => setConfirmClear(true)} />
+        {isOwner && <Row icon={<Upload size={19} />} title="Restore from backup" desc="Load a Lineage backup file" onClick={() => fileRef.current?.click()} />}
+        {isOwner && people.length === 0 && <Row icon={<FlaskConical size={19} />} title="Try a sample family" desc="Loads a fictional family to explore the app" onClick={async () => { await loadDemo(); setMsg('Sample family loaded. Have a look at People and My Family.'); }} />}
+        {isOwner && canEdit && <Row icon={<Trash2 size={19} />} title="Delete all data" desc={signedIn ? 'Remove every person and relationship, here and in your Google account' : 'Remove every person and relationship'} danger onClick={() => setConfirmClear(true)} />}
       </section>
       <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={async (e) => {
         const f = e.target.files?.[0];
@@ -105,9 +118,17 @@ export function SettingsPage() {
       <Sheet open={confirmClear} onClose={() => setConfirmClear(false)} title="Delete all data?"
         footer={<div className="flex justify-end gap-2">
           <button className="btn-ghost" onClick={() => setConfirmClear(false)}>Cancel</button>
-          <button className="btn bg-red-600 text-white hover:bg-red-700" onClick={async () => { await clearAll(); setConfirmClear(false); setMsg('All data deleted.'); }}>Delete everything</button>
+          <button className="btn bg-red-600 text-white hover:bg-red-700" onClick={async () => { await clearAll(); setConfirmClear(false); setMsg(signedIn ? 'All data deleted here and in your Google account.' : 'All data deleted.'); }}>{signedIn ? 'Delete everywhere' : 'Delete everything'}</button>
         </div>}>
-        <p className="text-sm text-stone-600 dark:text-stone-300">This permanently removes all {people.length} people and their relationships from this device. Download a backup first if you might want them back.</p>
+        {signedIn ? (
+          <div className="space-y-3 text-sm text-stone-600 dark:text-stone-300">
+            <p className="font-medium text-red-700 dark:text-red-400">This deletes everything on this device AND in your Google account backup.</p>
+            <p>All {people.length} people and their relationships will be gone from every device where you’re signed in{cloud.spaces.length > 1 ? ', and relatives you shared with will no longer see them' : ''}. Download a backup first if you might want them back.</p>
+            <p>Only want this device cleared? Use <b>Sign out</b> and choose <b>Remove from this device</b> instead; your account keeps everything.</p>
+          </div>
+        ) : (
+          <p className="text-sm text-stone-600 dark:text-stone-300">This permanently removes all {people.length} people and their relationships from this device. Download a backup first if you might want them back.</p>
+        )}
       </Sheet>
     </div>
   );

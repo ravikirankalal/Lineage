@@ -1,6 +1,7 @@
 import { ArrowDown, Crosshair, GitBranch, List, Search, UserPlus, User } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useCanEdit } from '../lib/cloud/CloudProvider';
 import { useData } from '../lib/data';
 import { CATEGORY_LABELS, CATEGORY_ORDER, directLine, relativesOf, type KinCategory, type Relative } from '../lib/kinship';
 import { displayName, formatPlace, lifespan, matchesQuery } from '../lib/person';
@@ -20,9 +21,11 @@ export function LineageView({ ego, egoLabel = 'You' }: { ego: Person; egoLabel?:
   const [tab, setTab] = useState<Tab>('tree');
   const [focusId, setFocusId] = useState(ego.id);
   const [adding, setAdding] = useState<{ person: Person; preset?: RelChoice } | null>(null);
+  const canEdit = useCanEdit();
   const focus = byId.get(focusId) ?? ego;
   const relatives = useMemo(() => relativesOf(graph, ego.id), [graph, ego.id]);
   const focusKin = relatives.find((r) => r.person.id === focus.id)?.kin;
+  const onAddParent = (which: 'father' | 'mother') => setAdding({ person: focus, preset: which });
 
   const tabs: { key: Tab; label: string; icon: typeof GitBranch }[] = [
     { key: 'tree', label: 'Tree', icon: GitBranch },
@@ -50,10 +53,10 @@ export function LineageView({ ego, egoLabel = 'You' }: { ego: Person; egoLabel?:
               <span className="hidden sm:inline"> — tap a card to move around</span>
             </div>
             {focus.id !== ego.id && (
-              <button className="btn-ghost px-3 py-2" onClick={() => setFocusId(ego.id)}><Crosshair size={16} /> Back to {ego.isMe ? 'me' : ego.firstName}</button>
+              <button className="btn-ghost px-3 py-2" onClick={() => setFocusId(ego.id)}><Crosshair size={16} /> Back to {ego.isMe && egoLabel === 'You' ? 'me' : ego.firstName}</button>
             )}
             <Link to={`/people/${focus.id}`} className="btn-ghost px-3 py-2"><User size={16} /> Profile</Link>
-            <button className="btn-primary px-3 py-2" onClick={() => setAdding({ person: focus })}><UserPlus size={16} /> Add relative</button>
+            {canEdit && <button className="btn-primary px-3 py-2" onClick={() => setAdding({ person: focus })}><UserPlus size={16} /> Add relative</button>}
           </div>
           <FamilyTree
             focusId={focus.id}
@@ -61,7 +64,7 @@ export function LineageView({ ego, egoLabel = 'You' }: { ego: Person; egoLabel?:
             egoLabel={egoLabel}
             onSelect={setFocusId}
             onOpen={(id) => nav(`/people/${id}`)}
-            onAddParent={(which) => setAdding({ person: focus, preset: which })}
+            onAddParent={canEdit ? onAddParent : undefined}
             height="max(420px, calc(100dvh - 250px))"
           />
           <p className="mt-2 text-center text-xs text-stone-400">Tap a card to centre on them · tap the highlighted card to open their profile · dashed lines are marriages</p>
@@ -71,7 +74,7 @@ export function LineageView({ ego, egoLabel = 'You' }: { ego: Person; egoLabel?:
       {tab === 'relatives' && <RelativesList relatives={relatives} egoId={ego.id} egoName={ego.isMe ? 'you' : ego.firstName} />}
       {tab === 'lines' && <Lines ego={ego} />}
 
-      {adding && (
+      {canEdit && adding && (
         <AddRelationSheet person={adding.person} preset={adding.preset} familyOnly open onClose={() => setAdding(null)} />
       )}
     </div>
@@ -81,6 +84,7 @@ export function LineageView({ ego, egoLabel = 'You' }: { ego: Person; egoLabel?:
 function RelativesList({ relatives, egoId, egoName }: { relatives: Relative[]; egoId: string; egoName: string }) {
   const [side, setSide] = useState<'all' | 'paternal' | 'maternal'>('all');
   const [q, setQ] = useState('');
+  const canEdit = useCanEdit();
   const filtered = relatives.filter((r) => (side === 'all' || r.kin.side === side || !r.kin.side) && matchesQuery(r.person, q));
   const groups = new Map<KinCategory, Relative[]>();
   for (const r of filtered) {
@@ -88,7 +92,7 @@ function RelativesList({ relatives, egoId, egoName }: { relatives: Relative[]; e
     groups.get(r.kin.category)!.push(r);
   }
   if (!relatives.length) {
-    return <p className="card px-6 py-10 text-center text-sm text-stone-500">No relatives yet. Use the tree to add parents, siblings, spouse and children.</p>;
+    return <p className="card px-6 py-10 text-center text-sm text-stone-500">No relatives yet.{canEdit && ' Use the tree to add parents, siblings, spouse and children.'}</p>;
   }
   return (
     <div>

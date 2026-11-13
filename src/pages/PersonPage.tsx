@@ -10,6 +10,7 @@ import { KinLabel } from '../components/KinLabel';
 import { MergeSheet } from '../components/MergeSheet';
 import { PersonRow } from '../components/PersonRow';
 import { Sheet } from '../components/Sheet';
+import { usePermissions } from '../lib/cloud/CloudProvider';
 import { connectionsOf, type ConnectionGroup } from '../lib/connections';
 import { deletePerson, deleteRelationship } from '../lib/db';
 import { useData } from '../lib/data';
@@ -25,6 +26,7 @@ export function PersonPage() {
   const [adding, setAdding] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [merging, setMerging] = useState(false);
+  const { canEdit, isShared } = usePermissions();
 
   const groups = useMemo(() => (p ? connectionsOf(p.id, people, rels, graph) : []), [p, people, rels, graph]);
   const toMe = useMemo(() => {
@@ -47,7 +49,7 @@ export function PersonPage() {
     <div className="mx-auto max-w-3xl">
       <div className="mb-2 flex items-center justify-between">
         <button className="icon-btn -ml-2" onClick={() => nav(-1)} aria-label="Back"><ArrowLeft size={20} /></button>
-        <Link to={`/people/${p.id}/edit`} className="btn-ghost"><Pencil size={16} /> Edit</Link>
+        {canEdit && <Link to={`/people/${p.id}/edit`} className="btn-ghost"><Pencil size={16} /> Edit</Link>}
       </div>
 
       {/* Header */}
@@ -56,7 +58,7 @@ export function PersonPage() {
         <h1 className="mt-3 text-2xl font-bold tracking-tight">{displayName(p)}</h1>
         {p.nickname && <div className="text-stone-500">“{p.nickname}”</div>}
         <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5">
-          {p.isMe && <span className="chip !bg-brand-100 !text-brand-800 dark:!bg-brand-900/60 dark:!text-brand-200">You</span>}
+          {p.isMe && !isShared && <span className="chip !bg-brand-100 !text-brand-800 dark:!bg-brand-900/60 dark:!text-brand-200">You</span>}
           {toMe && <span className="chip !bg-brand-100 !text-brand-800 dark:!bg-brand-900/60 dark:!text-brand-200" title={toMe.path}>
             {toMe.family && me
               ? <KinLabel label={toMe.label} egoId={me.id} targetId={p.id} termClassName="font-normal text-brand-700/75 dark:text-brand-300/80" />
@@ -75,7 +77,7 @@ export function PersonPage() {
         </div>
       </div>
 
-      {missing.length > 0 && !p.isMe && (
+      {canEdit && missing.length > 0 && !p.isMe && (
         <Link to={`/people/${p.id}/edit`} className="mt-6 flex items-start gap-3 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-amber-100 dark:bg-amber-900/20 dark:text-amber-200 dark:ring-amber-900/40">
           <Sparkles size={18} className="mt-0.5 shrink-0" />
           <span>Help future you: add {missing.slice(0, 3).join(', ')}.</span>
@@ -87,9 +89,11 @@ export function PersonPage() {
       {/* Connections */}
       <div className="mt-8 flex items-center justify-between">
         <h2 className="text-lg font-semibold">Connections {total > 0 && <span className="text-stone-400">· {total}</span>}</h2>
-        <button className="btn-primary" onClick={() => setAdding(true)}><Plus size={17} /> Add</button>
+        {canEdit && <button className="btn-primary" onClick={() => setAdding(true)}><Plus size={17} /> Add</button>}
       </div>
-      {groups.length === 0 ? (
+      {groups.length === 0 && !canEdit ? (
+        <p className="card mt-3 px-6 py-8 text-center text-sm text-stone-500">No connections recorded yet.</p>
+      ) : groups.length === 0 ? (
         <button onClick={() => setAdding(true)} className="card mt-3 flex w-full flex-col items-center px-6 py-10 text-center hover:bg-stone-50 dark:hover:bg-stone-800/60">
           <Users className="mb-2 text-stone-400" />
           <div className="font-medium">No connections yet</div>
@@ -97,18 +101,20 @@ export function PersonPage() {
         </button>
       ) : (
         <div className="mt-3 space-y-4">
-          {groups.map((g) => <Group key={g.key} group={g} personId={p.id} personName={p.firstName} />)}
+          {groups.map((g) => <Group key={g.key} group={g} personId={p.id} personName={p.firstName} canEdit={canEdit} />)}
         </div>
       )}
 
-      <div className="mt-10 flex flex-wrap justify-center gap-2">
-        <button className="btn-ghost text-stone-500 dark:text-stone-400" onClick={() => setMerging(true)}><Merge size={16} /> Merge with a duplicate…</button>
-        <button className="btn-danger" onClick={() => setConfirmDelete(true)}><Trash2 size={16} /> Delete {p.firstName}</button>
-      </div>
+      {canEdit && (
+        <div className="mt-10 flex flex-wrap justify-center gap-2">
+          <button className="btn-ghost text-stone-500 dark:text-stone-400" onClick={() => setMerging(true)}><Merge size={16} /> Merge with a duplicate…</button>
+          <button className="btn-danger" onClick={() => setConfirmDelete(true)}><Trash2 size={16} /> Delete {p.firstName}</button>
+        </div>
+      )}
 
-      <AddRelationSheet person={p} open={adding} onClose={() => setAdding(false)} />
-      <MergeSheet person={p} open={merging} onClose={() => setMerging(false)} />
-      <Sheet open={confirmDelete} onClose={() => setConfirmDelete(false)} title={`Delete ${p.firstName}?`}
+      {canEdit && <AddRelationSheet person={p} open={adding} familyOnly={isShared} onClose={() => setAdding(false)} />}
+      {canEdit && <MergeSheet person={p} open={merging} onClose={() => setMerging(false)} />}
+      <Sheet open={canEdit && confirmDelete} onClose={() => setConfirmDelete(false)} title={`Delete ${p.firstName}?`}
         footer={<div className="flex justify-end gap-2">
           <button className="btn-ghost" onClick={() => setConfirmDelete(false)}>Cancel</button>
           <button className="btn bg-red-600 text-white hover:bg-red-700" onClick={async () => { await deletePerson(p.id); nav('/', { replace: true }); }}>Delete</button>
@@ -119,7 +125,7 @@ export function PersonPage() {
   );
 }
 
-function Group({ group, personId, personName }: { group: ConnectionGroup; personId: string; personName: string }) {
+function Group({ group, personId, personName, canEdit }: { group: ConnectionGroup; personId: string; personName: string; canEdit: boolean }) {
   const [all, setAll] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
   const LIMIT = 8;
@@ -147,7 +153,7 @@ function Group({ group, personId, personName }: { group: ConnectionGroup; person
                 </>}
                 right={<span />} />
             </div>
-            {it.relId && (
+            {canEdit && it.relId && (
               removing === it.relId ? (
                 <div className="flex shrink-0 items-center gap-1 pr-1">
                   <button className="rounded-lg bg-red-600 px-2.5 py-1 text-xs font-medium text-white" onClick={() => deleteRelationship(it.relId!)}>Unlink</button>

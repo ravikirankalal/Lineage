@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Avatar } from '../components/Avatar';
 import { Empty } from '../components/Empty';
 import { PersonRow } from '../components/PersonRow';
+import { usePermissions } from '../lib/cloud/CloudProvider';
 import { useData } from '../lib/data';
 import { loadDemo } from '../lib/demo';
 import { relativesOf } from '../lib/kinship';
@@ -15,6 +16,7 @@ type Filter = 'all' | 'family' | 'friends' | 'thin' | `tag:${string}`;
 export function PeoplePage() {
   const { people, rels, graph, me, loaded } = useData();
   const nav = useNavigate();
+  const { canEdit, isOwner, isShared } = usePermissions();
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [sort, setSort] = useState<'name' | 'recent'>('name');
@@ -71,16 +73,21 @@ export function PeoplePage() {
       <div className="pt-6">
         <Header count={0} />
         <div className="card">
-          <Empty icon={<Users size={26} />} title="Start with the people you know"
+          {isShared ? (
+            <Empty icon={<Users size={26} />} title="No one here yet"
+              action={canEdit ? <Link to="/people/new" className="btn-primary"><UserPlus size={18} /> Add a relative</Link> : undefined}>
+              {canEdit ? 'This shared family is empty so far. Add the first relative.' : 'The family shared with you is empty so far. People appear here as soon as the owner adds them.'}
+            </Empty>
+          ) : <Empty icon={<Users size={26} />} title="Start with the people you know"
             action={
               <div className="flex flex-col gap-2 sm:flex-row">
                 <button className="btn-primary" onClick={() => nav('/people/new?me=1')}><UserPlus size={18} /> Add yourself first</button>
                 <Link to="/import" className="btn-secondary"><Download size={18} /> Import contacts</Link>
-                <button className="btn-ghost" onClick={() => loadDemo()}><FlaskConical size={18} /> Try a sample family</button>
+                {isOwner && <button className="btn-ghost" onClick={() => loadDemo()}><FlaskConical size={18} /> Try a sample family</button>}
               </div>
             }>
             Add yourself, then your family and friends — or bring them in from your phone’s contacts. Everything stays on this device.
-          </Empty>
+          </Empty>}
         </div>
       </div>
     );
@@ -109,7 +116,7 @@ export function PeoplePage() {
     <div>
       <Header count={people.length} />
 
-      {!me && (
+      {!me && !isShared && (
         <Link to="/people/new?me=1" className="mb-4 flex items-center gap-3 rounded-2xl bg-brand-50 p-4 text-sm text-brand-800 ring-1 ring-brand-100 dark:bg-brand-900/30 dark:text-brand-200 dark:ring-brand-800">
           <UserPlus size={20} className="shrink-0" />
           <span><b>Add yourself</b> so Lineage can show how everyone is related to you.</span>
@@ -166,10 +173,10 @@ export function PeoplePage() {
         </div>
       )}
 
-      <Link to="/people/new" aria-label="Add person"
+      {canEdit && <Link to="/people/new" aria-label="Add person"
         className="fixed bottom-24 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-900/20 transition hover:bg-brand-700 active:scale-95 md:bottom-8 md:right-8">
         <Plus size={26} />
-      </Link>
+      </Link>}
     </div>
   );
 }
