@@ -217,7 +217,8 @@ function vcardToPerson(props: VProp[]): Person | undefined {
     p.lastName = undefined;
   }
   if (!p.firstName) {
-    const fallback = p.phones[0]?.value || p.emails[0]?.value;
+    // Business contacts often have only an organization: name them after it.
+    const fallback = p.work[0]?.organization || p.phones[0]?.value || p.emails[0]?.value;
     if (!fallback) return undefined;
     p.firstName = fallback;
   }
@@ -431,7 +432,7 @@ export function peopleApiToPersons(list: PeopleApiPerson[]): Person[] {
 }
 
 function gPersonToPerson(g: PeopleApiPerson): Person | undefined {
-  const p = emptyPerson({ source: 'vcard' });
+  const p = emptyPerson({ source: 'google' });
 
   const n = primaryFirst(g.names)[0];
   if (n) {
@@ -447,7 +448,9 @@ function gPersonToPerson(g: PeopleApiPerson): Person | undefined {
   p.nickname = primaryFirst(g.nicknames).map((x) => gs(x.value)).find(Boolean);
 
   for (const x of primaryFirst(g.phoneNumbers)) {
-    const value = gs(x.canonicalForm) || gs(x.value);
+    // Keep the number as the user typed it (extensions like "x 204" or "#5" live only there);
+    // canonicalForm (E.164) is a fallback. Matching uses the last 10 digits either way.
+    const value = gs(x.value) || gs(x.canonicalForm);
     if (value) p.phones.push({ label: gLabel(x, 'phone'), value });
   }
   for (const x of primaryFirst(g.emailAddresses)) {
@@ -532,7 +535,8 @@ function gPersonToPerson(g: PeopleApiPerson): Person | undefined {
     p.lastName = undefined;
   }
   if (!p.firstName) {
-    const fallback = p.phones[0]?.value || p.emails[0]?.value;
+    // Business contacts often have only an organization: name them after it.
+    const fallback = p.work[0]?.organization || p.phones[0]?.value || p.emails[0]?.value;
     if (!fallback) return undefined;
     p.firstName = fallback;
   }
@@ -542,10 +546,20 @@ function gPersonToPerson(g: PeopleApiPerson): Person | undefined {
 // ---------------------------------------------------------------------------
 // Duplicate detection & merge
 
+/** A trailing extension: "ext. 204", "extension 204", "x204", "#5", ";ext=204" or a dial pause ",204". */
+const PHONE_EXT = /\s*(?:;\s*ext=|e?xt(?:ension)?\.?|x|#|[,;])\s*(\d+)\s*$/i;
+
+/** Matching key for a phone number: its last 10 digits, ignoring any extension. */
 export function phoneKey(v: string): string {
-  const d = v.replace(/\D/g, '');
+  const d = v.replace(PHONE_EXT, '').replace(/\D/g, '');
   return d.length > 10 ? d.slice(-10) : d;
 }
+
+/** Key for merging phone lists: the same line with a different extension is a different entry. */
+export const phoneEntryKey = (v: string): string => {
+  const ext = PHONE_EXT.exec(v)?.[1];
+  return ext ? `${phoneKey(v)}x${ext}` : phoneKey(v);
+};
 
 export type MatchStrength = 'strong' | 'possible';
 export interface DuplicateMatch {
@@ -596,7 +610,7 @@ export function mergeInto(base: Person, incoming: Person): Person {
     nickname: base.nickname || incoming.nickname,
     gender: base.gender !== 'unknown' ? base.gender : incoming.gender,
     birthDate: base.birthDate || incoming.birthDate,
-    phones: mergeLV(base.phones, incoming.phones, phoneKey),
+    phones: mergeLV(base.phones, incoming.phones, phoneEntryKey),
     emails: mergeLV(base.emails, incoming.emails, norm),
     address: placeOrUndefined(base.address) ?? placeOrUndefined(incoming.address) ?? base.address,
     origin: placeOrUndefined(base.origin) ?? placeOrUndefined(incoming.origin) ?? base.origin,

@@ -40,11 +40,11 @@ describe('Google People API mapping', () => {
 
   it('maps names and nickname', () => {
     expect([p.firstName, p.middleName, p.lastName, p.nickname]).toEqual(['Asha', 'Rani', 'Verma', 'Ashu']);
-    expect(p.source).toBe('vcard');
+    expect(p.source).toBe('google');
   });
 
-  it('maps phones (canonical form preferred) and emails with labels', () => {
-    expect(p.phones).toEqual([{ label: 'mobile', value: '+15555550123' }, { label: 'home', value: '555-0145' }]);
+  it('maps phones (kept as typed) and emails with labels', () => {
+    expect(p.phones).toEqual([{ label: 'mobile', value: '(555) 555-0123' }, { label: 'home', value: '555-0145' }]);
     expect(p.emails).toEqual([{ label: 'home', value: 'asha.verma@example.com' }, { label: 'work', value: 'asha@work.example.com' }]);
   });
 
@@ -103,15 +103,45 @@ describe('Google People API mapping', () => {
     expect(q.photo).toBeUndefined();
   });
 
-  it('uses a phone or email as the name and skips empty entries', () => {
+  it('uses the organization, then a phone or email, as the name and skips empty entries', () => {
     const list = peopleApiToPersons([
       { resourceName: 'people/c3', phoneNumbers: [{ value: '555-0177' }] },
       { resourceName: 'people/c4', emailAddresses: [{ value: 'nobody@example.com' }] },
       { resourceName: 'people/c5', organizations: [{ name: 'Example Co' }], photos: [{ url: 'https://x.example/p.jpg', default: true }] },
       { resourceName: 'people/c6' },
     ]);
-    expect(list.map((x) => x.firstName)).toEqual(['555-0177', 'nobody@example.com']);
+    expect(list.map((x) => x.firstName)).toEqual(['555-0177', 'nobody@example.com', 'Example Co']);
     expect(list[0].phones[0].label).toBe('phone');
+  });
+
+  it('names a business contact after its organization before its phone', () => {
+    const [q] = peopleApiToPersons([{
+      resourceName: 'people/c7',
+      organizations: [{ name: 'Acme Plumbing' }],
+      phoneNumbers: [{ value: '(555) 555-0190', canonicalForm: '+15555550190', type: 'work', formattedType: 'Work' }],
+    }]);
+    expect(q.firstName).toBe('Acme Plumbing');
+    expect(q.lastName).toBeUndefined();
+    expect(q.work).toEqual([{ organization: 'Acme Plumbing' }]);
+  });
+
+  it('keeps phone extensions as typed and falls back to canonicalForm only when the value is empty', () => {
+    const [q] = peopleApiToPersons([{
+      names: [{ givenName: 'Dana', familyName: 'Okafor' }],
+      phoneNumbers: [
+        { value: '(555) 555-0142 ext. 204', canonicalForm: '+15555550142', type: 'work', formattedType: 'Work' },
+        { value: '555-555-0143 #5', canonicalForm: '+15555550143', type: 'other' },
+        { value: '', canonicalForm: '+15555550144', type: 'mobile' },
+      ],
+    }]);
+    expect(q.phones.map((x) => x.value)).toEqual(['(555) 555-0142 ext. 204', '555-555-0143 #5', '+15555550144']);
+    // Still matches an existing person by the last 10 digits.
+    const existing = emptyPerson({ firstName: 'D', phones: [{ label: 'work', value: '+1 555 555 0144' }] });
+    expect(planImport([q], [existing])[0].match?.strength).toBe('strong');
+    // The extension is not counted as part of the number when matching.
+    const office = emptyPerson({ firstName: 'Dana', lastName: 'Okafor', phones: [{ label: 'work', value: '+1 555 555 0142' }] });
+    const [r] = peopleApiToPersons([{ names: [{ givenName: 'Dee' }], phoneNumbers: [{ value: '(555) 555-0142 ext. 204' }] }]);
+    expect(planImport([r], [office])[0].match?.person).toBe(office);
   });
 
   it('merges duplicates within the list', () => {
