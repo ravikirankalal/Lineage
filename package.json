@@ -10,7 +10,8 @@
     "test": "vitest run",
     "typecheck": "tsc -b",
     "smoke": "node scripts/smoke.mjs",
-    "verify": "npm test && npm run build && npm run smoke"
+    "verify": "npm test && npm run build && npm run smoke",
+    "qa": "node scripts/qa-flows.mjs"
   },
   "dependencies": {
     "dexie": "^4.4.7",

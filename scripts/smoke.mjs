@@ -14,11 +14,14 @@ const PORT = 4179;
 const BASE = `http://localhost:${PORT}/`;
 mkdirSync(OUT, { recursive: true });
 
-const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' });
+// Spawn vite directly (not via npx) so kill() stops the actual server process.
+const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' });
 const stop = () => server.kill();
 process.on('exit', stop);
 
 async function waitForServer() {
+  await new Promise((r) => setTimeout(r, 300));
+  if (server.exitCode !== null) throw new Error(`port ${PORT} busy — stop the old preview server`);
   for (let i = 0; i < 50; i++) {
     try {
       if ((await fetch(BASE)).ok) return;
