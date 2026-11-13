@@ -104,22 +104,22 @@ describe('googleContactsAvailable', () => {
 // ---- Token -----------------------------------------------------------------------------------
 
 describe('getContactsAccessToken', () => {
-  it('signed out: signs in with a popup requesting only contacts.readonly', async () => {
-    authMock.signInWithPopup.mockResolvedValue({ user: { uid: 'u1' }, token: 'tok-1' });
-    await expect(getContactsAccessToken()).resolves.toBe('tok-1');
-    expect(authMock.signInWithPopup).toHaveBeenCalledTimes(1);
+  it('signed out: refuses with not-signed-in and never opens a popup or signs in', async () => {
+    await expectCode(getContactsAccessToken(), 'not-signed-in', /Sign in with Google first \(Settings → Back up and share\)/);
+    expect(authMock.signInWithPopup).not.toHaveBeenCalled();
     expect(authMock.reauthenticateWithPopup).not.toHaveBeenCalled();
-    const p = authMock.providers[0];
-    expect(p.scopes).toEqual([CONTACTS_SCOPE]);
-    expect(p.params).toEqual({ prompt: 'select_account' });
+    expect(authMock.providers).toHaveLength(0);
   });
 
-  it('signed in: re-authenticates the same user instead of signing in', async () => {
+  it('signed in: re-authenticates the same user, requesting only contacts.readonly', async () => {
     fb.currentUser = { uid: 'u1' };
     authMock.reauthenticateWithPopup.mockResolvedValue({ user: { uid: 'u1' }, token: 'tok-2' });
     await expect(getContactsAccessToken()).resolves.toBe('tok-2');
     expect(authMock.reauthenticateWithPopup).toHaveBeenCalledWith(fb.currentUser, expect.anything());
     expect(authMock.signInWithPopup).not.toHaveBeenCalled();
+    const p = authMock.providers[0];
+    expect(p.scopes).toEqual([CONTACTS_SCOPE]);
+    expect(p.params).toEqual({ prompt: 'select_account' });
   });
 
   it('a different Google account is refused', async () => {
@@ -131,14 +131,16 @@ describe('getContactsAccessToken', () => {
   });
 
   it('maps popup closed / blocked', async () => {
-    authMock.signInWithPopup.mockRejectedValue({ code: 'auth/popup-closed-by-user' });
+    fb.currentUser = { uid: 'u1' };
+    authMock.reauthenticateWithPopup.mockRejectedValue({ code: 'auth/popup-closed-by-user' });
     await expectCode(getContactsAccessToken(), 'popup-closed');
-    authMock.signInWithPopup.mockRejectedValue({ code: 'auth/popup-blocked' });
+    authMock.reauthenticateWithPopup.mockRejectedValue({ code: 'auth/popup-blocked' });
     await expectCode(getContactsAccessToken(), 'popup-blocked', /pop-ups/);
   });
 
   it('no access token means the scope was not granted', async () => {
-    authMock.signInWithPopup.mockResolvedValue({ user: { uid: 'u1' } });
+    fb.currentUser = { uid: 'u1' };
+    authMock.reauthenticateWithPopup.mockResolvedValue({ user: { uid: 'u1' } });
     await expectCode(getContactsAccessToken(), 'scope-not-granted');
   });
 
@@ -146,6 +148,7 @@ describe('getContactsAccessToken', () => {
     fb.emulators = true;
     await expectCode(getContactsAccessToken(), 'unavailable');
     expect(authMock.signInWithPopup).not.toHaveBeenCalled();
+    expect(authMock.reauthenticateWithPopup).not.toHaveBeenCalled();
   });
 });
 
@@ -177,26 +180,20 @@ describe('fetchGoogleContacts', () => {
     await expect(fetchGoogleContacts('tok')).resolves.toEqual([]);
   });
 
-  it('401: gets a fresh token once and resumes from the same page', async () => {
-    authMock.signInWithPopup.mockResolvedValue({ user: { uid: 'u1' }, token: 'fresh' });
+  it('401 mid-fetch: stops with unauthorized and never refreshes the token or opens a popup', async () => {
+    fb.currentUser = { uid: 'u1' };
     fetchMock
       .mockResolvedValueOnce(json(200, { connections: [person(1)], nextPageToken: 'p2' }))
-      .mockResolvedValueOnce(json(401, { error: { code: 401, status: 'UNAUTHENTICATED' } }))
-      .mockResolvedValueOnce(json(200, { connections: [person(2)] }));
-    const out = await fetchGoogleContacts('stale');
-    expect(out).toHaveLength(2);
-    expect(authMock.signInWithPopup).toHaveBeenCalledTimes(1);
-    const [u3, init3] = fetchMock.mock.calls[2];
-    expect(new URL(String(u3)).searchParams.get('pageToken')).toBe('p2');
-    expect((init3?.headers as Record<string, string>).Authorization).toBe('Bearer fresh');
-  });
-
-  it('401 twice: gives up with a friendly error', async () => {
-    authMock.signInWithPopup.mockResolvedValue({ user: { uid: 'u1' }, token: 'fresh' });
-    fetchMock.mockResolvedValue(json(401, { error: { code: 401 } }));
-    await expectCode(fetchGoogleContacts('stale'), 'unauthorized');
-    expect(authMock.signInWithPopup).toHaveBeenCalledTimes(1);
+      .mockResolvedValueOnce(json(401, { error: { code: 401, status: 'UNAUTHENTICATED' } }));
+    await expectCode(
+      fetchGoogleContacts('stale'),
+      'unauthorized',
+      /Google access expired while reading your contacts\. Tap Import from Google Contacts again\./,
+    );
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(authMock.signInWithPopup).not.toHaveBeenCalled();
+    expect(authMock.reauthenticateWithPopup).not.toHaveBeenCalled();
+    expect(authMock.providers).toHaveLength(0);
   });
 
   it('403 SERVICE_DISABLED: tells the owner to turn on the People API', async () => {

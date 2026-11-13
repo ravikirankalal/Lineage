@@ -5,6 +5,11 @@
  * Security notes:
  * - Requests ONLY https://www.googleapis.com/auth/contacts.readonly, and only when the user starts
  *   an import (popup from a click).
+ * - NEVER signs anyone in. The user must already be signed in through the app's normal sign-in
+ *   (so CloudProvider's account-isolation and backup-consent flow always runs first); this only
+ *   re-authenticates that same user to add the contacts scope.
+ * - Never opens a popup mid-fetch: an expired token ends the import with 'unauthorized' and the
+ *   user starts it again from a click.
  * - The OAuth access token is short-lived (about 1 hour) and is kept in memory only: it is returned
  *   to the caller and never written to localStorage, IndexedDB, Firestore or logs. Error messages
  *   never contain it.
@@ -12,7 +17,6 @@
  * - Without Firebase config, or in emulator mode, `googleContactsAvailable()` is false and nothing
  *   here touches the network.
  */
-import type { UserCredential } from 'firebase/auth';
 import { cloudConfigured, getFirebaseAuth, usingEmulators } from './firebase';
 
 export const CONTACTS_SCOPE = 'https://www.googleapis.com/auth/contacts.readonly';
@@ -183,6 +187,7 @@ interface ListConnectionsResponse {
 
 export type GoogleContactsErrorCode =
   | 'unavailable'
+  | 'not-signed-in'
   | 'popup-closed'
   | 'popup-blocked'
   | 'account-mismatch'
@@ -206,6 +211,7 @@ export class GoogleContactsError extends Error {
 
 const MSG = {
   unavailable: 'Google Contacts import needs cloud sign-in to be set up for this site.',
+  notSignedIn: 'Sign in with Google first (Settings → Back up and share), then import.',
   popupClosed: 'The Google window was closed before access was granted. Try again when ready.',
   popupBlocked: 'Your browser blocked the Google window. Allow pop-ups for this site and try again.',
   accountMismatch:
@@ -214,7 +220,7 @@ const MSG = {
     'Lineage was not given access to your contacts. Try again and tick the "See and download your contacts" box.',
   apiDisabled:
     'Google Contacts import is not switched on yet. Turn on the People API for this project (see FIREBASE_SETUP.md › Google Contacts).',
-  unauthorized: 'Google did not accept the access permission (it may have expired). Try the import again.',
+  unauthorized: 'Google access expired while reading your contacts. Tap Import from Google Contacts again.',
   rateLimited: 'Google is limiting requests right now. Wait a minute and try again.',
   network: 'Could not reach Google. Check your connection and try again.',
 } as const;
@@ -246,26 +252,31 @@ function authErrorToFriendly(e: unknown): Error {
   }
 }
 
-/** Ask Google for contacts.readonly (popup) and return a short-lived OAuth access token. Never persisted. */
+/**
+ * Ask Google for contacts.readonly (popup) and return a short-lived OAuth access token. Never persisted.
+ * Requires an existing Firebase sign-in: it NEVER signs anyone in (throws 'not-signed-in' instead).
+ */
 export async function getContactsAccessToken(): Promise<string> {
   if (!googleContactsAvailable()) throw new GoogleContactsError('unavailable', MSG.unavailable);
   const auth = await getFirebaseAuth();
-  const { GoogleAuthProvider, reauthenticateWithPopup, signInWithPopup } = await import('firebase/auth');
+  const current = auth.currentUser;
+  if (!current) throw new GoogleContactsError('not-signed-in', MSG.notSignedIn);
+
+  const { GoogleAuthProvider, reauthenticateWithPopup } = await import('firebase/auth');
   const provider = new GoogleAuthProvider();
   provider.addScope(CONTACTS_SCOPE);
   provider.setCustomParameters({ prompt: 'select_account' });
 
-  const current = auth.currentUser;
-  let result: UserCredential;
+  let result;
   try {
-    // Signed in: re-authenticate the SAME user (Firebase rejects another account with
-    // auth/user-mismatch and leaves the session unchanged). Signed out: this also signs in.
-    result = current ? await reauthenticateWithPopup(current, provider) : await signInWithPopup(auth, provider);
+    // Re-authenticate the SAME user (Firebase rejects another account with auth/user-mismatch
+    // and leaves the session unchanged).
+    result = await reauthenticateWithPopup(current, provider);
   } catch (e) {
     throw authErrorToFriendly(e);
   }
   // Belt and braces: never continue with a different account than the signed-in one.
-  if (current && result.user.uid !== current.uid) {
+  if (result.user.uid !== current.uid) {
     throw new GoogleContactsError('account-mismatch', MSG.accountMismatch);
   }
   const token = GoogleAuthProvider.credentialFromResult(result)?.accessToken;
@@ -307,7 +318,7 @@ function retryDelayMs(res: Response, attempt: number): number {
   return Math.min(1000 * 2 ** attempt, 16000) + Math.floor(Math.random() * 250);
 }
 
-/** Fetch one page, retrying 429/5xx with backoff. Throws `{ unauthorized: true }` on 401. */
+/** Fetch one page, retrying 429/5xx with backoff. Throws 'unauthorized' on 401. */
 async function fetchPage(token: string, pageToken: string | undefined): Promise<ListConnectionsResponse> {
   const params = new URLSearchParams({ pageSize: String(PAGE_SIZE), personFields: PERSON_FIELDS });
   if (pageToken) params.set('pageToken', pageToken);
@@ -347,24 +358,13 @@ async function fetchPage(token: string, pageToken: string | undefined): Promise<
 }
 
 /** Fetch ALL connections (follows nextPageToken; pageSize 1000). onProgress(count) after each page.
- * On a 401 (expired token) it asks once for a fresh token and resumes from the same page. */
+ * On a 401 (expired token) it throws 'unauthorized' and never opens a popup: an un-gestured popup
+ * would be blocked, so the user restarts the import from a click instead. */
 export async function fetchGoogleContacts(token: string, onProgress?: (n: number) => void): Promise<GooglePerson[]> {
   const out: GooglePerson[] = [];
-  let current = token;
-  let refreshed = false;
   let pageToken: string | undefined;
   for (;;) {
-    let page: ListConnectionsResponse;
-    try {
-      page = await fetchPage(current, pageToken);
-    } catch (e) {
-      if (e instanceof GoogleContactsError && e.code === 'unauthorized' && !refreshed) {
-        refreshed = true;
-        current = await getContactsAccessToken();
-        continue; // retry the same page with the fresh token
-      }
-      throw e;
-    }
+    const page = await fetchPage(token, pageToken);
     for (const p of page.connections ?? []) if (p && p.resourceName) out.push(p);
     onProgress?.(out.length);
     pageToken = page.nextPageToken || undefined;
