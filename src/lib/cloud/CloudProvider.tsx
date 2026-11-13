@@ -7,7 +7,7 @@
  */
 import Dexie from 'dexie';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { LOCAL_DB_NAME, activeSpaceId, db, dbNameFor, forgetSpace, openSpaceDb } from '../db';
+import { LOCAL_DB_NAME, SPACE_DB_PREFIX, activeSpaceId, db, dbNameFor, forgetSpace, openSpaceDb } from '../db';
 import { syncOnce } from '../sync';
 import { useAuth } from './auth';
 import type { AuthState, CloudContext, CloudUser, InviteDoc, Role, Space, SyncStatus } from './contract';
@@ -69,6 +69,38 @@ const lsLastFull = (spaceId: string) => `lineage:lastFullSync:${spaceId}`;
 const FULL_SYNC_EVERY = 6 * 60 * 60 * 1000;
 const isPermissionError = (e: unknown) => /permission|denied|insufficient/i.test(String((e as Error)?.message ?? e));
 const lsDeclined = (uid: string) => 'lineage:declinedInvites:' + uid;
+
+const lsSpaceName = (spaceId: string) => `lineage:spaceName:${spaceId}`;
+
+/**
+ * Delete this device's copies of shared families that `uid` no longer belongs to, according to
+ * `list` (the server's authoritative membership list; call only with a successful listMySpaces
+ * result, never with a fallback). Only copies filled by this same account are touched, and the
+ * account's own separate DB is never touched. Returns the names of the families removed.
+ */
+async function forgetLostSpaces(uid: string, list: { id: string }[]): Promise<string[]> {
+  const keep = new Set(list.map((s) => s.id));
+  let names: string[] = [];
+  try {
+    names = ((await indexedDB.databases?.()) ?? []).map((d) => d.name ?? '');
+  } catch {
+    return [];
+  }
+  const removed: string[] = [];
+  for (const name of names) {
+    if (!name.startsWith(SPACE_DB_PREFIX)) continue;
+    const id = name.slice(SPACE_DB_PREFIX.length);
+    if (!id || id === uid || keep.has(id)) continue;
+    if (lsGet(lsDbOwner(name)) !== uid) continue;
+    await forgetSpace(id).catch(() => undefined);
+    lsSet(lsDbOwner(name), null);
+    lsSet(lsLastFull(id), null);
+    if (lsGet(LS_ACTIVE) === id) lsSet(LS_ACTIVE, null);
+    removed.push(lsGet(lsSpaceName(id)) ?? 'a family shared with you');
+    lsSet(lsSpaceName(id), null);
+  }
+  return removed;
+}
 
 function lsGet(k: string) {
   try { return localStorage.getItem(k); } catch { return null; }
@@ -200,19 +232,6 @@ export function CloudProvider({ children }: { children: ReactNode }) {
   const consentState: ConsentState = consent.uid === (uid ?? null) ? consent.state : 'unknown';
 
   // --- Space list -------------------------------------------------------------------------------
-  const refreshSpaces = useCallback(async () => {
-    if (!user) return;
-    try {
-      const list = await listMySpaces(user.uid);
-      setSpaces(list);
-      const declined = new Set(JSON.parse(lsGet(lsDeclined(user.uid)) ?? '[]') as string[]);
-      const inv = await myPendingInvites(user);
-      setInvites(inv.filter((i) => !declined.has(i.spaceId) && !list.some((s) => s.id === i.spaceId)));
-    } catch (e) {
-      if (!navigator.onLine) setStatus((s) => ({ ...s, state: 'offline' }));
-      else console.warn('[cloud] could not load spaces', e);
-    }
-  }, [user]);
 
   // --- Switching the local database --------------------------------------------------------------
   const swapDb = useCallback((spaceId: string | null) => {
@@ -220,6 +239,27 @@ export function CloudProvider({ children }: { children: ReactNode }) {
     setActiveId(spaceId);
     setDataKey((k) => `db:${spaceId ?? 'local'}:${Number(k.split(':').pop()) + 1}`);
   }, []);
+
+  const refreshSpaces = useCallback(async () => {
+    if (!user) return;
+    try {
+      const list = await listMySpaces(user.uid);
+      for (const sp of list) if (sp.id !== user.uid) lsSet(lsSpaceName(sp.id), sp.name);
+      setSpaces(list);
+      // Removed from a family (noticed on focus, reload or startup): wipe its copy from this device.
+      const lost = await forgetLostSpaces(user.uid, list);
+      if (lost.length) {
+        if (activeSpaceId() !== personalDb.current) swapDb(personalDb.current);
+        setNotice(`You no longer have access to ${lost.join(', ')}. ${lost.length === 1 ? 'It has' : 'They have'} been removed from this device.`);
+      }
+      const declined = new Set(JSON.parse(lsGet(lsDeclined(user.uid)) ?? '[]') as string[]);
+      const inv = await myPendingInvites(user);
+      setInvites(inv.filter((i) => !declined.has(i.spaceId) && !list.some((s) => s.id === i.spaceId)));
+    } catch (e) {
+      if (!navigator.onLine) setStatus((s) => ({ ...s, state: 'offline' }));
+      else console.warn('[cloud] could not load spaces', e);
+    }
+  }, [user, swapDb]);
 
   // --- Sign-in bootstrap: personal space and first-backup consent --------------------------------
   useEffect(() => {
