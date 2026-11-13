@@ -6,6 +6,5 @@ smoke-output
 *.tsbuildinfo
 .env.local
 .env.*.local
-.firebaserc
 .firebase
 *service-account*.json

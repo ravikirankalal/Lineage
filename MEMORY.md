@@ -87,3 +87,11 @@ Read this before changing code. Append new learnings at the bottom.
 - Tree cards show the regional term first ("Dadi · Grandmother") so it isn't truncated on phones.
 - **GitHub Pages source must be "GitHub Actions".** "Deploy from a branch" serves the raw source
   `index.html`, which is a blank page. Live site: https://ravikirankalal.github.io/Lineage/ (deploys `master`).
+
+## Firebase project (2026-11-13)
+- Firebase project id: **lineage-d575c** (Firestore region asia-south1). The Hosting URL is
+  https://lineage-d575c.web.app (and lineage-d575c.firebaseapp.com).
+- `.firebaserc` pins it for local `firebase` CLI commands. CI reads it from the repo variable
+  `VITE_FIREBASE_PROJECT_ID`, and the variables plus the `FIREBASE_SERVICE_ACCOUNT` secret are set by the owner in GitHub.
+- Project ids and the web config are public. The service-account JSON is the only secret and lives
+  only in GitHub secrets.
