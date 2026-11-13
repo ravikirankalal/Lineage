@@ -126,8 +126,20 @@ export interface ParsedDate {
   note?: string;
 }
 
-/** Parse a GEDCOM DATE value. Qualified dates give the year plus a note; unparseable ones only a note. */
+/**
+ * Parse a GEDCOM DATE value. Exact dates give `date` only. ABT/CAL/EST/INT give the year (close
+ * enough to order ancestors) plus a note. Ranges and bounds (BEF, AFT, BET…AND, FROM…TO, TO) give
+ * only the note: a year there would read as exact and contradict it ("Born 1940 · Died 2010" for
+ * "before 2010"). Unparseable dates give only a note.
+ */
 export function parseGedcomDate(raw: string): ParsedDate {
+  const { date, note, bounded } = parseQualified(raw);
+  if (bounded) return note ? { note } : {};
+  return { ...(date ? { date } : {}), ...(note ? { note } : {}) };
+}
+
+/** Like parseGedcomDate, but always gives the first year it finds, and whether the date is a range or bound. */
+function parseQualified(raw: string): ParsedDate & { bounded?: boolean } {
   const s = raw.trim().replace(/\s+/g, ' ');
   if (!s) return {};
   const exact = parseExact(s);
@@ -137,26 +149,27 @@ export function parseGedcomDate(raw: string): ParsedDate {
   if (m) {
     const d = parseExact(m[2]);
     if (d) {
-      const q = QUALIFIERS[m[1].toUpperCase()];
-      return { date: year(d), note: `${q} ${humanDate(m[2])}${m[3] ? ` (${m[3]})` : ''}` };
+      const k = m[1].toUpperCase();
+      const note = `${QUALIFIERS[k]} ${humanDate(m[2])}${m[3] ? ` (${m[3]})` : ''}`;
+      return { date: year(d), note, ...(k === 'BEF' || k === 'AFT' ? { bounded: true } : {}) };
     }
   }
   m = s.match(/^BET (.+) AND (.+)$/i);
   if (m) {
     const a = parseExact(m[1]);
     const b = parseExact(m[2]);
-    if (a && b) return { date: year(a), note: `between ${humanDate(m[1])} and ${humanDate(m[2])}` };
+    if (a && b) return { date: year(a), note: `between ${humanDate(m[1])} and ${humanDate(m[2])}`, bounded: true };
   }
   m = s.match(/^FROM (.+?)(?: TO (.+))?$/i);
   if (m) {
     const a = parseExact(m[1]);
     const b = m[2] ? parseExact(m[2]) : undefined;
-    if (a && (!m[2] || b)) return { date: year(a), note: `from ${humanDate(m[1])}${m[2] ? ` to ${humanDate(m[2])}` : ''}` };
+    if (a && (!m[2] || b)) return { date: year(a), note: `from ${humanDate(m[1])}${m[2] ? ` to ${humanDate(m[2])}` : ''}`, bounded: true };
   }
   m = s.match(/^TO (.+)$/i);
   if (m) {
     const a = parseExact(m[1]);
-    if (a) return { date: year(a), note: `to ${humanDate(m[1])}` };
+    if (a) return { date: year(a), note: `to ${humanDate(m[1])}`, bounded: true };
   }
   m = s.match(/^\((.*)\)$/); // date phrase
   return { note: m ? m[1].trim() : s };
@@ -299,6 +312,9 @@ const LABEL_TO_TAG: Record<string, string> = {};
 for (const [tag, label] of Object.entries(FACT_TAGS)) if (!LABEL_TO_TAG[label.toLowerCase()]) LABEL_TO_TAG[label.toLowerCase()] = tag;
 // Event tags are written back as plain FACTs: their value carries date/place text that would not re-parse cleanly.
 const ATTRIBUTE_TAGS = new Set(['RELI', 'NATI', 'TITL', 'CAST', '_GOTRA', 'NCHI', 'NMR', 'PROP']);
+
+/** Custom tag marking the person who exported the file ("This is me"). */
+const ME_TAG = '_LINEAGE_ME';
 
 /** Underscore tags that are app bookkeeping, never facts. */
 const IGNORED_CUSTOM = new Set([
@@ -542,6 +558,9 @@ function readIndi(node: Node, notes: Map<string, string>, warn: (w: string) => v
       case 'ASSO':
         if (isPointer(text(c))) info.asso.push({ xref: text(c), rela: sub(c, 'RELA') });
         break;
+      case ME_TAG:
+        if (!/^(N|NO|0|FALSE)$/i.test(text(c))) p.isMe = true;
+        break;
       case 'FACT':
       case 'EVEN': {
         const label = sub(c, 'TYPE') || (c.tag === 'FACT' ? 'Fact' : 'Event');
@@ -605,6 +624,13 @@ export function parseGedcom(input: string): GedcomImport {
     }
   }
   if (!people.length) warn('No people were found in this file.');
+  // Only one "me": keep the first if a hand-edited file marks several.
+  let meSeen = false;
+  for (const p of people) {
+    if (!p.isMe) continue;
+    if (meSeen) delete p.isMe;
+    meSeen = true;
+  }
 
   const rels: ParsedRelationship[] = [];
   const parentKey = new Map<string, ParsedRelationship>();
@@ -743,6 +769,24 @@ export function parseGedcom(input: string): GedcomImport {
   if (cyc) warn(`Skipped ${cyc} parent link${cyc === 1 ? '' : 's'} that would make someone their own ancestor.`);
 
   return { people, relationships: rels.filter((r) => !(r as { _drop?: boolean })._drop).map(strip), warnings };
+}
+
+/**
+ * The imported people as they should be saved, so there is exactly one "me": when this device
+ * already has a "me", nobody imported keeps isMe; otherwise at most the first marked person does.
+ */
+export function resolveImportedMe(people: Person[], hasLocalMe: boolean): Person[] {
+  let kept = false;
+  return people.map((p) => {
+    if (!p.isMe) return p;
+    if (!hasLocalMe && !kept) {
+      kept = true;
+      return p;
+    }
+    const { isMe, ...rest } = p;
+    void isMe;
+    return rest;
+  });
 }
 
 function strip(r: ParsedRelationship): ParsedRelationship {
@@ -1098,6 +1142,8 @@ function writeIndi(w: Writer, p: Person, xref: string, famc: Fam[], fams: Fam[],
     w.line(2, 'TYPE', 'aka');
   }
   w.line(1, 'SEX', SEX[p.gender] ?? 'U');
+  // Written in both privacy modes so "This is me" survives a round trip; other apps ignore it.
+  if (p.isMe) w.line(1, ME_TAG, 'Y');
 
   const facts = [...p.facts];
   const takeFact = (label: string) => {
@@ -1108,8 +1154,10 @@ function writeIndi(w: Writer, p: Person, xref: string, famc: Fam[], fams: Fam[],
     const note = facts.find((f) => f.label === label)?.value;
     if (note) {
       const ged = noteToGedcomDate(note);
-      const parsed = parseGedcomDate(ged).date;
-      // Prefer the qualified original when it still agrees with the stored date.
+      // Year the import put in the date field for this note. Older imports also filled it for
+      // BEF/AFT/BET/FROM; that year is not a second, exact date, so it is not written either.
+      const parsed = parseQualified(ged).date;
+      // Prefer the qualified original when it still agrees with the stored date (one DATE line only).
       if (!iso || (parsed && parsed.slice(0, 4) === iso.slice(0, 4) && iso.length === 4)) {
         takeFact(label);
         return ged;

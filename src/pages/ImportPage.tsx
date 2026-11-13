@@ -5,7 +5,7 @@ import { Avatar } from '../components/Avatar';
 import { contactPickerSupported, mergeInto, parseContactsFile, pickContacts, planImport, type DuplicateMatch } from '../lib/contacts';
 import { db } from '../lib/db';
 import { useData } from '../lib/data';
-import { decodeGedcom, exportGedcom, parseGedcom, type GedcomImport } from '../lib/gedcom';
+import { decodeGedcom, exportGedcom, parseGedcom, resolveImportedMe, type GedcomImport } from '../lib/gedcom';
 import { displayName } from '../lib/person';
 import type { Person } from '../lib/types';
 
@@ -95,7 +95,9 @@ export function ImportPage() {
     try {
       const now = Date.now();
       await db.transaction('rw', db.people, db.relationships, async () => {
-        await db.people.bulkAdd(ged.people);
+        // Exactly one "me": a "This is me" from the file only counts if this device has none yet.
+        const localMe = await db.people.filter((p) => p.isMe === true).first();
+        await db.people.bulkAdd(resolveImportedMe(ged.people, !!localMe));
         await db.relationships.bulkAdd(ged.relationships.map((r) => ({ ...r, createdAt: now })));
       });
       setDone({ added: ged.people.length, updated: 0, rels: ged.relationships.length });
@@ -189,7 +191,7 @@ export function ImportPage() {
               {ged.warnings.map((w, i) => <li key={i}>{w}</li>)}
             </ul>
           )}
-          <p className="mt-3 text-xs text-stone-400">Tip: you can merge any duplicates from a person’s page.</p>
+          <p className="mt-3 text-xs text-stone-500">Re-importing a file adds everyone again — use Merge on a person’s page to combine duplicates.</p>
           <div className="mt-4 flex justify-end gap-2">
             <button className="btn-ghost" onClick={() => setGed(null)}>Cancel</button>
             <button className="btn-primary" disabled={busy} onClick={doGedImport}>Import {ged.people.length}</button>

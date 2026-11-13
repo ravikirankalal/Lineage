@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeGedcom, exportGedcom, joinPlace, parseGedcom, parseGedcomDate, relaToSibling, splitPlace } from '../gedcom';
+import { decodeGedcom, exportGedcom, joinPlace, parseGedcom, parseGedcomDate, relaToSibling, resolveImportedMe, splitPlace } from '../gedcom';
 import { emptyPerson } from '../person';
 import type { Person, Relationship } from '../types';
 
@@ -136,7 +136,8 @@ describe('parseGedcom', () => {
     expect(r.facts).toContainEqual({ label: 'Place of death', value: 'Hyderabad, Telangana, India' });
     expect(by('Mohan').birthDate).toBe('1960-03');
     expect(by('Latha').birthDate).toBe('1963');
-    expect(by('Sarala').birthDate).toBe('1935');
+    // A range is not an exact year: only the fact is kept.
+    expect(by('Sarala').birthDate).toBeUndefined();
     expect(by('Sarala').facts).toContainEqual({ label: 'Birth date', value: 'between 1935 and 1938' });
     expect(by('Kamala').birthDate).toBeUndefined();
     expect(by('Kamala').facts).toContainEqual({ label: 'Birth date', value: 'during the monsoon' });
@@ -241,11 +242,15 @@ describe('dates and places', () => {
     ['1720/21', { date: '1720' }],
     ['@#DGREGORIAN@ 5 JAN 1901', { date: '1901-01-05' }],
     ['ABT 1900', { date: '1900', note: 'about 1900' }],
-    ['BEF 12 JUN 1900', { date: '1900', note: 'before 12 Jun 1900' }],
-    ['AFT 1900', { date: '1900', note: 'after 1900' }],
+    ['CAL 1901', { date: '1901', note: 'calculated 1901' }],
     ['EST 1870', { date: '1870', note: 'estimated 1870' }],
-    ['BET 1890 AND 1900', { date: '1890', note: 'between 1890 and 1900' }],
-    ['FROM 1890 TO 1900', { date: '1890', note: 'from 1890 to 1900' }],
+    // Bounds and ranges never give a date: a year would read as exact.
+    ['BEF 12 JUN 1900', { note: 'before 12 Jun 1900' }],
+    ['AFT 1900', { note: 'after 1900' }],
+    ['BET 1890 AND 1900', { note: 'between 1890 and 1900' }],
+    ['FROM 1890 TO 1900', { note: 'from 1890 to 1900' }],
+    ['FROM 1890', { note: 'from 1890' }],
+    ['TO 1900', { note: 'to 1900' }],
     ['(the year of the flood)', { note: 'the year of the flood' }],
     ['32 MAR 1958', { note: '32 MAR 1958' }],
     ['@#DJULIAN@ 1 JAN 1700', { note: '@#DJULIAN@ 1 JAN 1700' }],
@@ -373,10 +378,100 @@ describe('exportGedcom', () => {
     const out = exportGedcom(p, []);
     expect(out).toContain('2 DATE BET 1900 AND 1905');
     expect(out).toContain('2 DATE (during the monsoon)');
+    // Older imports filled the year from a range; export writes only the range, so re-import drops that year.
+    expect(out.match(/2 DATE/g)).toHaveLength(2);
     const back = parseGedcom(out).people;
-    expect(back[0]).toMatchObject({ birthDate: '1900', facts: [{ label: 'Birth date', value: 'between 1900 and 1905' }] });
+    expect(back[0].birthDate).toBeUndefined();
+    expect(back[0].facts).toEqual([{ label: 'Birth date', value: 'between 1900 and 1905' }]);
     expect(back[1].birthDate).toBeUndefined();
     expect(back[1].facts).toEqual([{ label: 'Birth date', value: 'during the monsoon' }]);
+  });
+
+  describe('qualified birth and death dates', () => {
+    const indi = (birth: string, death: string) =>
+      parseGedcom(['0 HEAD', '0 @I1@ INDI', '1 NAME Kesav /Imaginary/', '1 BIRT', `2 DATE ${birth}`, '1 DEAT', `2 DATE ${death}`, '0 TRLR'].join('\n')).people[0];
+
+    it('QA case: ABT birth keeps the year, BEF death only the fact', () => {
+      const p = indi('ABT 1940', 'BEF 2010');
+      expect(p.birthDate).toBe('1940');
+      expect(p.deathDate).toBeUndefined();
+      expect(p.deceased).toBe(true);
+      expect(p.facts).toEqual([{ label: 'Birth date', value: 'about 1940' }, { label: 'Death date', value: 'before 2010' }]);
+    });
+
+    it.each([
+      ['BEF 1940', 'before 1940'],
+      ['AFT 1940', 'after 1940'],
+      ['BET 1938 AND 1942', 'between 1938 and 1942'],
+      ['FROM 1938 TO 1942', 'from 1938 to 1942'],
+      ['FROM 1938', 'from 1938'],
+      ['TO 1942', 'to 1942'],
+    ])('%s fills no date field, keeps the fact, and round-trips', (raw, note) => {
+      const p = indi(raw, raw);
+      expect(p.birthDate).toBeUndefined();
+      expect(p.deathDate).toBeUndefined();
+      expect(p.deceased).toBe(true);
+      expect(p.facts).toEqual([{ label: 'Birth date', value: note }, { label: 'Death date', value: note }]);
+      const out = exportGedcom([p], []);
+      expect(out).toContain(`1 BIRT\n2 DATE ${raw}\n`);
+      expect(out).toContain(`1 DEAT\n2 DATE ${raw}\n`);
+      expect(out.match(/2 DATE/g)).toHaveLength(2);
+      expect(out).not.toContain('FACT');
+      const back = parseGedcom(out).people[0];
+      expect([back.birthDate, back.deathDate, back.deceased, back.facts]).toEqual([undefined, undefined, true, p.facts]);
+    });
+
+    it.each([
+      ['ABT 1940', 'about 1940'],
+      ['CAL 1940', 'calculated 1940'],
+      ['EST 1940', 'estimated 1940'],
+    ])('%s keeps the year and the fact, and round-trips as one DATE', (raw, note) => {
+      const p = indi(raw, raw);
+      expect([p.birthDate, p.deathDate]).toEqual(['1940', '1940']);
+      expect(p.facts).toEqual([{ label: 'Birth date', value: note }, { label: 'Death date', value: note }]);
+      const out = exportGedcom([p], []);
+      expect(out).toContain(`1 BIRT\n2 DATE ${raw}\n`);
+      expect(out).toContain(`1 DEAT\n2 DATE ${raw}\n`);
+      expect(out.match(/2 DATE/g)).toHaveLength(2);
+      expect(out).not.toContain('FACT');
+      const back = parseGedcom(out).people[0];
+      expect([back.birthDate, back.deathDate, back.facts]).toEqual(['1940', '1940', p.facts]);
+    });
+
+    it('a date the user changed is written as typed, with the qualifier kept as a fact', () => {
+      const p = emptyPerson({ id: 'x', firstName: 'Kesav', birthDate: '1941-02-03', facts: [{ label: 'Birth date', value: 'about 1940' }] });
+      const out = exportGedcom([p], []);
+      expect(out).toContain('2 DATE 3 FEB 1941');
+      const back = parseGedcom(out).people[0];
+      expect(back.birthDate).toBe('1941-02-03');
+      expect(back.facts).toEqual([{ label: 'Birth date', value: 'about 1940' }]);
+    });
+  });
+
+  describe('"This is me"', () => {
+    it.each(['full', 'tree'] as const)('round-trips via _LINEAGE_ME in %s mode, with the HEAD SUBM kept', (privacy) => {
+      const out = exportGedcom(people, rels, { privacy });
+      expect(out.match(/^1 _LINEAGE_ME Y$/gm)).toHaveLength(1);
+      expect(out).toMatch(/^1 SUBM @U1@$/m);
+      expect(out).toMatch(/^0 @U1@ SUBM$/m);
+      const back = parseGedcom(out);
+      expect(back.people.filter((p) => p.isMe).map((p) => p.firstName)).toEqual(['Anika']);
+      expect(back.people.some((p) => p.facts.some((f) => /lineage/i.test(f.label)))).toBe(false);
+    });
+
+    it('keeps only the first of several marked people', () => {
+      const r = parseGedcom(['0 @A@ INDI', '1 NAME Anu //', '1 _LINEAGE_ME Y', '0 @B@ INDI', '1 NAME Bala //', '1 _LINEAGE_ME Y'].join('\n'));
+      expect(r.people.map((p) => !!p.isMe)).toEqual([true, false]);
+    });
+
+    it('resolveImportedMe strips isMe when this device already has a "me"', () => {
+      const imported = [emptyPerson({ id: 'a', firstName: 'Anu', isMe: true }), emptyPerson({ id: 'b', firstName: 'Bala' })];
+      expect(resolveImportedMe(imported, true).some((p) => 'isMe' in p)).toBe(false);
+      expect(resolveImportedMe(imported, false).map((p) => !!p.isMe)).toEqual([true, false]);
+      expect(imported[0].isMe).toBe(true); // input not mutated
+      const two = [emptyPerson({ id: 'a', isMe: true }), emptyPerson({ id: 'b', isMe: true })];
+      expect(resolveImportedMe(two, false).filter((p) => p.isMe)).toHaveLength(1);
+    });
   });
 
   it('splits long notes with CONC and rejoins them', () => {
