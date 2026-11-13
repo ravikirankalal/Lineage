@@ -5,6 +5,7 @@ import { kinship } from '../lib/kinship';
 import { displayName, lifespan } from '../lib/person';
 import { CARD_H, CARD_W, layoutTree } from '../lib/tree';
 import { Avatar } from './Avatar';
+import { useRegionalTerm } from './KinLabel';
 
 const PAD = 40;
 
@@ -23,6 +24,7 @@ export function FamilyTree({ focusId, egoId, egoLabel = 'You', onSelect, onOpen,
   const layout = useMemo(() => layoutTree(graph, focusId, { ghosts: !!onAddParent }), [graph, focusId, onAddParent]);
   const ego = egoId ?? focusId;
   const egoAnc = useMemo(() => graph.ancestors(ego), [graph, ego]);
+  const termFor = useRegionalTerm();
   const [scale, setScale] = useState(() => (typeof window !== 'undefined' && window.innerWidth < 640 ? 0.8 : 1));
   const scroller = useRef<HTMLDivElement>(null);
 
@@ -93,6 +95,11 @@ export function FamilyTree({ focusId, egoId, egoLabel = 'You', onSelect, onOpen,
               const p = byId.get(n.personId!);
               if (!p) return null;
               const kin = n.personId === ego ? undefined : kinship(graph, ego, p.id, egoAnc);
+              const term = kin ? termFor(ego, p.id, kin.label) : undefined;
+              const span = lifespan(p);
+              const relCls = n.focus ? 'text-white/85' : 'text-brand-700 dark:text-brand-300';
+              const mutedCls = n.focus ? 'text-white/70' : 'text-stone-500 dark:text-stone-400';
+              const spanCls = n.focus ? 'text-white/70' : 'text-stone-400';
               return (
                 <button
                   key={n.key}
@@ -102,7 +109,7 @@ export function FamilyTree({ focusId, egoId, egoLabel = 'You', onSelect, onOpen,
                     if (n.focus && onOpen) onOpen(p.id);
                     else onSelect(p.id);
                   }}
-                  title={n.focus ? 'Open profile' : 'Centre tree on ' + displayName(p)}
+                  title={(n.focus ? 'Open profile' : 'Centre tree on ' + displayName(p)) + (term ? ` (${term} · ${kin?.label})` : '')}
                   className={`absolute flex items-center gap-2.5 rounded-2xl px-2.5 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-md ${
                     n.focus
                       ? 'bg-brand-600 text-white ring-2 ring-brand-600 ring-offset-2 ring-offset-stone-100 dark:ring-offset-stone-900'
@@ -112,10 +119,30 @@ export function FamilyTree({ focusId, egoId, egoLabel = 'You', onSelect, onOpen,
                   <Avatar person={p} size={38} />
                   <div className="min-w-0 flex-1 leading-tight">
                     <div className="truncate text-[13px] font-semibold">{p.nickname && p.nickname.length < 12 ? p.nickname : p.firstName} {p.lastName ? p.lastName[0] + '.' : ''}</div>
-                    <div className={`truncate text-[11px] ${n.focus ? 'text-white/80' : 'text-brand-700 dark:text-brand-300'}`}>
-                      {n.personId === ego ? egoLabel : kin?.label ?? ''}
-                    </div>
-                    <div className={`truncate text-[11px] ${n.focus ? 'text-white/70' : 'text-stone-400'}`}>{lifespan(p)}</div>
+                    {term ? (
+                      // Regional term first: it's the word the family uses, and it's short enough to
+                      // survive truncation. The English label follows, quieter. With no lifespan, the
+                      // English label gets the third line to itself so neither word is cut.
+                      span ? (
+                        <>
+                          <div className={`truncate text-[11px] ${relCls}`}>
+                            <span className="font-semibold">{term}</span>
+                            <span className={mutedCls}> · {kin?.label}</span>
+                          </div>
+                          <div className={`truncate text-[11px] ${spanCls}`}>{span}</div>
+                        </>
+                      ) : (
+                        <>
+                          <div className={`truncate text-[11px] font-semibold ${relCls}`}>{term}</div>
+                          <div className={`truncate text-[11px] ${mutedCls}`}>{kin?.label}</div>
+                        </>
+                      )
+                    ) : (
+                      <>
+                        <div className={`truncate text-[11px] ${relCls}`}>{n.personId === ego ? egoLabel : kin?.label ?? ''}</div>
+                        <div className={`truncate text-[11px] ${spanCls}`}>{span}</div>
+                      </>
+                    )}
                   </div>
                 </button>
               );

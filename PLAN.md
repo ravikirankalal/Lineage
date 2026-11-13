@@ -101,14 +101,31 @@
 - [x] Kinship: sibling subtypes, step-/half-sibling labels, foster not blood,
       earliest ancestor only with a known birth year
 
+### Phase 9 — Second fleet round ✅
+- [x] Merge two people into one (`mergePeople` / `previewMerge`, `MergeSheet`): keep's values win,
+      dropped names go to otherNames, link subtypes kept, contradictory links removed, cycles
+      rejected, warning when the two are directly related
+- [x] Regional kinship vocabularies: Hindi/Telugu terms (`kinshipTerms.ts`), Settings
+      "Family terms", "Uncle · Chacha" labels, term-first tree cards
+- [x] GEDCOM 5.5.1 import/export ("Import & export" page), privacy modes (family tree only /
+      everything), "me" preserved, half/step siblings via ASSO/RELA, approximate dates kept approximate
+- [x] Kinship gaps: path text instead of "Relative" (covers a parent's view of a child's explicit
+      step/half sibling), half-sibling extension through full siblings, foster sibling labels
+- [x] Performance: shared `familyPathTree` search — regional terms ~240 ms → 1.5 ms, `relativesOf`
+      ~260 ms → 12 ms on 500 people
+- [x] Review (7 findings fixed) and QA (5 findings: 3 fixed, 1 warning added, 1 → backlog)
+- [x] Site live on GitHub Pages (source: GitHub Actions)
+
 ### Backlog / ideas
 - [ ] Optional encrypted cloud sync between devices
-- [ ] GEDCOM import/export (standard genealogy format)
+- [ ] GEDCOM re-import that matches existing people instead of adding duplicates
+- [ ] Regional terms for great-grandparents, grand-uncles/aunts (plus Telugu younger cross-cousin,
+      parallel nephew/niece, step/foster)
+- [ ] Wider tree cards so "Great-grandfather" fits
+- [ ] Move `likelyDuplicates` from `MergeSheet.tsx` to `src/lib` (and test it)
 - [ ] Multiple photos per person, photo-based recall
 - [ ] Map view of where people live / come from
 - [ ] Reminders (birthdays, "haven't talked in a while")
-- [ ] Regional kinship vocabularies (e.g. Hindi/Telugu terms: chacha, mama, bua…)
-- [ ] Merge two people into one
-- [ ] Kinship: parent's view of child's explicit step/half sibling, transitive step/half
-      sibling edges, foster sibling labels, half-sibling's ancestors as blood
+- [ ] Kinship: transitive step edges / chained half edges, half-sibling's ancestors as blood,
+      half-uncles/half-cousins
 - [x] Faster `planImport`: indexed matching, 5000 contacts in ~30 ms (was ~3 s)

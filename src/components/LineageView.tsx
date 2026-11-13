@@ -8,6 +8,7 @@ import type { Person } from '../lib/types';
 import { AddRelationSheet, type RelChoice } from './AddRelationSheet';
 import { Avatar } from './Avatar';
 import { FamilyTree } from './FamilyTree';
+import { KinLabel } from './KinLabel';
 import { PersonRow } from './PersonRow';
 
 type Tab = 'tree' | 'relatives' | 'lines';
@@ -45,7 +46,7 @@ export function LineageView({ ego, egoLabel = 'You' }: { ego: Person; egoLabel?:
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <div className="mr-auto min-w-0 text-sm text-stone-500">
               Showing <b className="text-stone-800 dark:text-stone-100">{displayName(focus)}</b>
-              {focusKin && <> · {focusKin.label}</>}
+              {focusKin && <> · <KinLabel label={focusKin.label} egoId={ego.id} targetId={focus.id} termClassName="text-stone-400" /></>}
               <span className="hidden sm:inline"> — tap a card to move around</span>
             </div>
             {focus.id !== ego.id && (
@@ -67,7 +68,7 @@ export function LineageView({ ego, egoLabel = 'You' }: { ego: Person; egoLabel?:
         </div>
       )}
 
-      {tab === 'relatives' && <RelativesList relatives={relatives} egoName={ego.isMe ? 'you' : ego.firstName} />}
+      {tab === 'relatives' && <RelativesList relatives={relatives} egoId={ego.id} egoName={ego.isMe ? 'you' : ego.firstName} />}
       {tab === 'lines' && <Lines ego={ego} />}
 
       {adding && (
@@ -77,7 +78,7 @@ export function LineageView({ ego, egoLabel = 'You' }: { ego: Person; egoLabel?:
   );
 }
 
-function RelativesList({ relatives, egoName }: { relatives: Relative[]; egoName: string }) {
+function RelativesList({ relatives, egoId, egoName }: { relatives: Relative[]; egoId: string; egoName: string }) {
   const [side, setSide] = useState<'all' | 'paternal' | 'maternal'>('all');
   const [q, setQ] = useState('');
   const filtered = relatives.filter((r) => (side === 'all' || r.kin.side === side || !r.kin.side) && matchesQuery(r.person, q));
@@ -115,7 +116,7 @@ function RelativesList({ relatives, egoName }: { relatives: Relative[]; egoName:
               {groups.get(c)!.map((r) => (
                 <PersonRow key={r.person.id} person={r.person} to={`/people/${r.person.id}`}
                   subtitle={<>
-                    <span className="font-medium text-brand-700 dark:text-brand-300">{r.kin.label}</span>
+                    <KinLabel label={r.kin.label} egoId={egoId} targetId={r.person.id} className="font-medium text-brand-700 dark:text-brand-300" />
                     {r.kin.path !== r.kin.label && <span className="text-stone-400"> · {r.kin.path}</span>}
                     {formatPlace(r.person.address, true) && <span className="text-stone-400"> · {formatPlace(r.person.address, true)}</span>}
                   </>} />

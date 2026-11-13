@@ -8,10 +8,10 @@ are in `.claude/agents/`. Claude Code loads them automatically, so you can name 
 
 | Agent | Owns | Edits code? | Use it when |
 | --- | --- | --- | --- |
-| `kinship-engineer` | `src/lib/kinship.ts`, `tree.ts`, `connections.ts` + tests | yes | relationship labels, tree layout, connection grouping |
+| `kinship-engineer` | `src/lib/kinship.ts`, `kinshipTerms.ts`, `tree.ts`, `connections.ts` + tests | yes | relationship labels, tree layout, connection grouping |
 | `ui-builder` | `src/pages`, `src/components`, `src/index.css` | yes | new screens, forms, polish, responsive/dark-mode fixes |
-| `import-specialist` | `src/lib/contacts.ts`, backup format, `ImportPage` | yes | contacts formats, dedupe/merge, GEDCOM |
-| `data-steward` | `src/lib/types.ts`, `src/lib/db.ts` | yes | any schema/field change, Dexie migrations, integrity rules |
+| `import-specialist` | `src/lib/contacts.ts`, `gedcom.ts`, backup format, `ImportPage` | yes | contacts formats, dedupe/merge, GEDCOM |
+| `data-steward` | `src/lib/types.ts`, `src/lib/db.ts` (incl. `mergePeople`) | yes | any schema/field change, Dexie migrations, integrity rules |
 | `code-reviewer` | — | no (read-only) | after non-trivial changes; whole-codebase audits |
 | `qa-tester` | `scripts/` test scripts only | no app code | before shipping; after UI changes; exploratory testing |
 | `docs-keeper` | `STATE.md`, `PLAN.md`, `MEMORY.md`, `README.md`, `AGENTS.md` | docs only | end of every session; after agent reports |
@@ -70,3 +70,15 @@ checks), import-specialist (strong/possible dedupe, in-file dedupe), ui-builder 
 links, one transaction per add) and kinship-engineer (sibling subtypes, foster, step/half labels).
 Result: 55 tests passing; smoke and qa pass.
 Follow-up review of the fixes: 2 more findings (re-linking reset subtypes → fixed directly; `planImport` O(n²) → import-specialist, 100× faster). Final: 56 tests, smoke + qa pass.
+
+**2026-11-13: second run.** Four backlog items built in parallel by their owners:
+data-steward (`mergePeople` / `previewMerge`) with ui-builder (`MergeSheet`); kinship-engineer
+(Hindi/Telugu terms in `kinshipTerms.ts`, path text instead of "Relative", half-sibling extension,
+foster siblings) with ui-builder (Settings "Family terms", `KinLabel`, term-first tree cards);
+import-specialist (GEDCOM 5.5.1 import/export, privacy modes). kinship-engineer then made regional
+terms (~240 ms → 1.5 ms) and `relativesOf` (~260 ms → 12 ms) fast on 500 people via a shared
+`familyPathTree`, with equality tests. code-reviewer found 7 issues, all fixed by the owners.
+qa-tester added merge, family-terms and GEDCOM flows (10 total) and found 5 issues: 3 fixed, a
+direct-relation merge warning added, and GEDCOM re-import duplicates kept by design (→ backlog).
+Result: 243 tests passing; smoke + qa pass. The site went live on GitHub Pages
+(source: GitHub Actions); it gets these features once the branch merges.

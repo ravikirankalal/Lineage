@@ -1,11 +1,13 @@
 import {
-  ArrowLeft, Briefcase, Cake, GitBranch, GraduationCap, Home, Mail, MapPin, MessageCircle, Pencil, Phone, Plus,
+  ArrowLeft, Briefcase, Cake, GitBranch, GraduationCap, Home, Mail, MapPin, Merge, MessageCircle, Pencil, Phone, Plus,
   Sparkles, Trash2, Users, X,
 } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AddRelationSheet } from '../components/AddRelationSheet';
 import { Avatar } from '../components/Avatar';
+import { KinLabel } from '../components/KinLabel';
+import { MergeSheet } from '../components/MergeSheet';
 import { PersonRow } from '../components/PersonRow';
 import { Sheet } from '../components/Sheet';
 import { connectionsOf, type ConnectionGroup } from '../lib/connections';
@@ -22,14 +24,15 @@ export function PersonPage() {
   const p = id ? byId.get(id) : undefined;
   const [adding, setAdding] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [merging, setMerging] = useState(false);
 
   const groups = useMemo(() => (p ? connectionsOf(p.id, people, rels, graph) : []), [p, people, rels, graph]);
   const toMe = useMemo(() => {
     if (!p || !me || p.id === me.id) return undefined;
     const k = kinship(graph, me.id, p.id);
-    if (k) return { label: k.label, path: k.path !== k.label ? k.path : undefined };
+    if (k) return { label: k.label, path: k.path !== k.label ? k.path : undefined, family: true };
     const r = rels.find((x) => !isFamilyType(x.type) && ((x.fromId === me.id && x.toId === p.id) || (x.toId === me.id && x.fromId === p.id)));
-    return r ? { label: 'Your ' + SOCIAL_LABELS[r.type as SocialType].toLowerCase(), path: undefined } : undefined;
+    return r ? { label: 'Your ' + SOCIAL_LABELS[r.type as SocialType].toLowerCase(), path: undefined, family: false } : undefined;
   }, [p, me, graph, rels]);
 
   if (!loaded) return null;
@@ -54,7 +57,11 @@ export function PersonPage() {
         {p.nickname && <div className="text-stone-500">“{p.nickname}”</div>}
         <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5">
           {p.isMe && <span className="chip !bg-brand-100 !text-brand-800 dark:!bg-brand-900/60 dark:!text-brand-200">You</span>}
-          {toMe && <span className="chip !bg-brand-100 !text-brand-800 dark:!bg-brand-900/60 dark:!text-brand-200" title={toMe.path}>{toMe.label}</span>}
+          {toMe && <span className="chip !bg-brand-100 !text-brand-800 dark:!bg-brand-900/60 dark:!text-brand-200" title={toMe.path}>
+            {toMe.family && me
+              ? <KinLabel label={toMe.label} egoId={me.id} targetId={p.id} termClassName="font-normal text-brand-700/75 dark:text-brand-300/80" />
+              : toMe.label}
+          </span>}
           {a !== undefined && <span className="chip">{p.deceased ? `Lived ${a} years` : `${a} years`}</span>}
           {p.deceased && !a && <span className="chip">Passed away</span>}
           {p.tags.map((t) => <span key={t} className="chip">#{t}</span>)}
@@ -90,15 +97,17 @@ export function PersonPage() {
         </button>
       ) : (
         <div className="mt-3 space-y-4">
-          {groups.map((g) => <Group key={g.key} group={g} personName={p.firstName} />)}
+          {groups.map((g) => <Group key={g.key} group={g} personId={p.id} personName={p.firstName} />)}
         </div>
       )}
 
-      <div className="mt-10 flex justify-center">
+      <div className="mt-10 flex flex-wrap justify-center gap-2">
+        <button className="btn-ghost text-stone-500 dark:text-stone-400" onClick={() => setMerging(true)}><Merge size={16} /> Merge with a duplicate…</button>
         <button className="btn-danger" onClick={() => setConfirmDelete(true)}><Trash2 size={16} /> Delete {p.firstName}</button>
       </div>
 
       <AddRelationSheet person={p} open={adding} onClose={() => setAdding(false)} />
+      <MergeSheet person={p} open={merging} onClose={() => setMerging(false)} />
       <Sheet open={confirmDelete} onClose={() => setConfirmDelete(false)} title={`Delete ${p.firstName}?`}
         footer={<div className="flex justify-end gap-2">
           <button className="btn-ghost" onClick={() => setConfirmDelete(false)}>Cancel</button>
@@ -110,12 +119,13 @@ export function PersonPage() {
   );
 }
 
-function Group({ group, personName }: { group: ConnectionGroup; personName: string }) {
+function Group({ group, personId, personName }: { group: ConnectionGroup; personId: string; personName: string }) {
   const [all, setAll] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
   const LIMIT = 8;
   const items = all ? group.items : group.items.slice(0, LIMIT);
   const implicit = !group.items.some((i) => i.relId) && ['area', 'city', 'origin', 'school', 'work'].includes(group.key);
+  const family = group.key === 'family' || group.key === 'extended';
   return (
     <section>
       <div className="mb-1 flex items-baseline gap-2 px-1">
@@ -129,7 +139,9 @@ function Group({ group, personName }: { group: ConnectionGroup; personName: stri
             <div className="min-w-0 flex-1">
               <PersonRow person={it.person} to={`/people/${it.person.id}`}
                 subtitle={<>
-                  <span className={implicit ? '' : 'font-medium text-brand-700 dark:text-brand-300'}>{it.label}</span>
+                  {family
+                    ? <KinLabel label={it.label} egoId={personId} targetId={it.person.id} className="font-medium text-brand-700 dark:text-brand-300" />
+                    : <span className={implicit ? '' : 'font-medium text-brand-700 dark:text-brand-300'}>{it.label}</span>}
                   {it.side && <span className="text-stone-400"> · {it.side}</span>}
                   {it.detail && <span className="text-stone-400"> · {it.detail}</span>}
                 </>}

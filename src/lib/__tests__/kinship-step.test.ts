@@ -3,6 +3,7 @@ import { FamilyGraph, familyPath, kinship, lineageStats, relativesOf } from '../
 import { layoutTree } from '../tree';
 import { emptyPerson } from '../person';
 import type { Gender, Relationship, RelType } from '../types';
+import { expectRelativesMatchKinship } from './families';
 
 function family() {
   const people = new Map<string, ReturnType<typeof emptyPerson>>();
@@ -26,6 +27,10 @@ function withExplicitSibling(subtype: 'step' | 'half', gender: Gender = 'female'
 }
 
 describe('explicit step and half siblings', () => {
+  it('relativesOf matches per-target kinship for every ego', () => {
+    for (const sub of ['step', 'half'] as const) for (const gen of ['male', 'female', 'unknown'] as const) expectRelativesMatchKinship(withExplicitSibling(sub, gen));
+  });
+
   it('labels an explicit step-sibling as a stepsister without inheriting my parents', () => {
     const G = withExplicitSibling('step');
     expect(kinship(G, 'me', 'sib')?.label).toBe('Stepsister');
@@ -101,6 +106,10 @@ describe('step-siblings via a step-parent', () => {
     f.rel('stepMom', 'me', 'parent', 'step');
     return f.graph();
   }
+
+  it('relativesOf matches per-target kinship for every ego', () => {
+    expectRelativesMatchKinship(g());
+  });
   it('labels my step-mother\'s child from another relationship as a step-sibling', () => {
     const G = g();
     expect(kinship(G, 'me', 'ss')?.label).toBe('Stepsister');
@@ -136,6 +145,10 @@ describe('foster relations', () => {
     f.rel('mom', 'x', 'parent', 'foster');
     return f.graph();
   }
+
+  it('relativesOf matches per-target kinship for every ego', () => {
+    expectRelativesMatchKinship(g());
+  });
   it('labels both directions as foster', () => {
     const G = g();
     expect(kinship(G, 'kid', 'mom')?.label).toBe('Foster mother');

@@ -20,6 +20,9 @@ export class FamilyGraph {
   readonly looseSiblings = new Map<string, Edge<SiblingSubtype>[]>();
   /** Explicit full/adoptive/untyped sibling groups (union-find root per person); they share parents. */
   private sibRoot = new Map<string, string>();
+  /** Members of each explicit sibling group by root, in `sibRoot` insertion order. Built lazily:
+   * the graph is immutable after construction, so it never needs invalidating. */
+  private groups?: Map<string, string[]>;
 
   constructor(people: Person[] | Map<string, Person>, rels: Relationship[]) {
     this.people = people instanceof Map ? people : new Map(people.map((p) => [p.id, p]));
@@ -60,10 +63,11 @@ export class FamilyGraph {
 
   private explicitGroup(id: string): string[] {
     if (!this.sibRoot.has(id)) return [];
-    const root = this.find(id);
-    const out: string[] = [];
-    for (const k of this.sibRoot.keys()) if (k !== id && this.find(k) === root) out.push(k);
-    return out;
+    if (!this.groups) {
+      this.groups = new Map();
+      for (const k of this.sibRoot.keys()) push(this.groups, this.find(k), k);
+    }
+    return this.groups.get(this.find(id))!.filter((k) => k !== id);
   }
 
   person(id: string) {
@@ -126,10 +130,36 @@ export class FamilyGraph {
     return out;
   }
 
-  /** Siblings: share at least one blood parent, or an explicit sibling edge (step/half edges win). */
+  /** Siblings: share at least one blood parent, or an explicit sibling edge (step/half edges win).
+   * An explicit half edge A–B also makes A a half-sibling of B's full siblings (they share B's parents);
+   * step edges are never chained. */
   siblingsOf(id: string): { id: string; half: boolean; step?: boolean }[] {
+    const res: Map<string, { half: boolean; step?: boolean }> = this.sharedParentSiblings(id);
+    const loose = this.looseSiblings.get(id) ?? [];
+    // Half edge from me to B: B's full siblings are my half-siblings too.
+    for (const e of loose) {
+      if (e.subtype !== 'half') continue;
+      for (const [c, v] of this.sharedParentSiblings(e.id)) {
+        if (c !== id && !v.half && !res.has(c)) res.set(c, { half: true });
+      }
+    }
+    // Reverse: my full sibling B has a half edge to A.
+    for (const [b, v] of [...res]) {
+      if (v.half) continue;
+      for (const e of this.looseSiblings.get(b) ?? []) {
+        if (e.subtype === 'half' && e.id !== id && !res.has(e.id)) res.set(e.id, { half: true });
+      }
+    }
+    for (const e of loose) {
+      res.set(e.id, e.subtype === 'step' ? { half: false, step: true } : { half: true });
+    }
+    return [...res].map(([sid, v]) => ({ id: sid, ...v }));
+  }
+
+  /** Siblings through shared blood parents or an explicit full/adoptive/untyped group (no loose edges). */
+  private sharedParentSiblings(id: string): Map<string, { half: boolean }> {
     const mine = new Set(this.bloodParents(id));
-    const res = new Map<string, { half: boolean; step?: boolean }>();
+    const res = new Map<string, { half: boolean }>();
     for (const p of mine) {
       for (const c of this.childrenOf(p)) {
         if (c.id === id || !isBloodEdge(c.subtype)) continue;
@@ -140,10 +170,7 @@ export class FamilyGraph {
       }
     }
     for (const s of this.explicitGroup(id)) if (!res.has(s)) res.set(s, { half: false });
-    for (const e of this.looseSiblings.get(id) ?? []) {
-      res.set(e.id, e.subtype === 'step' ? { half: false, step: true } : { half: true });
-    }
-    return [...res].map(([sid, v]) => ({ id: sid, ...v }));
+    return res;
   }
 
   /** Everyone reachable through family edges only (friends are never included). */
@@ -366,12 +393,48 @@ function bloodLabel(bl: Blood, gender: Gender): { label: string; category: KinCa
 }
 
 /** Shortest family path from a to b as words, e.g. "Father's brother's son". */
-export function familyPath(graph: FamilyGraph, a: string, b: string): { steps: { id: string; step: Step }[]; text: string } | undefined {
+export function familyPath(graph: FamilyGraph, a: string, b: string): FamilyPath | undefined {
   if (a === b) return { steps: [], text: 'You' };
-  const prev = new Map<string, { from: string; step: Step }>();
+  return pathInTree(graph, familyPathTree(graph, a, b), a, b);
+}
+
+/** A family path from one person to another: steps in order, plus the words. */
+export interface FamilyPath {
+  steps: { id: string; step: Step }[];
+  text: string;
+}
+
+/** The path from the tree's root `a` to `b`, as `familyPath` would return it; undefined if `b` is not in the tree. */
+export function pathInTree(graph: FamilyGraph, prev: FamilyPathTree, a: string, b: string): FamilyPath | undefined {
+  if (a === b) return { steps: [], text: 'You' };
+  if (!prev.has(b)) return undefined;
+  const steps: { id: string; step: Step }[] = [];
+  let cur = b;
+  while (cur !== a) {
+    const p = prev.get(cur)!;
+    steps.unshift({ id: cur, step: p.step });
+    cur = p.from;
+  }
+  const words = steps.map((s) => stepWord(s.step, graph.person(s.id)?.gender ?? 'unknown'));
+  const text = words.map((w, i) => (i === 0 ? w : w.toLowerCase())).join("'s ");
+  return { steps, text };
+}
+
+/** Predecessor of each node on its shortest family path from the BFS root. */
+export type FamilyPathTree = Map<string, { from: string; step: Step }>;
+
+/**
+ * Shortest-path tree of family links from `a` (breadth-first, neighbours tried in `order`).
+ * Every node's predecessor is fixed when it is first reached, independent of `stopAt`, so the
+ * tree with or without `stopAt` gives the same path to each node it contains. `familyPath` and
+ * `regionalTermsFor` both rely on that: one full tree answers every target identically.
+ * `stopAt` ends the search after the level that reaches it.
+ */
+export function familyPathTree(graph: FamilyGraph, a: string, stopAt?: string): FamilyPathTree {
+  const prev: FamilyPathTree = new Map();
   const seen = new Set([a]);
   let frontier = [a];
-  while (frontier.length && !seen.has(b)) {
+  while (frontier.length && !(stopAt !== undefined && seen.has(stopAt))) {
     const next: string[] = [];
     for (const n of frontier) {
       // prefer sibling/spouse words first for nicer phrasing
@@ -385,31 +448,28 @@ export function familyPath(graph: FamilyGraph, a: string, b: string): { steps: {
     }
     frontier = next;
   }
-  if (!seen.has(b)) return undefined;
-  const steps: { id: string; step: Step }[] = [];
-  let cur = b;
-  while (cur !== a) {
-    const p = prev.get(cur)!;
-    steps.unshift({ id: cur, step: p.step });
-    cur = p.from;
-  }
-  const words = steps.map((s) => stepWord(s.step, graph.person(s.id)?.gender ?? 'unknown'));
-  const text = words.map((w, i) => (i === 0 ? w : w.toLowerCase())).join("'s ");
-  return { steps, text };
+  return prev;
 }
 
+/** Neighbour preference for path search; within a kind, blood/current links beat step/foster/ex links. */
 function order(s: Step) {
-  return s.kind === 'sibling' ? 0 : s.kind === 'parent' ? 1 : s.kind === 'child' ? 2 : 3;
+  const base = s.kind === 'sibling' ? 0 : s.kind === 'parent' ? 1 : s.kind === 'child' ? 2 : 3;
+  const weak = s.kind === 'sibling' ? !!s.step
+    : s.kind === 'spouse' ? s.sub === 'divorced'
+      : !isBloodEdge(s.sub);
+  return base + (weak ? 0.5 : 0);
 }
 
 /** Full kinship of `b` from `a`'s point of view, or undefined if not family-connected. */
-export function kinship(graph: FamilyGraph, a: string, b: string, aAnc = graph.ancestors(a)): Kinship | undefined {
+export function kinship(graph: FamilyGraph, a: string, b: string, aAnc = graph.ancestors(a),
+  /** Precomputed `familyPath(graph, a, b)` (e.g. from one `familyPathTree` for many targets); null = not connected. */
+  knownPath?: FamilyPath | null): Kinship | undefined {
   const target = graph.person(b);
   if (!target) return undefined;
   const gender = target.gender;
   if (a === b) return { label: 'You', path: 'You', category: 'self', generation: 0, degree: 0, blood: true };
 
-  const path = familyPath(graph, a, b);
+  const path = knownPath === undefined ? familyPath(graph, a, b) : knownPath;
   if (!path) return undefined;
 
   // Direct non-blood links first (step-parents, spouses).
@@ -441,6 +501,11 @@ export function kinship(graph: FamilyGraph, a: string, b: string, aAnc = graph.a
     return { label: stepWord(direct, gender), path: path.text, category: 'siblings', generation: 0, degree: 2, blood: true };
   }
 
+  // Foster sibling: we share a parent and at least one of us is that parent's foster child.
+  if (areFosterSiblings(graph, a, b)) {
+    return { label: 'Foster ' + g(gender, W.sibling).toLowerCase(), path: path.text, category: 'siblings', generation: 0, degree: 3, blood: false };
+  }
+
   // Step-sibling: child of my step-parent / my parent's spouse (or the reverse).
   if (areStepSiblings(graph, a, b) || areStepSiblings(graph, b, a)) {
     return { label: 'Step' + g(gender, W.sibling).toLowerCase(), path: path.text, category: 'siblings', generation: 0, degree: 3, blood: false };
@@ -450,14 +515,27 @@ export function kinship(graph: FamilyGraph, a: string, b: string, aAnc = graph.a
   const affinal = affinalLabel(graph, a, b, aAnc);
   if (affinal) return { ...affinal, path: path.text, blood: false };
 
+  // No named relation: the path itself ("Son's half-sister") says more than "Relative".
   return {
-    label: 'Relative',
+    label: path.text,
     path: path.text,
     category: 'other',
     generation: 0,
     degree: path.steps.length + 2,
     blood: false,
   };
+}
+
+/** True when a and b share a parent and at least one of them is that parent's foster child (never step). */
+function areFosterSiblings(graph: FamilyGraph, a: string, b: string): boolean {
+  const bParents = new Map(graph.parentsOf(b).map((e) => [e.id, e.subtype]));
+  for (const e of graph.parentsOf(a)) {
+    if (!bParents.has(e.id)) continue;
+    const bs = bParents.get(e.id);
+    if (e.subtype === 'step' || bs === 'step') continue;
+    if (e.subtype === 'foster' || bs === 'foster') return true;
+  }
+  return false;
 }
 
 /** True when one of b's parents is a's step-parent or the (non-divorced) spouse of a's parent. */
@@ -549,12 +627,14 @@ export interface Relative {
 export function relativesOf(graph: FamilyGraph, ego: string): Relative[] {
   const comp = graph.familyComponent(ego);
   const aAnc = graph.ancestors(ego);
+  // One shortest-path tree for every target; each path equals familyPath(graph, ego, id).
+  const tree = familyPathTree(graph, ego);
   const out: Relative[] = [];
   for (const id of comp) {
     if (id === ego) continue;
     const p = graph.person(id);
     if (!p) continue;
-    const kin = kinship(graph, ego, id, aAnc);
+    const kin = kinship(graph, ego, id, aAnc, pathInTree(graph, tree, ego, id) ?? null);
     if (kin) out.push({ person: p, kin });
   }
   out.sort((x, y) => x.kin.degree - y.kin.degree || y.kin.generation - x.kin.generation || x.person.firstName.localeCompare(y.person.firstName));
