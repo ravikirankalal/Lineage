@@ -5,6 +5,8 @@ Read this before changing code. Append new learnings at the bottom.
 ## Product decisions
 - **Local-first, no backend.** Privacy matters for a family/people database. IndexedDB via Dexie;
   JSON backup is the safety net. Sync is a backlog item, not a default.
+  _Revised 2026-11-13 (third round): still local-first and fully usable signed-out, but optional
+  Google sign-in now adds Firebase sync and family sharing. See the third-round section below._
 - **"My Family" is family only.** Lineage views traverse only `parent`/`spouse`/`sibling` edges
   (`FamilyGraph.familyComponent`), so friends can never leak in. Keep it that way.
 - **Store minimal edges, derive the rest.** Only parent, spouse, sibling (+ social types) are
@@ -87,3 +89,39 @@ Read this before changing code. Append new learnings at the bottom.
 - Tree cards show the regional term first ("Dadi · Grandmother") so it isn't truncated on phones.
 - **GitHub Pages source must be "GitHub Actions".** "Deploy from a branch" serves the raw source
   `index.html`, which is a blank page. Live site: https://ravikirankalal.github.io/Lineage/ (deploys `master`).
+
+## Firebase project (2026-11-13)
+- Firebase project id: **lineage-d575c** (Firestore region asia-south1). The Hosting URL is
+  https://lineage-d575c.web.app (and lineage-d575c.firebaseapp.com).
+- `.firebaserc` pins it for local `firebase` CLI commands. CI reads it from the repo variable
+  `VITE_FIREBASE_PROJECT_ID`, and the variables plus the `FIREBASE_SERVICE_ACCOUNT` secret are set by the owner in GitHub.
+- Project ids and the web config are public. The service-account JSON is the only secret and lives
+  only in GitHub secrets.
+
+## Decisions & gotchas — 2026-11-13 (third fleet round: sign-in, sync, sharing)
+- **`src/lib/cloud/contract.ts` is the contract** between security-engineer, data-steward and
+  ui-builder (layout, roles, signatures). Change it only with the coordinator. Contract-first
+  parallel work went well; do it again for cross-area features.
+- **Only the family part is shared.** Members get `scope == 'family'` records (owner's family
+  component + family edges). Friends, colleagues and private notes about non-family never leave
+  the owner's space. **Authorization is `firestore.rules`**; the UI (`usePermissions`/`useCanEdit`)
+  only mirrors it. Rules are not filters: non-owner queries must filter on scope.
+- **Accepted by design:** members see a family person's full record (phones, address, notes);
+  sync is last-write-wins on client clocks; a record stamped far in the future before the rules fix
+  stays frozen; regional terms in a shared space use the owner's "me" (only the owner may set `isMe`).
+- **Security-review fixes to keep:** invites are single-use (leftover invite allowed rejoining);
+  `updatedAt` must be monotonic and ≤ now + 5 min (far-future stamps froze sync); only the owner
+  sets `isMe` (an editor-planted `isMe` could un-share the family); account switching is
+  race-free; a rejected edit no longer wipes the editor's copy.
+- **Another account's local data is never uploaded.** Each space has its own Dexie DB. Sign-out
+  never deletes cloud data. Removing a member deletes the family copy on their device via
+  `refreshSpaces` (best-effort: a device that never comes online keeps it).
+- Full resync prunes records that are no longer shared; `forgetSpace` drops a space's local DB.
+- **Ports:** `npm run test:rules` uses Firestore on 8180 (`firebase.rules-test.json`);
+  `npm run qa:cloud` uses 8080 (Firestore), 9099 (Auth) and 4196 (preview) and needs a CDN
+  warm-up sign-in first. Both use project `demo-lineage`.
+- **Firestore rules hot-reload in the emulator mid-test.** Don't edit `firestore.rules` while
+  rules tests or qa:cloud are running.
+- **Never `git stash` or switch branches while agents are editing** the working tree (the
+  coordinator learned this the hard way).
+- Firebase setup steps: [FIREBASE_SETUP.md](FIREBASE_SETUP.md).

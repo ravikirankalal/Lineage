@@ -1,0 +1,83 @@
+name: Deploy to Firebase
+
+# Builds the app with the public Firebase web config (repo *variables*, not secrets) and deploys
+# Hosting plus Firestore rules and indexes. Skips cleanly until the FIREBASE_SERVICE_ACCOUNT
+# secret is set. See FIREBASE_SETUP.md. The GitHub Pages workflow (deploy.yml) is separate.
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firebase-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY }}
+      VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}
+      VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
+      VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
+      VITE_FIREBASE_STORAGE_BUCKET: ${{ vars.VITE_FIREBASE_STORAGE_BUCKET }}
+      VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+    steps:
+      - name: Check Firebase deploy is configured
+        id: check
+        env:
+          HAS_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' }}
+        run: |
+          if [ "$HAS_SERVICE_ACCOUNT" != "true" ]; then
+            echo "::notice::FIREBASE_SERVICE_ACCOUNT secret not set; skipping Firebase deploy (see FIREBASE_SETUP.md)."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$VITE_FIREBASE_PROJECT_ID" ] || [ -z "$VITE_FIREBASE_API_KEY" ] || [ -z "$VITE_FIREBASE_AUTH_DOMAIN" ] || [ -z "$VITE_FIREBASE_APP_ID" ]; then
+            echo "::error::Set the VITE_FIREBASE_* repository variables (Settings > Secrets and variables > Actions > Variables)."
+            exit 1
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.enabled == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.enabled == 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+        if: steps.check.outputs.enabled == 'true'
+
+      - run: npm test
+        if: steps.check.outputs.enabled == 'true'
+
+      - run: npm run build
+        if: steps.check.outputs.enabled == 'true'
+
+      - name: Deploy Firestore rules and indexes
+        if: steps.check.outputs.enabled == 'true'
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          SA_FILE="$RUNNER_TEMP/firebase-sa.json"
+          trap 'rm -f "$SA_FILE"' EXIT
+          umask 077
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$SA_FILE"
+          export GOOGLE_APPLICATION_CREDENTIALS="$SA_FILE"
+          # The firebase-tools pinned in package-lock.json (devDependency), never a fresh download.
+          npx --no-install firebase deploy --only firestore --project "$VITE_FIREBASE_PROJECT_ID" --non-interactive
+
+      - name: Deploy Hosting
+        if: steps.check.outputs.enabled == 'true'
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
+          channelId: live

@@ -3,6 +3,7 @@ import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Avatar } from '../components/Avatar';
 import { savePerson } from '../lib/db';
+import { usePermissions } from '../lib/cloud/CloudProvider';
 import { useData } from '../lib/data';
 import { emptyPerson } from '../lib/person';
 import type { Gender, Person, Place } from '../lib/types';
@@ -11,10 +12,11 @@ export function PersonEditPage() {
   const { id } = useParams();
   const [params] = useSearchParams();
   const { byId, loaded } = useData();
+  const { isShared } = usePermissions();
   const existing = id ? byId.get(id) : undefined;
   if (!loaded) return null;
   if (id && !existing) return <p className="p-6 text-stone-500">Person not found.</p>;
-  return <Editor key={id ?? 'new'} initial={existing ?? emptyPerson({ isMe: params.get('me') === '1' || undefined })} isNew={!existing} />;
+  return <Editor key={id ?? 'new'} initial={existing ?? emptyPerson({ isMe: (!isShared && params.get('me') === '1') || undefined })} isNew={!existing} />;
 }
 
 async function resizeImage(file: File, size = 320): Promise<string> {
@@ -59,6 +61,7 @@ function Field({ label, children, className = '' }: { label: string; children: R
 function Editor({ initial, isNew }: { initial: Person; isNew: boolean }) {
   const nav = useNavigate();
   const { people } = useData();
+  const { isShared } = usePermissions();
   const [p, setP] = useState<Person>(initial);
   const [tagInput, setTagInput] = useState('');
   const [err, setErr] = useState('');
@@ -177,10 +180,12 @@ function Editor({ initial, isNew }: { initial: Person; isNew: boolean }) {
             </div>
             <p className="mt-1 text-xs text-stone-400">Used for family labels like “uncle” or “aunt”.</p>
           </div>
-          <label className="flex items-center gap-3 rounded-xl bg-brand-50/70 px-3 py-2.5 text-sm dark:bg-brand-900/20">
-            <input type="checkbox" className="h-4 w-4 accent-brand-600" checked={!!p.isMe} onChange={(e) => set('isMe', e.target.checked || undefined)} />
-            <span><b>This is me</b> — the centre of “My Family”</span>
-          </label>
+          {!isShared && (
+            <label className="flex items-center gap-3 rounded-xl bg-brand-50/70 px-3 py-2.5 text-sm dark:bg-brand-900/20">
+              <input type="checkbox" className="h-4 w-4 accent-brand-600" checked={!!p.isMe} onChange={(e) => set('isMe', e.target.checked || undefined)} />
+              <span><b>This is me</b> — the centre of “My Family”</span>
+            </label>
+          )}
         </Section>
 
         <Section title="Life">

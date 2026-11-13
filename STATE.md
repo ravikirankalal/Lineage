@@ -2,7 +2,7 @@
 
 _Last updated: 2026-11-13_
 
-## Status: v0.2 (unmerged branch) — phases 1–9 built; second fleet round (merge, family terms, GEDCOM, kinship gaps) reviewed and QA'd
+## Status: v0.3 (unmerged branch) — phases 1–10 built; third fleet round (Google sign-in, cloud sync, family sharing, server-side authorization) security-reviewed and QA'd on emulators
 
 | Area | State | Verified by |
 | --- | --- | --- |
@@ -20,15 +20,30 @@ _Last updated: 2026-11-13_
 | Contacts import: vCard, CSV, Contact Picker | ✅ done | `contacts.test.ts` (16: dedupe strength, in-file dedupe, merge rules); `npm run qa` flow 3 (vcf + csv, duplicates matched); picker untested (needs Android Chrome) |
 | Remember: recall practice, birthdays, thin profiles | ✅ done | smoke screenshots |
 | PWA manifest + service worker, dark mode | ✅ done | build; qa flow 6 (dark mode) |
-| GitHub Pages deploy | ✅ live at https://ravikirankalal.github.io/Lineage/ | reported by the main session; serves `master`, so this round's features appear only after this branch merges |
-| Agent fleet (`.claude/agents/`, AGENTS.md), smoke + QA scripts | ✅ done | two fleet rounds, see AGENTS.md → Fleet log |
+| GitHub Pages deploy | ✅ live at https://ravikirankalal.github.io/Lineage/ | reported by the main session; serves `master`, so rounds 2–3 appear only after this branch merges. The Pages build now gets the Firebase web config, so sign-in works there too once merged (ravikirankalal.github.io is an authorized domain) |
+| Google sign-in, account card, sign-out (never deletes cloud data) | ✅ done (emulator) | `npm run qa:cloud` (8 flows, Auth + Firestore emulators); not yet exercised against the real project lineage-d575c |
+| Sync: Dexie v2 (relationship updatedAt, tombstones, meta), per-space DBs, `sync.ts` (LWW, scopes, watermarks, resync prune) | ✅ done | `sync.test.ts`, `migration.test.ts`, `db.test.ts` (fake remote); `npm run qa:cloud` (two devices, one account) |
+| Family sharing: `/sharing`, invites (editor/viewer, shows sender), space switcher, read-only mode for viewers | ✅ done (emulator) | `npm run qa:cloud` (invite, join, viewer read-only, friends never shared, member removal → family copy removed) |
+| Authorization (`firestore.rules`: deny-by-default, roles, validated writes, single-use invites) | ✅ done | `npm run test:rules` (43, Firestore emulator); security review: 3 high, 2 medium, 4 low, all fixed |
+| Account isolation (another account's local data is never uploaded) | ✅ done | `npm run qa:cloud`; security review (account-switch race fixed) |
+| Firebase Hosting + `firebase-deploy.yml` | ⏳ configured, not yet live | project lineage-d575c set up by the owner (reported); goes live at https://lineage-d575c.web.app on merge to `master` |
+| Agent fleet (`.claude/agents/`, AGENTS.md), smoke + QA scripts | ✅ done | three fleet rounds, see AGENTS.md → Fleet log |
 
-`npm test` → 243 passing across 7 files (kinship-terms 88, gedcom 67, db 34, kinship-step 18,
-contacts 16, kinship-gaps 12, kinship 8).
-`npm run smoke` and `npm run qa` (10 flows) → passed at HEAD (`febb665`), as reported by the main session.
+`npm test` → 284 passing across 9 files (adds `sync.test.ts` and `migration.test.ts`).
+`npm run test:rules` → 43 passing (Firestore emulator, port 8180).
+`npm run smoke`, `npm run qa` (10 flows) and `npm run qa:cloud` (8/8 flows) → passed at HEAD
+(`81a1ad2`), as reported by the main session.
 
 ## Known limitations
-- Data is per-browser/per-device; no sync yet (use backup files or GEDCOM to move data).
+- Without sign-in, data is per-browser/per-device (use backup files or GEDCOM to move data).
+- Cloud features are verified on emulators only; the first real sign-in happens after merge.
+- Accepted by design: members of a shared family see a family person's full record (phones,
+  address, notes); there is no shared/private split for family notes yet.
+- Last-write-wins on client clocks, so a device with a wrong clock can win or lose edits.
+- A record stamped with a far-future `updatedAt` before the rules fix stays frozen (rules now
+  require `updatedAt` ≤ now + 5 min and monotonic).
+- Regional ("Telugu") terms in a shared space are computed from the owner's "me".
+- Removing a member is best-effort on their devices: a device that never comes online keeps its copy.
 - Re-importing a GEDCOM file adds duplicates (no matching against existing people yet); use Merge to clean up.
 - Regional terms missing for great-grandparents, grand-uncles/aunts, Telugu younger cross-cousin,
   parallel nephew/niece, and step/foster relatives (English label only).
@@ -41,7 +56,8 @@ contacts 16, kinship-gaps 12, kinship 8).
 - The Contact Picker API only exists in Chrome on Android; elsewhere use a .vcf export.
 
 ## Next up (see PLAN.md backlog)
-1. Merge this branch so the live site gets merge, family terms and GEDCOM
-2. GEDCOM re-import that matches existing people
-3. Regional terms for great-grandparents / grand-uncles; wider tree cards
-4. Optional encrypted sync
+1. Merge this branch; check the first real Google sign-in, sync and invite on https://lineage-d575c.web.app
+   and on GitHub Pages
+2. Split family notes into shared and private
+3. Server-time stamps instead of client clocks; an invite cap per space
+4. GEDCOM re-import that matches existing people

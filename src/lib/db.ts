@@ -1,21 +1,109 @@
 import Dexie, { type EntityTable } from 'dexie';
 import { emptyPerson, formatPlace, fullName, newId, norm } from './person';
-import type { Gender, LabeledValue, Person, Place, RelType, Relationship } from './types';
+import type { Gender, LabeledValue, MetaRow, Person, Place, RelType, Relationship, TableName, Tombstone } from './types';
 
 export class LineageDB extends Dexie {
   people!: EntityTable<Person, 'id'>;
   relationships!: EntityTable<Relationship, 'id'>;
+  /** Added in version 2. */
+  tombstones!: EntityTable<Tombstone, 'id'>;
+  /** Added in version 2. */
+  meta!: EntityTable<MetaRow, 'key'>;
 
-  constructor(name = 'lineage') {
+  constructor(name = LOCAL_DB_NAME) {
     super(name);
+    // Never edit a released version block. Add a new version with an upgrade instead.
     this.version(1).stores({
       people: 'id, firstName, lastName, updatedAt, *tags',
       relationships: 'id, fromId, toId, type, [fromId+toId]',
     });
+    // v2 (cloud sync): relationships get an updatedAt index (backfilled from createdAt), plus
+    // tombstones for deletions and a key-value meta table for sync watermarks.
+    this.version(2)
+      .stores({
+        people: 'id, firstName, lastName, updatedAt, *tags',
+        relationships: 'id, fromId, toId, type, [fromId+toId], updatedAt',
+        tombstones: 'id, table, deletedAt',
+        meta: 'key',
+      })
+      .upgrade(async (tx) => {
+        const now = Date.now();
+        await tx
+          .table('relationships')
+          .toCollection()
+          .modify((r: Relationship) => {
+            if (typeof r.updatedAt !== 'number') r.updatedAt = typeof r.createdAt === 'number' ? r.createdAt : now;
+          });
+        // Very old/hand-made rows might lack people.updatedAt; sync relies on it being a number.
+        await tx
+          .table('people')
+          .toCollection()
+          .modify((p: Person) => {
+            if (typeof p.updatedAt !== 'number') p.updatedAt = typeof p.createdAt === 'number' ? p.createdAt : now;
+          });
+      });
   }
 }
 
-export const db = new LineageDB();
+export const LOCAL_DB_NAME = 'lineage';
+export const SPACE_DB_PREFIX = 'lineage-space-';
+
+/** IndexedDB name for a space: null = the local/personal database. */
+export function dbNameFor(spaceId: string | null): string {
+  return spaceId === null ? LOCAL_DB_NAME : SPACE_DB_PREFIX + spaceId;
+}
+
+/**
+ * The active database. A live binding: `openSpaceDb` re-points it, so always read `db` at call
+ * time (never cache it in a module-level variable).
+ */
+export let db = new LineageDB();
+let activeSpace: string | null = null;
+
+/**
+ * Switch the active database. null = the local/personal 'lineage' DB; otherwise the shared space's
+ * own 'lineage-space-<id>' DB, so a shared tree never mixes with personal data. The previous
+ * database is closed (in-flight operations on it fail). Re-opening the active space is a no-op.
+ */
+export function openSpaceDb(spaceId: string | null): void {
+  if (spaceId !== null && (typeof spaceId !== 'string' || !spaceId)) throw new Error('Invalid space id.');
+  if (spaceId === activeSpace) return;
+  const prev = db;
+  db = new LineageDB(dbNameFor(spaceId));
+  activeSpace = spaceId;
+  prev.close();
+}
+
+/**
+ * Remove a shared space from this device (e.g. after the user was removed from it, or left).
+ * Deletes the whole 'lineage-space-<id>' database (its people, relationships, tombstones and sync
+ * meta), and any sync meta keys for that space in the active database. If the space is active, the
+ * local/personal database becomes active first. Never touches the local 'lineage' data rows.
+ */
+export async function forgetSpace(spaceId: string): Promise<void> {
+  if (typeof spaceId !== 'string' || !spaceId) throw new Error('Invalid space id.');
+  if (activeSpace === spaceId) openSpaceDb(null);
+  await Dexie.delete(dbNameFor(spaceId));
+  const isSpaceKey = (k: string) =>
+    k === `synced:${spaceId}` || k === `lastPushedAt:${spaceId}` || k.startsWith(`pull:${spaceId}:`);
+  await db.meta.filter((m) => isSpaceKey(m.key)).delete();
+}
+
+/** The space whose database is active (null = local/personal). */
+export function activeSpaceId(): string | null {
+  return activeSpace;
+}
+
+/** Last-change time of a row; tolerates old relationship rows without updatedAt. */
+export function rowUpdatedAt(r: { updatedAt?: number; createdAt?: number }): number {
+  return typeof r.updatedAt === 'number' ? r.updatedAt : typeof r.createdAt === 'number' ? r.createdAt : 0;
+}
+
+/** Record deletions. Call inside a transaction that includes `tombstones`. */
+async function addTombstones(target: LineageDB, table: TableName, ids: Iterable<string>, deletedAt = Date.now()) {
+  const rows = [...new Set(ids)].map((id) => ({ id, table, deletedAt }));
+  if (rows.length) await target.tombstones.bulkPut(rows);
+}
 
 const SYMMETRIC = (t: RelType) => t !== 'parent';
 
@@ -24,7 +112,10 @@ export async function savePerson(p: Person): Promise<string> {
   if (toSave.isMe) {
     // Only one person can be "me".
     await db.people.where('id').notEqual(p.id).modify((x) => {
-      if (x.isMe) delete x.isMe;
+      if (x.isMe) {
+        delete x.isMe;
+        x.updatedAt = toSave.updatedAt; // so the change syncs
+      }
     });
   }
   await db.people.put(toSave);
@@ -32,10 +123,16 @@ export async function savePerson(p: Person): Promise<string> {
 }
 
 export async function deletePerson(id: string) {
-  await db.transaction('rw', db.people, db.relationships, async () => {
-    await db.relationships.where('fromId').equals(id).delete();
-    await db.relationships.where('toId').equals(id).delete();
+  await db.transaction('rw', db.people, db.relationships, db.tombstones, async () => {
+    const relIds = [
+      ...(await db.relationships.where('fromId').equals(id).primaryKeys()),
+      ...(await db.relationships.where('toId').equals(id).primaryKeys()),
+    ];
+    await db.relationships.bulkDelete(relIds);
+    const existed = (await db.people.get(id)) !== undefined;
     await db.people.delete(id);
+    await addTombstones(db, 'relationships', relIds);
+    if (existed) await addTombstones(db, 'people', [id]);
   });
 }
 
@@ -46,7 +143,7 @@ export async function findRelationship(fromId: string, toId: string, type: RelTy
   return db.relationships.where('[fromId+toId]').equals([toId, fromId]).filter((r) => r.type === type).first();
 }
 
-type NewRelationship = Omit<Relationship, 'id' | 'createdAt'>;
+type NewRelationship = Omit<Relationship, 'id' | 'createdAt' | 'updatedAt'>;
 
 /** True if `targetId` is `startId` or one of its descendants (following `parent` edges downward). */
 async function isSelfOrDescendant(startId: string, targetId: string): Promise<boolean> {
@@ -80,7 +177,10 @@ export async function addRelationship(r: NewRelationship, opts: { ifMissing?: bo
         const patch: Partial<Relationship> = {};
         if (r.subtype !== undefined) patch.subtype = r.subtype;
         if (r.note !== undefined) patch.note = r.note;
-        if (Object.keys(patch).length) await db.relationships.update(existing.id, patch);
+        if (Object.keys(patch).length) {
+          patch.updatedAt = Date.now();
+          await db.relationships.update(existing.id, patch);
+        }
       }
       return existing.id;
     }
@@ -88,18 +188,27 @@ export async function addRelationship(r: NewRelationship, opts: { ifMissing?: bo
       throw new Error('That would make someone their own ancestor.');
     }
     const id = newId();
-    await db.relationships.add({ ...r, id, createdAt: Date.now() });
+    const now = Date.now();
+    // Strip any stray updatedAt/createdAt a caller passed in at runtime.
+    const { updatedAt: _u, createdAt: _c, ...rest } = r as Relationship;
+    void _u;
+    void _c;
+    await db.relationships.add({ ...rest, id, createdAt: now, updatedAt: now });
     return id;
   });
 }
 
 /** Make sure an equivalent edge exists; never changes an existing one. Returns its id. */
-export function ensureRelationship(r: Omit<Relationship, 'id' | 'createdAt'>): Promise<string> {
+export function ensureRelationship(r: NewRelationship): Promise<string> {
   return addRelationship(r, { ifMissing: true });
 }
 
 export async function deleteRelationship(id: string) {
-  await db.relationships.delete(id);
+  await db.transaction('rw', db.relationships, db.tombstones, async () => {
+    if ((await db.relationships.get(id)) === undefined) return;
+    await db.relationships.delete(id);
+    await addTombstones(db, 'relationships', [id]);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -397,18 +506,22 @@ export async function previewMerge(keepId: string, dropId: string): Promise<Merg
  * is deleted. All checks run before any write; everything happens in one transaction.
  */
 export async function mergePeople(keepId: string, dropId: string): Promise<void> {
-  await db.transaction('rw', db.people, db.relationships, async () => {
+  await db.transaction('rw', db.people, db.relationships, db.tombstones, async () => {
     const plan = await planMerge(keepId, dropId);
+    const now = Date.now();
     if (plan.person.isMe) {
       await db.people.filter((x) => x.isMe === true && x.id !== keepId && x.id !== dropId).modify((x) => {
         delete x.isMe;
+        x.updatedAt = now;
       });
     }
     await db.people.put(plan.person);
     if (plan.dropped.length) await db.relationships.bulkDelete(plan.dropped);
-    if (plan.moved.length) await db.relationships.bulkPut(plan.moved);
-    for (const f of plan.fills) await db.relationships.update(f.id, f.changes);
+    if (plan.moved.length) await db.relationships.bulkPut(plan.moved.map((m) => ({ ...m, updatedAt: now })));
+    for (const f of plan.fills) await db.relationships.update(f.id, { ...f.changes, updatedAt: now });
     await db.people.delete(dropId);
+    await addTombstones(db, 'relationships', plan.dropped, now);
+    await addTombstones(db, 'people', [dropId], now);
   });
 }
 
@@ -442,7 +555,7 @@ const isStr = (x: unknown): x is string => typeof x === 'string' && x.length > 0
 const arr = <T>(x: unknown): T[] => (Array.isArray(x) ? (x as T[]) : []);
 
 /** Coerce an untrusted backup row into a valid Person, or null if it has no id. */
-function normalisePerson(row: unknown): Person | null {
+export function normalisePerson(row: unknown): Person | null {
   if (!row || typeof row !== 'object') return null;
   const r = row as Record<string, unknown>;
   if (!isStr(r.id)) return null;
@@ -463,7 +576,7 @@ function normalisePerson(row: unknown): Person | null {
   return p;
 }
 
-function validRelationship(row: unknown): row is Relationship {
+export function validRelationship(row: unknown): row is Relationship {
   if (!row || typeof row !== 'object') return false;
   const r = row as Record<string, unknown>;
   return isStr(r.id) && isStr(r.fromId) && isStr(r.toId) && REL_TYPES.includes(r.type as RelType) && r.fromId !== r.toId;
@@ -486,9 +599,18 @@ export async function importBackup(data: unknown, mode: 'merge' | 'replace') {
   }
 
   const incoming = b.people.map(normalisePerson).filter((p): p is Person => p !== null);
+  // Imported rows are new local writes: stamp them so sync treats them as the latest version
+  // (otherwise an older backup's rows would lose to the cloud copy and the restore would be undone).
+  const now = Date.now();
+  for (const p of incoming) p.updatedAt = now;
 
-  await db.transaction('rw', db.people, db.relationships, async () => {
+  await db.transaction('rw', db.people, db.relationships, db.tombstones, async () => {
+    let before: { people: string[]; relationships: string[] } | undefined;
     if (mode === 'replace') {
+      before = {
+        people: (await db.people.toCollection().primaryKeys()) as string[],
+        relationships: (await db.relationships.toCollection().primaryKeys()) as string[],
+      };
       await db.people.clear();
       await db.relationships.clear();
     }
@@ -510,20 +632,38 @@ export async function importBackup(data: unknown, mode: 'merge' | 'replace') {
       // Clear any stale local "me" that is not the chosen one (e.g. overwritten by an incoming row).
       await db.people.filter((p) => p.isMe === true && p.id !== meId).modify((x) => {
         delete x.isMe;
+        x.updatedAt = now;
       });
     }
 
     await db.people.bulkPut(incoming);
     const ids = new Set(await db.people.toCollection().primaryKeys());
-    const rels = b.relationships.filter(validRelationship).filter((r) => ids.has(r.fromId) && ids.has(r.toId));
+    const rels = b.relationships
+      .filter(validRelationship)
+      .filter((r) => ids.has(r.fromId) && ids.has(r.toId))
+      .map((r) => ({ ...r, createdAt: typeof r.createdAt === 'number' ? r.createdAt : now, updatedAt: now }));
     await db.relationships.bulkPut(rels);
+
+    // Imported ids are alive again; ids that a replace removed are deletions.
+    const relIds = new Set(rels.map((r) => r.id));
+    await db.tombstones.bulkDelete([...ids, ...relIds] as string[]);
+    if (before) {
+      await addTombstones(db, 'people', before.people.filter((id) => !ids.has(id)), now);
+      await addTombstones(db, 'relationships', before.relationships.filter((id) => !relIds.has(id)), now);
+    }
   });
 }
 
+/** Delete all people and relationships (recorded as tombstones so sync propagates it). */
 export async function clearAll() {
-  await db.transaction('rw', db.people, db.relationships, async () => {
+  await db.transaction('rw', db.people, db.relationships, db.tombstones, async () => {
+    const now = Date.now();
+    const people = (await db.people.toCollection().primaryKeys()) as string[];
+    const rels = (await db.relationships.toCollection().primaryKeys()) as string[];
     await db.people.clear();
     await db.relationships.clear();
+    await addTombstones(db, 'people', people, now);
+    await addTombstones(db, 'relationships', rels, now);
   });
 }
 

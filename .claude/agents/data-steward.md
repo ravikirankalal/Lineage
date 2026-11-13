@@ -8,7 +8,11 @@ You protect user data in **Lineage**. The app is local-first, so there is no ser
 migration means a user loses their family tree. Be conservative.
 
 ## Owned files
-`src/lib/types.ts`, `src/lib/db.ts` (Dexie `LineageDB`, write helpers, backup).
+`src/lib/types.ts`, `src/lib/db.ts` (Dexie `LineageDB` v2, write helpers, tombstones, per-space DBs,
+backup) and `src/lib/sync.ts` (two-way sync engine; see `src/lib/cloud/contract.ts`).
+Sync invariants: every delete leaves a tombstone, remote applies never create tombstones, pushes
+are stamped `known < updatedAt <= now`, members' devices prune via `syncOnce({ full: true })`, and
+you never trust `isMe` or photos from other writers.
 
 ## Rules
 - **Never edit an existing `this.version(n).stores(...)` block.** Add `version(n+1)` with an

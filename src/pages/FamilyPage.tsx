@@ -1,26 +1,44 @@
 import { GitBranch, UserPlus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { ShareLink, SpaceSwitcher } from '../components/Cloud';
 import { Empty } from '../components/Empty';
 import { LineageView } from '../components/LineageView';
 import { PersonRow } from '../components/PersonRow';
 import { savePerson } from '../lib/db';
+import { useCloud, usePermissions } from '../lib/cloud/CloudProvider';
 import { useData } from '../lib/data';
 import { lineageStats, relativesOf } from '../lib/kinship';
 import { displayName, lifespan, matchesQuery } from '../lib/person';
 
 export function FamilyPage() {
   const { me, people, graph, loaded } = useData();
+  const { isShared, canEdit } = usePermissions();
+  const { activeSpace } = useCloud();
   const stats = useMemo(() => (me ? lineageStats(graph, me.id, relativesOf(graph, me.id)) : undefined), [graph, me]);
   if (!loaded) return null;
 
   return (
     <div>
-      <div className="mb-5">
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">My Family</h1>
-        <p className="text-sm text-stone-500">Your ancestors, descendants and every relative — family only, no friends.</p>
+      <div className="mb-5 flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">{isShared && activeSpace ? activeSpace.name : 'My Family'}</h1>
+          <p className="text-sm text-stone-500">
+            {isShared && me
+              ? `Labels show how each person is related to ${me.firstName}.`
+              : 'Your ancestors, descendants and every relative — family only, no friends.'}
+          </p>
+        </div>
+        <ShareLink className="shrink-0" />
       </div>
-      {!me ? <ChooseMe hasPeople={people.length > 0} /> : (
+      <SpaceSwitcher className="mb-4 md:hidden" />
+      {!me ? (isShared ? (
+        <div className="card">
+          <Empty icon={<GitBranch size={26} />} title="This tree isn’t ready yet">
+            {canEdit ? 'The owner hasn’t added themselves yet. Once they do, the whole family tree appears here.' : 'The owner hasn’t added their family yet. It appears here as soon as they do.'}
+          </Empty>
+        </div>
+      ) : <ChooseMe hasPeople={people.length > 0} />) : (
         <>
           {stats && (
             <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -35,7 +53,7 @@ export function FamilyPage() {
               ) : <Stat value={stats.descendants} label="Descendants" />}
             </div>
           )}
-          <LineageView key={me.id} ego={me} />
+          <LineageView key={me.id} ego={me} egoLabel={isShared ? me.firstName : 'You'} />
         </>
       )}
     </div>

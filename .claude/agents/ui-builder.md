@@ -19,6 +19,13 @@ are people who find it hard to remember others, so every screen must be obvious 
 - Brand colour `brand-*` (green). Stone neutrals. Rounded-2xl cards. Every view must work in
   dark mode (`dark:` variants).
 
+## Cloud UI
+- `src/lib/cloud/CloudProvider.tsx` (`useCloud`) is yours. Gate every create, edit or delete
+  control with `usePermissions()` / `useCanEdit()`, never with ad-hoc role checks; viewers must
+  see no edit affordances.
+- Never show cloud UI when Firebase isn't configured. Sync may only run for the uid that gave
+  consent and owns the local DB (see the `syncAllowed` guard).
+
 ## Design rules
 - Phone first: bottom tabs at < md, sidebar at ≥ md. Touch targets ≥ 40px. No horizontal page scroll.
 - One primary action per screen. Plain words ("Add father", not "Create parent edge").

@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { Avatar } from '../components/Avatar';
 import { contactPickerSupported, mergeInto, parseContactsFile, pickContacts, planImport, type DuplicateMatch } from '../lib/contacts';
 import { db } from '../lib/db';
+import { usePermissions } from '../lib/cloud/CloudProvider';
 import { useData } from '../lib/data';
 import { decodeGedcom, exportGedcom, parseGedcom, resolveImportedMe, type GedcomImport } from '../lib/gedcom';
 import { displayName } from '../lib/person';
@@ -30,6 +31,9 @@ function downloadText(name: string, text: string) {
 
 export function ImportPage() {
   const { people, rels, me, graph } = useData();
+  const { canEdit, isShared } = usePermissions();
+  // Viewers can't change anything; editors of a shared family don't import (contacts are private).
+  const canImport = canEdit && !isShared;
   const [cands, setCands] = useState<Candidate[] | null>(null);
   const [ged, setGed] = useState<GedcomImport | null>(null);
   const [error, setError] = useState('');
@@ -162,8 +166,8 @@ export function ImportPage() {
   return (
     <div className="mx-auto max-w-2xl">
       <div className="mb-5">
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Import &amp; export</h1>
-        <p className="text-sm text-stone-500">Bring people in from your phone or a family tree, then add the details that help you remember them.</p>
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{canImport ? <>Import &amp; export</> : 'Export'}</h1>
+        <p className="text-sm text-stone-500">{canImport ? 'Bring people in from your phone or a family tree, then add the details that help you remember them.' : 'Download a copy of this family tree.'}</p>
       </div>
 
       {done && (
@@ -175,7 +179,13 @@ export function ImportPage() {
       )}
       {error && <div className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</div>}
 
-      {ged ? (
+      {!canImport ? (
+        <div className="card p-5 text-sm text-stone-600 dark:text-stone-300">
+          {canEdit
+            ? 'Importing is turned off while you’re in a shared family, so contacts and friends never end up in someone else’s tree. Switch to My people to import.'
+            : 'This family was shared with you to view, so you can’t import into it. You can still download a copy below.'}
+        </div>
+      ) : ged ? (
         <div className="card p-5">
           <div className="flex items-start gap-4">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-900/40 dark:text-brand-300"><GitFork /></div>

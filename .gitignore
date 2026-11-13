@@ -4,3 +4,7 @@ dist
 .DS_Store
 smoke-output
 *.tsbuildinfo
+.env.local
+.env.*.local
+.firebase
+*service-account*.json

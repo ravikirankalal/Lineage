@@ -88,6 +88,25 @@ export interface Relationship {
   subtype?: ParentSubtype | SpouseSubtype | SiblingSubtype;
   note?: string;
   createdAt: number;
+  /** Last change (ms). Added in DB version 2; rows written before that, and rows from old backups,
+   * may lack it. Readers must fall back to `createdAt`. */
+  updatedAt?: number;
+}
+
+/** The two synced tables. */
+export type TableName = 'people' | 'relationships';
+
+/** A local record of a deletion, so sync can propagate it (DB version 2). Holds no personal data. */
+export interface Tombstone {
+  id: string; // id of the deleted person/relationship
+  table: TableName;
+  deletedAt: number;
+}
+
+/** Key-value store for sync bookkeeping (DB version 2). */
+export interface MetaRow {
+  key: string;
+  value: unknown;
 }
 
 export const FAMILY_TYPES: FamilyType[] = ['parent', 'spouse', 'sibling'];

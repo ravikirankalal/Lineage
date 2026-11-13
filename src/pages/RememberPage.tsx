@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { Avatar } from '../components/Avatar';
 import { Empty } from '../components/Empty';
 import { PersonRow } from '../components/PersonRow';
+import { useCanEdit } from '../lib/cloud/CloudProvider';
 import { useData } from '../lib/data';
 import { kinship } from '../lib/kinship';
 import { completeness, daysUntilBirthday, displayName, formatPartialDate, formatPlace, missingDetails } from '../lib/person';
@@ -28,6 +29,7 @@ export function RememberPage() {
   const [idx, setIdx] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [score, setScore] = useState({ knew: 0, forgot: 0 });
+  const canEdit = useCanEdit();
 
   const thin = useMemo(() => people.filter((p) => !p.isMe).map((p) => ({ p, c: completeness(p) })).filter((x) => x.c < 60).sort((a, b) => a.c - b.c).slice(0, 12), [people]);
   const birthdays = useMemo(() => people.map((p) => ({ p, d: daysUntilBirthday(p) })).filter((x) => x.d !== undefined && x.d <= 60).sort((a, b) => a.d! - b.d!), [people]);
@@ -114,8 +116,8 @@ export function RememberPage() {
         </section>
       )}
 
-      {/* Thin profiles */}
-      <section className="mt-6">
+      {/* Thin profiles (editing prompts: hidden for viewers) */}
+      {canEdit && <section className="mt-6">
         <h2 className="section-title mb-1.5 ml-1">Add details while you still remember</h2>
         {thin.length === 0 ? (
           <p className="card px-5 py-6 text-center text-sm text-stone-500">Everyone has good details. Nice work!</p>
@@ -135,7 +137,7 @@ export function RememberPage() {
             ))}
           </div>
         )}
-      </section>
+      </section>}
     </div>
   );
 }
