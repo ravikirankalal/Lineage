@@ -108,6 +108,72 @@ Until the `FIREBASE_SERVICE_ACCOUNT` secret exists, the Firebase workflow skips 
 3. They only ever receive the family part of your tree. Friends, colleagues and notes about
    non-family people stay in your account; the server refuses to send them.
 
+## 10. Google Contacts import
+Optional. Lets **Import → Google Contacts** read the signed-in user's Google Contacts directly
+(instead of exporting a .vcf/.csv by hand). Steps for project **`lineage-d575c`**; for another
+project, replace the ID in the links.
+
+How it works and what is shared: when you click the import button, a Google window asks for
+**read-only** access to your contacts (`contacts.readonly`, nothing else). Lineage gets a
+short-lived access token (about 1 hour) that is kept in memory only. It is never saved on the
+device, in Firestore or in logs. The browser then downloads your contacts straight from
+`people.googleapis.com` and shows them for you to pick from. Nothing goes to any other server. If you're
+already signed in to Lineage, you must pick the **same** Google account; otherwise the import also
+signs you in.
+
+### 10.1 Turn on the People API
+1. Open <https://console.cloud.google.com/apis/library/people.googleapis.com?project=lineage-d575c>
+   (signed in as the project owner; check the project picker at the top says `lineage-d575c`).
+2. Click **Enable**. It takes a minute to take effect.
+
+Without this, the import shows "Turn on the People API for this project (see FIREBASE_SETUP.md ›
+Google Contacts)".
+
+### 10.2 Add the contacts scope to the consent screen
+Google renamed the old **APIs & Services → OAuth consent screen** page to **Google Auth Platform**,
+with the tabs **Overview, Branding, Audience, Clients, Data access, Verification Center**. Firebase
+already set up Branding when you turned on Google sign-in (step 2).
+
+1. Open <https://console.cloud.google.com/auth/scopes?project=lineage-d575c>
+   (or menu **☰ → Google Auth Platform → Data access**; on older consoles, **APIs & Services →
+   OAuth consent screen → Edit app → Scopes**).
+2. Click **Add or remove scopes**.
+3. Filter for `contacts.readonly` and tick
+   **`.../auth/contacts.readonly`** (People API, "See and download your contacts"). If it isn't in
+   the list, paste `https://www.googleapis.com/auth/contacts.readonly` into **Manually add scopes**
+   → **Add to table**.
+4. **Update**, then **Save**. It appears under **Your sensitive scopes**. Don't add any other scope.
+
+### 10.3 Choose who may use it (Audience)
+Open <https://console.cloud.google.com/auth/audience?project=lineage-d575c> (menu **Google Auth
+Platform → Audience**). Pick **one** of these:
+
+- **Option A: keep Testing (recommended for a family app).** Publishing status stays **Testing**.
+  Under **Test users** click **Add users** and enter your own Gmail address plus the Gmail address
+  of every relative who will use the Google Contacts import → **Save**. Only these accounts (up to
+  100) can grant contacts access. Anyone else gets "Access blocked: … has not completed the Google
+  verification process". Plain Lineage sign-in (no contacts) keeps working for everyone.
+- **Option B: publish.** Click **Publish app** → **Confirm** (status becomes **In production**).
+  Because `contacts.readonly` is a *sensitive* scope and the app is not verified by Google, every
+  user sees an "unverified app" warning, and Google limits unverified apps to 100 users in total.
+  Verification (privacy policy, domain, demo video, review) is not needed for personal or family
+  use. Don't click **Prepare for verification** unless you want the app to be public.
+
+### 10.4 What the user sees
+1. **Import → Google Contacts** opens a Google window. Pick the account (the same one you're signed
+   in to Lineage with).
+2. **"Google hasn't verified this app"**: this is expected (see 10.3). Click **Continue**. (On a
+   published, unverified app it may instead say "This app isn't verified"; click **Advanced → Go to
+   lineage-d575c.firebaseapp.com (unsafe)**.)
+3. **"Lineage wants additional access to your Google Account"**: tick **See and download your
+   contacts** and click **Continue**. If you leave the box unticked, the import says access wasn't
+   given; try again and tick it.
+4. Lineage downloads the contacts (with a count while it works) and shows them for review before
+   anything is saved.
+
+To revoke access later: <https://myaccount.google.com/connections> → the Lineage app → **Delete all
+connections**. The token Lineage held also expires by itself within an hour.
+
 ---
 
 ## Local development

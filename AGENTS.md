@@ -40,9 +40,11 @@ finally:            docs-keeper  (STATE / PLAN / MEMORY)
 - **Reviewers and QA don't fix.** They report confirmed findings, and the owning agent fixes them.
 - **Agents report, the main session decides.** Agent reports are inputs. The coordinating
   session checks them (e.g. re-runs `npm run verify`) before committing.
-- **Nothing leaves the device unless the user signs in.** The only network path is Firebase
-  (Auth + Firestore) behind Google sign-in, per `src/lib/cloud/contract.ts`. No agent adds other
-  network calls or analytics, and fixtures never contain real personal data.
+- **Nothing leaves the device unless the user signs in.** The network paths are Firebase
+  (Auth + Firestore) behind Google sign-in, per `src/lib/cloud/contract.ts`, plus a **read-only**
+  call to `people.googleapis.com` (`src/lib/cloud/googleContacts.ts`) that runs only when the user
+  starts "Import from Google Contacts". Its OAuth token stays in memory and is never stored or synced.
+  No agent adds other network calls or analytics, and fixtures never contain real personal data.
 - **Cross-area features start from a contract** (e.g. `src/lib/cloud/contract.ts`), then owners
   build against it in parallel.
 - **Never `git stash` or switch branches while agents are editing the working tree.**

@@ -125,3 +125,16 @@ Read this before changing code. Append new learnings at the bottom.
 - **Never `git stash` or switch branches while agents are editing** the working tree (the
   coordinator learned this the hard way).
 - Firebase setup steps: [FIREBASE_SETUP.md](FIREBASE_SETUP.md).
+
+## Google Contacts import (2026-11-13)
+- The import never signs anyone in. `getContactsAccessToken` throws `not-signed-in`, so sign-in always
+  goes through CloudProvider's account-isolation and consent flow. ImportPage disables the card until
+  consent is settled, and every import path re-checks a `{uid, activeSpaceId}` snapshot before writing.
+- The OAuth token (contacts.readonly) lives only in local variables. An expired token mid-fetch stops
+  with "tap again"; never open a popup without a user gesture.
+- Phone keys ignore extensions for matching (`phoneKey`); `phoneEntryKey` keeps different extensions
+  distinct when merging lists, and db.ts mergePeople uses it too.
+- `npm run qa:cloud` flow 7 (account switch) can time out once on a cold auth emulator. Re-run before
+  treating it as a regression.
+- Owner setup for the import: People API enabled, contacts.readonly scope, test users
+  (FIREBASE_SETUP.md §10).

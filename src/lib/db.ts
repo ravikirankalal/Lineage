@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
+import { phoneEntryKey } from './contacts';
 import { emptyPerson, formatPlace, fullName, newId, norm } from './person';
 import type { Gender, LabeledValue, MetaRow, Person, Place, RelType, Relationship, TableName, Tombstone } from './types';
 
@@ -233,10 +234,9 @@ interface MergePlan {
 
 const blank = (s?: string) => !s || !s.trim();
 const placeEmpty = (pl?: Place) => !pl || !formatPlace(pl);
-const phoneKey = (v: string) => {
-  const d = (v ?? '').replace(/\D/g, '');
-  return d ? d.slice(-10) : norm(v);
-};
+// Same key as imports use: last 10 digits ignoring an extension, but a different extension is a
+// different entry so merging never drops it. Numbers with no digits fall back to the text.
+const phoneKey = (v: string) => phoneEntryKey(v ?? '') || norm(v);
 
 function unionBy<T>(a: T[] | undefined, b: T[] | undefined, key: (x: T) => string): T[] {
   const out: T[] = [];

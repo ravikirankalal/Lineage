@@ -2,9 +2,11 @@ import { Check, ChevronDown, Download, FileUp, GitFork, Smartphone } from 'lucid
 import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Avatar } from '../components/Avatar';
-import { contactPickerSupported, mergeInto, parseContactsFile, pickContacts, planImport, type DuplicateMatch } from '../lib/contacts';
-import { db } from '../lib/db';
-import { usePermissions } from '../lib/cloud/CloudProvider';
+import { GoogleG } from '../components/Cloud';
+import { contactPickerSupported, mergeInto, parseContactsFile, peopleApiToPersons, pickContacts, planImport, type DuplicateMatch } from '../lib/contacts';
+import { fetchGoogleContacts, getContactsAccessToken, googleContactsAvailable } from '../lib/cloud/googleContacts';
+import { activeSpaceId, db } from '../lib/db';
+import { useCloud, usePermissions } from '../lib/cloud/CloudProvider';
 import { useData } from '../lib/data';
 import { decodeGedcom, exportGedcom, parseGedcom, resolveImportedMe, type GedcomImport } from '../lib/gedcom';
 import { displayName } from '../lib/person';
@@ -15,6 +17,15 @@ interface Candidate {
   match?: DuplicateMatch;
   selected: boolean;
 }
+
+/** Whose data the review list was built for. Import is refused if this changes before it is saved. */
+interface Owner {
+  uid: string | null;
+  space: string | null;
+}
+const sameOwner = (a: Owner, b: Owner) => a.uid === b.uid && a.space === b.space;
+const CHANGED = 'Your account or family changed — please start the import again.';
+const errCode = (e: unknown) => (e as { code?: unknown } | null)?.code;
 
 const isGedcom = (name: string) => /\.ged(com)?$/i.test(name);
 
@@ -32,6 +43,14 @@ function downloadText(name: string, text: string) {
 export function ImportPage() {
   const { people, rels, me, graph } = useData();
   const { canEdit, isShared } = usePermissions();
+  const { auth, backup, status } = useCloud();
+  const user = auth.user;
+  // Live owner for async code (closures may predate a sign-in, sign-out or family switch).
+  const uidRef = useRef<string | null>(user?.uid ?? null);
+  uidRef.current = user?.uid ?? null;
+  const currentOwner = (): Owner => ({ uid: uidRef.current, space: activeSpaceId() });
+  /** Snapshot taken when the review list was built (prepare). */
+  const ownerRef = useRef<Owner | null>(null);
   // Viewers can't change anything; editors of a shared family don't import (contacts are private).
   const canImport = canEdit && !isShared;
   const [cands, setCands] = useState<Candidate[] | null>(null);
@@ -41,20 +60,46 @@ export function ImportPage() {
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const picker = contactPickerSupported();
+  const googleAvailable = googleContactsAvailable();
+  /** Google Contacts import in progress: 'auth' while the consent popup is open, else contacts read so far. */
+  const [gProgress, setGProgress] = useState<'auth' | 'signin' | number | null>(null);
+  /*
+   * The Google import only runs once this account's cloud setup has settled. CloudProvider exposes no
+   * single "settled" flag, so: the backup / other-account questions must be answered (backup.asking,
+   * backup.foreign), and the sign-in bootstrap must have finished. The bootstrap reports
+   * status 'syncing' and then 'idle' (or 'error'/'offline' if it failed, leaving consent unknown);
+   * status is reset to 'off' on every account change. So we accept 'idle', any state after a completed
+   * sync (lastSyncedAt), or "Not now" (backup.paused); everything else counts as still pending.
+   */
+  const cloudPending = !!user && (backup.asking || backup.foreign || !(backup.paused || status.state === 'idle' || !!status.lastSyncedAt));
+  const cloudHint = backup.asking || backup.foreign
+    ? 'Answer the backup question first, then you can import from Google.'
+    : status.state === 'error' || status.state === 'offline'
+      ? 'Your account isn’t fully connected yet. Check your connection and sync status, then try again.'
+      : 'Getting your account ready…';
 
-  const prepare = (list: Person[]) => {
+  /** `owner`: snapshot taken when the operation started; the list is dropped if it changed meanwhile. */
+  const prepare = (list: Person[], emptyMessage = 'No contacts found in that file.', owner: Owner = currentOwner()) => {
     setDone(null);
+    if (!sameOwner(owner, currentOwner())) {
+      setCands(null);
+      ownerRef.current = null;
+      setError(CHANGED);
+      return;
+    }
     if (!list.length) {
-      setError('No contacts found in that file.');
+      setError(emptyMessage);
       return;
     }
     setError('');
     // Strong (phone/email) and possible (same name, nothing conflicting) matches are both pre-selected.
+    ownerRef.current = owner;
     setCands(planImport(list, people).map((c) => ({ ...c, selected: true })));
   };
 
   async function onFiles(files: FileList | null) {
     if (!files?.length) return;
+    const owner = currentOwner();
     const list = Array.from(files);
     const geds = list.filter((f) => isGedcom(f.name));
     if (geds.length) {
@@ -62,15 +107,15 @@ export function ImportPage() {
         setError('Choose family tree (.ged) files and contacts files separately.');
         return;
       }
-      await onGedcom(geds);
+      await onGedcom(geds, owner);
       return;
     }
     const all: Person[] = [];
     for (const f of list) all.push(...parseContactsFile(f.name, await f.text()));
-    prepare(all);
+    prepare(all, undefined, owner);
   }
 
-  async function onGedcom(files: File[]) {
+  async function onGedcom(files: File[], owner: Owner) {
     setDone(null);
     setCands(null);
     try {
@@ -85,7 +130,12 @@ export function ImportPage() {
         setError('No people found in that family tree file.');
         return;
       }
+      if (!sameOwner(owner, currentOwner())) {
+        setError(CHANGED);
+        return;
+      }
       setError('');
+      ownerRef.current = owner;
       setGed(merged);
     } catch (e) {
       setError(`Could not read that file: ${(e as Error).message || 'unknown error'}`);
@@ -94,6 +144,13 @@ export function ImportPage() {
 
   async function doGedImport() {
     if (!ged) return;
+    const owner = ownerRef.current;
+    if (!owner || !sameOwner(owner, currentOwner())) {
+      setGed(null);
+      ownerRef.current = null;
+      setError(CHANGED);
+      return;
+    }
     setBusy(true);
     setError('');
     try {
@@ -122,15 +179,61 @@ export function ImportPage() {
   const exportAll = () => downloadText(`lineage-everyone-${stamp()}${suffix}.ged`, exportGedcom(people, rels, { privacy }));
 
   async function onPick() {
+    const owner = currentOwner();
     try {
-      prepare(await pickContacts());
+      prepare(await pickContacts(), undefined, owner);
     } catch (e) {
       setError((e as Error).message || 'Could not open contacts.');
     }
   }
 
+  /** Signed out: run the normal Lineage sign-in (account-isolation and backup sheets), never the contacts fetch. */
+  async function onGoogleSignIn() {
+    if (gProgress !== null) return;
+    setError('');
+    setDone(null);
+    setGProgress('signin');
+    try {
+      await auth.signIn();
+    } catch (e) {
+      const c = errCode(e);
+      if (c !== 'auth/popup-closed-by-user' && c !== 'auth/cancelled-popup-request' && c !== 'auth/user-cancelled') {
+        setError((e as Error).message || 'Could not sign in with Google.');
+      }
+    } finally {
+      setGProgress(null);
+    }
+  }
+
+  async function onGoogle() {
+    if (gProgress !== null || !user || cloudPending) return;
+    const owner = currentOwner();
+    setError('');
+    setDone(null);
+    setGProgress('auth');
+    try {
+      const token = await getContactsAccessToken();
+      if (!sameOwner(owner, currentOwner())) throw new Error(CHANGED);
+      setGProgress(0);
+      const list = await fetchGoogleContacts(token, (n) => setGProgress(n));
+      prepare(peopleApiToPersons(list), 'No contacts found in your Google account.', owner);
+    } catch (e) {
+      // Closing the Google window is a cancel, not an error.
+      if (errCode(e) !== 'popup-closed') setError((e as Error).message || 'Could not read your Google contacts.');
+    } finally {
+      setGProgress(null);
+    }
+  }
+
   async function doImport() {
     if (!cands) return;
+    const owner = ownerRef.current;
+    if (!owner || !sameOwner(owner, currentOwner())) {
+      setCands(null);
+      ownerRef.current = null;
+      setError(CHANGED);
+      return;
+    }
     setBusy(true);
     setError('');
     try {
@@ -203,28 +306,49 @@ export function ImportPage() {
           )}
           <p className="mt-3 text-xs text-stone-500">Re-importing a file adds everyone again — use Merge on a person’s page to combine duplicates.</p>
           <div className="mt-4 flex justify-end gap-2">
-            <button className="btn-ghost" onClick={() => setGed(null)}>Cancel</button>
+            <button className="btn-ghost" onClick={() => { setGed(null); ownerRef.current = null; }}>Cancel</button>
             <button className="btn-primary" disabled={busy} onClick={doGedImport}>Import {ged.people.length}</button>
           </div>
         </div>
       ) : !cands ? (
         <div className="space-y-3">
-          {picker && (
-            <button onClick={onPick} className="card flex w-full items-center gap-4 p-5 text-left transition hover:bg-stone-50 dark:hover:bg-stone-800/60">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-900/40 dark:text-brand-300"><Smartphone /></div>
-              <div>
-                <div className="font-semibold">Choose from this phone’s contacts</div>
-                <div className="text-sm text-stone-500">Pick the people you want — nothing else is read.</div>
+          {googleAvailable && (
+            <button onClick={user ? onGoogle : onGoogleSignIn} disabled={gProgress !== null || cloudPending || auth.loading}
+              aria-busy={gProgress !== null || (!!user && cloudPending && !backup.asking && !backup.foreign)}
+              className={`card flex w-full items-center gap-4 p-5 text-left ring-2 ring-brand-200 transition enabled:hover:bg-stone-50 dark:ring-brand-800 dark:enabled:hover:bg-stone-800/60 ${gProgress !== null ? 'disabled:cursor-progress' : 'disabled:cursor-not-allowed disabled:opacity-70'}`}>
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white ring-1 ring-stone-200 dark:bg-stone-900 dark:ring-stone-700"><GoogleG size={24} /></div>
+              <div className="min-w-0">
+                <div className="font-semibold">Import from Google Contacts</div>
+                <div className="text-sm text-stone-500" aria-live="polite">
+                  {gProgress === 'auth' || gProgress === 'signin'
+                    ? 'Waiting for Google…'
+                    : gProgress !== null
+                      ? `Reading your contacts… ${gProgress}`
+                      : !user
+                        ? 'Sign in with Google first, then import every contact.'
+                        : cloudPending
+                          ? cloudHint
+                          : 'Every contact, pre-selected. Read-only — Lineage never changes your Google contacts.'}
+                </div>
               </div>
             </button>
           )}
           <button onClick={() => fileRef.current?.click()} className="card flex w-full items-center gap-4 p-5 text-left transition hover:bg-stone-50 dark:hover:bg-stone-800/60">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-900/40 dark:text-brand-300"><FileUp /></div>
             <div>
-              <div className="font-semibold">Import a file</div>
-              <div className="text-sm text-stone-500">Contacts as vCard (.vcf) or CSV from Android, iPhone, Google or Outlook, or a family tree (.ged).</div>
+              <div className="font-semibold">Import all contacts (or a family tree file)</div>
+              <div className="text-sm text-stone-500">Export your contacts as a .vcf or .csv file (steps below) and choose it here. Everyone is pre-selected, so you can review and import them in one go. Family tree .ged files work too.</div>
             </div>
           </button>
+          {picker && (
+            <button onClick={onPick} className="card flex w-full items-center gap-4 p-5 text-left transition hover:bg-stone-50 dark:hover:bg-stone-800/60">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-900/40 dark:text-brand-300"><Smartphone /></div>
+              <div>
+                <div className="font-semibold">Choose from this phone’s contacts</div>
+                <div className="text-sm text-stone-500">Tick a few people at a time. Your phone’s picker has no “select all”, so use the file option above for everyone. Nothing else is read.</div>
+              </div>
+            </button>
+          )}
           <input ref={fileRef} type="file" accept=".vcf,.vcard,.csv,.ged,.gedcom,text/vcard,text/csv" multiple className="hidden"
             onChange={(e) => { onFiles(e.target.files); e.target.value = ''; }} />
 
@@ -241,8 +365,8 @@ export function ImportPage() {
           <div className="mb-3 flex items-center justify-between gap-2">
             <div className="text-sm text-stone-500">{cands.length} found · {newCount} new · {cands.length - newCount} already known</div>
             <div className="flex gap-1">
-              <button className="btn-ghost px-3 py-1.5" onClick={() => setCands(cands.map((c) => ({ ...c, selected: true })))}>All</button>
-              <button className="btn-ghost px-3 py-1.5" onClick={() => setCands(cands.map((c) => ({ ...c, selected: false })))}>None</button>
+              <button className="btn-ghost px-3 py-1.5" onClick={() => setCands(cands.map((c) => ({ ...c, selected: true })))}>Select all</button>
+              <button className="btn-ghost px-3 py-1.5" onClick={() => setCands(cands.map((c) => ({ ...c, selected: false })))}>Select none</button>
               <button className="btn-ghost px-3 py-1.5" onClick={() => setCands(cands.map((c) => ({ ...c, selected: !c.match })))}>Only new</button>
             </div>
           </div>
@@ -262,7 +386,7 @@ export function ImportPage() {
             ))}
           </div>
           <div className="mt-4 flex justify-end gap-2">
-            <button className="btn-ghost" onClick={() => setCands(null)}>Cancel</button>
+            <button className="btn-ghost" onClick={() => { setCands(null); ownerRef.current = null; }}>Cancel</button>
             <button className="btn-primary" disabled={!selectedCount || busy} onClick={doImport}>Import {selectedCount}</button>
           </div>
         </div>

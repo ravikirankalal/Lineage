@@ -217,7 +217,8 @@ function vcardToPerson(props: VProp[]): Person | undefined {
     p.lastName = undefined;
   }
   if (!p.firstName) {
-    const fallback = p.phones[0]?.value || p.emails[0]?.value;
+    // Business contacts often have only an organization: name them after it.
+    const fallback = p.work[0]?.organization || p.phones[0]?.value || p.emails[0]?.value;
     if (!fallback) return undefined;
     p.firstName = fallback;
   }
@@ -381,12 +382,184 @@ export async function pickContacts(): Promise<Person[]> {
 }
 
 // ---------------------------------------------------------------------------
+// Google People API (people.connections.list) — fetched by src/lib/cloud/googleContacts.ts.
+// Only the fields read here are typed; values may be null or missing in real responses.
+
+type Maybe<T> = T | null | undefined;
+interface GField {
+  metadata?: Maybe<{ primary?: Maybe<boolean> }>;
+}
+interface GTyped extends GField {
+  value?: Maybe<string>;
+  type?: Maybe<string>;
+  formattedType?: Maybe<string>;
+}
+export interface PeopleApiPerson {
+  resourceName?: Maybe<string>;
+  names?: Maybe<(GField & { displayName?: Maybe<string>; givenName?: Maybe<string>; middleName?: Maybe<string>; familyName?: Maybe<string>; unstructuredName?: Maybe<string> })[]>;
+  nicknames?: Maybe<(GField & { value?: Maybe<string> })[]>;
+  phoneNumbers?: Maybe<(GTyped & { canonicalForm?: Maybe<string> })[]>;
+  emailAddresses?: Maybe<GTyped[]>;
+  addresses?: Maybe<(GTyped & {
+    formattedValue?: Maybe<string>; streetAddress?: Maybe<string>; extendedAddress?: Maybe<string>; poBox?: Maybe<string>;
+    city?: Maybe<string>; region?: Maybe<string>; postalCode?: Maybe<string>; country?: Maybe<string>; countryCode?: Maybe<string>;
+  })[]>;
+  birthdays?: Maybe<(GField & { date?: Maybe<{ year?: Maybe<number>; month?: Maybe<number>; day?: Maybe<number> }>; text?: Maybe<string> })[]>;
+  organizations?: Maybe<(GField & { name?: Maybe<string>; title?: Maybe<string> })[]>;
+  biographies?: Maybe<(GField & { value?: Maybe<string>; contentType?: Maybe<string> })[]>;
+  photos?: Maybe<(GField & { url?: Maybe<string>; default?: Maybe<boolean> })[]>;
+  genders?: Maybe<(GField & { value?: Maybe<string> })[]>;
+  urls?: Maybe<GTyped[]>;
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const gs = (s: Maybe<string>) => (s ?? '').trim();
+/** Primary entry first, then the rest in API order. */
+function primaryFirst<T extends GField>(list: Maybe<T[]>): T[] {
+  const l = list ?? [];
+  return [...l.filter((x) => x.metadata?.primary), ...l.filter((x) => !x.metadata?.primary)];
+}
+const gLabel = (x: GTyped, fallback: string) => gs(x.formattedType).toLowerCase() || gs(x.type).toLowerCase() || fallback;
+
+/** Map Google People API persons to Lineage people. Duplicates within the list are merged. */
+export function peopleApiToPersons(list: PeopleApiPerson[]): Person[] {
+  const out: Person[] = [];
+  for (const g of list) {
+    const p = gPersonToPerson(g);
+    if (p) out.push(p);
+  }
+  return planImport(out, []).map((c) => c.person);
+}
+
+function gPersonToPerson(g: PeopleApiPerson): Person | undefined {
+  const p = emptyPerson({ source: 'google' });
+
+  const n = primaryFirst(g.names)[0];
+  if (n) {
+    p.firstName = gs(n.givenName);
+    p.middleName = gs(n.middleName) || undefined;
+    p.lastName = gs(n.familyName) || undefined;
+    if (!p.firstName && !p.lastName) {
+      const parts = (gs(n.displayName) || gs(n.unstructuredName)).split(/\s+/).filter(Boolean);
+      p.lastName = parts.length > 1 ? parts.pop() : undefined;
+      p.firstName = parts.join(' ');
+    }
+  }
+  p.nickname = primaryFirst(g.nicknames).map((x) => gs(x.value)).find(Boolean);
+
+  for (const x of primaryFirst(g.phoneNumbers)) {
+    // Keep the number as the user typed it (extensions like "x 204" or "#5" live only there);
+    // canonicalForm (E.164) is a fallback. Matching uses the last 10 digits either way.
+    const value = gs(x.value) || gs(x.canonicalForm);
+    if (value) p.phones.push({ label: gLabel(x, 'phone'), value });
+  }
+  for (const x of primaryFirst(g.emailAddresses)) {
+    const value = gs(x.value);
+    if (value) p.emails.push({ label: gLabel(x, 'email'), value });
+  }
+
+  // One address fits Person.address: home if there is one, else the first. Others are kept as facts.
+  const addrs = (g.addresses ?? []).filter((a) => gs(a.formattedValue) || gs(a.streetAddress) || gs(a.city) || gs(a.region) || gs(a.country) || gs(a.countryCode));
+  const home = addrs.find((a) => gs(a.type).toLowerCase() === 'home') ?? addrs[0];
+  if (home) {
+    const structured = gs(home.streetAddress) || gs(home.extendedAddress) || gs(home.city) || gs(home.region) || gs(home.country) || gs(home.countryCode);
+    const place: Place = structured
+      ? {
+          line: [gs(home.streetAddress), gs(home.extendedAddress), gs(home.poBox), gs(home.postalCode)].filter(Boolean).join(', ') || undefined,
+          city: gs(home.city) || undefined,
+          state: gs(home.region) || undefined,
+          country: gs(home.country) || gs(home.countryCode) || undefined,
+        }
+      : { line: gs(home.formattedValue).split(/\n+/).map((x) => x.trim()).filter(Boolean).join(', ') };
+    p.address = Object.fromEntries(Object.entries(place).filter(([, v]) => v)) as Place;
+  }
+  for (const a of addrs) {
+    if (a === home) continue;
+    const text = gs(a.formattedValue).split(/\n+/).map((x) => x.trim()).filter(Boolean).join(', ') ||
+      [gs(a.streetAddress), gs(a.extendedAddress), gs(a.city), gs(a.region), gs(a.postalCode), gs(a.country) || gs(a.countryCode)].filter(Boolean).join(', ');
+    const kind = gs(a.formattedType) || gs(a.type);
+    p.facts.push({ label: kind ? `Address (${kind.toLowerCase()})` : 'Other address', value: text });
+  }
+
+  // Birthday: the first full date wins; otherwise keep what we have as a fact.
+  let bdayFact = '';
+  for (const b of primaryFirst(g.birthdays)) {
+    const d = b.date;
+    if (d?.year) {
+      const pad = (x: number) => String(x).padStart(2, '0');
+      p.birthDate = d.month ? (d.day ? `${d.year}-${pad(d.month)}-${pad(d.day)}` : `${d.year}-${pad(d.month)}`) : String(d.year);
+      break;
+    }
+    const text = gs(b.text);
+    const fromText = text ? vDate(text) : undefined;
+    if (fromText) {
+      p.birthDate = fromText;
+      break;
+    }
+    if (!bdayFact) {
+      if (d?.month) bdayFact = [d.day, MONTHS[d.month - 1]].filter(Boolean).join(' ');
+      else if (text) bdayFact = text;
+    }
+  }
+  if (!p.birthDate && bdayFact) p.facts.push({ label: 'Birthday', value: bdayFact });
+
+  for (const o of g.organizations ?? []) {
+    const org = gs(o.name);
+    const role = gs(o.title);
+    if (org) p.work.push({ organization: org, ...(role ? { role } : {}) });
+    else if (role && !p.occupation) p.occupation = role;
+  }
+  const bio = (x: { value?: Maybe<string>; contentType?: Maybe<string> }) =>
+    x.contentType === 'TEXT_HTML'
+      ? gs(gs(x.value).replace(/<br\s*\/?>|<\/p>/gi, '\n').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&'))
+      : gs(x.value);
+  const notes = (g.biographies ?? []).map(bio).filter(Boolean).join('\n\n');
+  p.notes = notes || undefined;
+  for (const u of g.urls ?? []) {
+    const value = gs(u.value);
+    if (value) p.facts.push({ label: 'Website', value });
+  }
+  const gender = gs(primaryFirst(g.genders)[0]?.value).toLowerCase();
+  if (gender === 'male' || gender === 'female') p.gender = gender;
+  else if (gender && gender !== 'unspecified') p.gender = 'other';
+
+  // Photos: Google serves https URLs (and a generated letter avatar marked `default`). We keep only
+  // inline data:image URLs — the cloud rules require data:image, and hot-linking would leak the
+  // viewer's IP to Google on every render.
+  // TODO: fetch the https photo once at import time, downscale it and embed it as a data: URL.
+  const photo = (g.photos ?? []).find((x) => !x.default && /^data:image\//i.test(gs(x.url)));
+  if (photo && gs(photo.url).length <= 270_000) p.photo = gs(photo.url);
+
+  if (!p.firstName && p.lastName) {
+    p.firstName = p.lastName;
+    p.lastName = undefined;
+  }
+  if (!p.firstName) {
+    // Business contacts often have only an organization: name them after it.
+    const fallback = p.work[0]?.organization || p.phones[0]?.value || p.emails[0]?.value;
+    if (!fallback) return undefined;
+    p.firstName = fallback;
+  }
+  return p;
+}
+
+// ---------------------------------------------------------------------------
 // Duplicate detection & merge
 
+/** A trailing extension: "ext. 204", "extension 204", "x204", "#5", ";ext=204" or a dial pause ",204". */
+const PHONE_EXT = /\s*(?:;\s*ext=|e?xt(?:ension)?\.?|x|#|[,;])\s*(\d+)\s*$/i;
+
+/** Matching key for a phone number: its last 10 digits, ignoring any extension. */
 export function phoneKey(v: string): string {
-  const d = v.replace(/\D/g, '');
+  const d = v.replace(PHONE_EXT, '').replace(/\D/g, '');
   return d.length > 10 ? d.slice(-10) : d;
 }
+
+/** Key for merging phone lists: the same line with a different extension is a different entry. */
+export const phoneEntryKey = (v: string): string => {
+  const ext = PHONE_EXT.exec(v)?.[1];
+  return ext ? `${phoneKey(v)}x${ext}` : phoneKey(v);
+};
 
 export type MatchStrength = 'strong' | 'possible';
 export interface DuplicateMatch {
@@ -437,7 +610,7 @@ export function mergeInto(base: Person, incoming: Person): Person {
     nickname: base.nickname || incoming.nickname,
     gender: base.gender !== 'unknown' ? base.gender : incoming.gender,
     birthDate: base.birthDate || incoming.birthDate,
-    phones: mergeLV(base.phones, incoming.phones, phoneKey),
+    phones: mergeLV(base.phones, incoming.phones, phoneEntryKey),
     emails: mergeLV(base.emails, incoming.emails, norm),
     address: placeOrUndefined(base.address) ?? placeOrUndefined(incoming.address) ?? base.address,
     origin: placeOrUndefined(base.origin) ?? placeOrUndefined(incoming.origin) ?? base.origin,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findDuplicate, mergeInto, parseContactsCSV, parseContactsFile, parseVCard, planImport } from '../contacts';
+import { findDuplicate, mergeInto, parseContactsCSV, parseContactsFile, parseVCard, phoneKey, planImport } from '../contacts';
 import { emptyPerson } from '../person';
 
 const VCF = `BEGIN:VCARD
@@ -165,5 +165,20 @@ describe('planImport performance', () => {
     expect(plan).toHaveLength(uniq);
     expect(plan.every((c) => !c.match && c.person.phones.length === 1)).toBe(true);
     expect(ms).toBeLessThan(500);
+  });
+});
+
+describe('phone extensions', () => {
+  it('ignores the extension when building the matching key', () => {
+    for (const v of ['(555) 555-0142 ext. 204', '555-555-0142 x204', '+1 555 555 0142 #5', '+1-555-555-0142;ext=204', '5555550142,204', '555.555.0142 extension 9']) {
+      expect(phoneKey(v)).toBe('5555550142');
+    }
+    expect(phoneKey('+1 (555) 555-0142')).toBe('5555550142');
+  });
+
+  it('keeps a different extension of a known line when merging', () => {
+    const base = emptyPerson({ firstName: 'Front desk', phones: [{ label: 'work', value: '+1 555 555 0142' }] });
+    const merged = mergeInto(base, emptyPerson({ firstName: 'x', phones: [{ label: 'work', value: '(555) 555-0142 ext. 204' }, { label: 'other', value: '555-555-0142' }] }));
+    expect(merged.phones.map((x) => x.value)).toEqual(['+1 555 555 0142', '(555) 555-0142 ext. 204']);
   });
 });

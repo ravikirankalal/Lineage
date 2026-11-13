@@ -59,7 +59,7 @@ export interface Person {
   tags: string[];
   notes?: string;
   photo?: string; // small data URL
-  source?: 'manual' | 'vcard' | 'csv' | 'picker';
+  source?: 'manual' | 'vcard' | 'csv' | 'picker' | 'google';
   createdAt: number;
   updatedAt: number;
 }
