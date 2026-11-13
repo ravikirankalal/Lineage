@@ -2,7 +2,9 @@ import { Check, ChevronDown, Download, FileUp, GitFork, Smartphone } from 'lucid
 import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Avatar } from '../components/Avatar';
-import { contactPickerSupported, mergeInto, parseContactsFile, pickContacts, planImport, type DuplicateMatch } from '../lib/contacts';
+import { GoogleG } from '../components/Cloud';
+import { contactPickerSupported, mergeInto, parseContactsFile, peopleApiToPersons, pickContacts, planImport, type DuplicateMatch } from '../lib/contacts';
+import { fetchGoogleContacts, getContactsAccessToken, googleContactsAvailable } from '../lib/cloud/googleContacts';
 import { db } from '../lib/db';
 import { usePermissions } from '../lib/cloud/CloudProvider';
 import { useData } from '../lib/data';
@@ -41,11 +43,14 @@ export function ImportPage() {
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const picker = contactPickerSupported();
+  const googleAvailable = googleContactsAvailable();
+  /** Google Contacts import in progress: 'auth' while the consent popup is open, else contacts read so far. */
+  const [gProgress, setGProgress] = useState<'auth' | number | null>(null);
 
-  const prepare = (list: Person[]) => {
+  const prepare = (list: Person[], emptyMessage = 'No contacts found in that file.') => {
     setDone(null);
     if (!list.length) {
-      setError('No contacts found in that file.');
+      setError(emptyMessage);
       return;
     }
     setError('');
@@ -129,6 +134,23 @@ export function ImportPage() {
     }
   }
 
+  async function onGoogle() {
+    if (gProgress !== null) return;
+    setError('');
+    setDone(null);
+    setGProgress('auth');
+    try {
+      const token = await getContactsAccessToken();
+      setGProgress(0);
+      const list = await fetchGoogleContacts(token, (n) => setGProgress(n));
+      prepare(peopleApiToPersons(list), 'No contacts found in your Google account.');
+    } catch (e) {
+      setError((e as Error).message || 'Could not read your Google contacts.');
+    } finally {
+      setGProgress(null);
+    }
+  }
+
   async function doImport() {
     if (!cands) return;
     setBusy(true);
@@ -209,6 +231,22 @@ export function ImportPage() {
         </div>
       ) : !cands ? (
         <div className="space-y-3">
+          {googleAvailable && (
+            <button onClick={onGoogle} disabled={gProgress !== null} aria-busy={gProgress !== null}
+              className="card flex w-full items-center gap-4 p-5 text-left ring-2 ring-brand-200 transition enabled:hover:bg-stone-50 disabled:cursor-progress dark:ring-brand-800 dark:enabled:hover:bg-stone-800/60">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white ring-1 ring-stone-200 dark:bg-stone-900 dark:ring-stone-700"><GoogleG size={24} /></div>
+              <div className="min-w-0">
+                <div className="font-semibold">Import from Google Contacts</div>
+                <div className="text-sm text-stone-500" aria-live="polite">
+                  {gProgress === 'auth'
+                    ? 'Waiting for Google…'
+                    : gProgress !== null
+                      ? `Reading your contacts… ${gProgress}`
+                      : 'Every contact, pre-selected. Read-only — Lineage never changes your Google contacts.'}
+                </div>
+              </div>
+            </button>
+          )}
           <button onClick={() => fileRef.current?.click()} className="card flex w-full items-center gap-4 p-5 text-left transition hover:bg-stone-50 dark:hover:bg-stone-800/60">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-900/40 dark:text-brand-300"><FileUp /></div>
             <div>
