@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { decodeGedcom, exportGedcom, joinPlace, parseGedcom, parseGedcomDate, splitPlace } from '../gedcom';
+import { decodeGedcom, exportGedcom, joinPlace, parseGedcom, parseGedcomDate, relaToSibling, splitPlace } from '../gedcom';
 import { emptyPerson } from '../person';
 import type { Person, Relationship } from '../types';
 
-// Invented family. Exercises: BOM, CRLF, ANSEL header, CONT/CONC, NOTE records, PEDI, DIV, _FREL/_MREL,
+// Invented family; phone numbers use the fictional 555-01xx range and emails example.com. Exercises: BOM, CRLF, ANSEL header, CONT/CONC, NOTE records, PEDI, DIV, _FREL/_MREL,
 // qualified dates, custom tags, RESI/ADDR, FAMC-only back links, a bad line, and a nameless person.
 const FIXTURE = [
   '﻿0 HEAD',
@@ -17,7 +17,7 @@ const FIXTURE = [
   '2 GIVN Ravindra Nath',
   '2 SURN Vermalu',
   '2 NICK Ravi',
-  '1 NAME Ravi /Varma/',
+  '1 NAME Ravi /Vermala/',
   '2 TYPE aka',
   '1 SEX M',
   '1 BIRT',
@@ -28,7 +28,7 @@ const FIXTURE = [
   '2 PLAC Hyderabad, Telangana, India',
   '1 OCCU Schoolteacher',
   '1 EDUC B.A. History',
-  '2 AGNC Nizam College',
+  '2 AGNC Imaginary Arts College',
   '2 DATE FROM 1949 TO 1952',
   '1 RELI Hindu',
   '1 _GOTRA Kashyapa',
@@ -43,8 +43,8 @@ const FIXTURE = [
   '2 DATE BET 1935 AND 1938',
   '1 RESI',
   '2 PLAC Secunderabad, Telangana',
-  '2 PHON +91 90000 00001',
-  '2 EMAIL sarala@@example.org',
+  '2 PHON +1 202-555-0101',
+  '2 EMAIL sarala@@example.com',
   '1 NOTE Loved gardening.',
   '2 CONT Grew jasmine on the terr',
   '2 CONC ace.',
@@ -68,7 +68,7 @@ const FIXTURE = [
   '1 DEAT Y',
   '1 FAMC @F1@',
   '0 @I6@ INDI',
-  '1 NAME Kamala /Rao/',
+  '1 NAME Kamala /Raomuri/',
   '1 SEX F',
   '1 BIRT',
   '2 DATE (during the monsoon)',
@@ -118,7 +118,7 @@ describe('parseGedcom', () => {
   it('parses names, nicknames and other names', () => {
     const r = by('Ravindra');
     expect([r.firstName, r.middleName, r.lastName, r.nickname]).toEqual(['Ravindra', 'Nath', 'Vermalu', 'Ravi']);
-    expect(r.otherNames).toBe('Ravi Varma');
+    expect(r.otherNames).toBe('Ravi Vermala');
     const unknown = res.people.find((p) => p.gender === 'unknown')!;
     expect(unknown.firstName).toBe('Unknown');
     expect(unknown.lastName).toBeUndefined();
@@ -145,7 +145,7 @@ describe('parseGedcom', () => {
   it('parses occupation, education, facts and skips bookkeeping tags', () => {
     const r = by('Ravindra');
     expect(r.occupation).toBe('Schoolteacher');
-    expect(r.education).toEqual([{ institution: 'Nizam College', course: 'B.A. History', from: '1949', to: '1952' }]);
+    expect(r.education).toEqual([{ institution: 'Imaginary Arts College', course: 'B.A. History', from: '1949', to: '1952' }]);
     expect(r.facts).toContainEqual({ label: 'Religion', value: 'Hindu' });
     expect(r.facts).toContainEqual({ label: 'Gotra', value: 'Kashyapa' });
     expect(r.facts.some((f) => /UID/i.test(f.label))).toBe(false);
@@ -159,8 +159,8 @@ describe('parseGedcom', () => {
   it('reads RESI place, phone and @@-escaped email', () => {
     const s = by('Sarala');
     expect(s.address).toEqual({ city: 'Secunderabad', state: 'Telangana' });
-    expect(s.phones[0].value).toBe('+91 90000 00001');
-    expect(s.emails[0].value).toBe('sarala@example.org');
+    expect(s.phones[0].value).toBe('+1 202-555-0101');
+    expect(s.emails[0].value).toBe('sarala@example.com');
   });
 
   it('builds spouse and parent edges', () => {
@@ -185,14 +185,14 @@ describe('parseGedcom', () => {
 
 describe('GEDCOM quirks', () => {
   it('handles LF/CR-only line endings, lowercase tags and missing header', () => {
-    const r = parseGedcom('0 @A@ INDI\r1 name Asha /Kulkarni/\r1 sex F\r0 TRLR');
-    expect(r.people[0]).toMatchObject({ firstName: 'Asha', lastName: 'Kulkarni', gender: 'female' });
+    const r = parseGedcom('0 @A@ INDI\r1 name Asha /Kulmaran/\r1 sex F\r0 TRLR');
+    expect(r.people[0]).toMatchObject({ firstName: 'Asha', lastName: 'Kulmaran', gender: 'female' });
     expect(r.warnings.some((w) => /header/.test(w))).toBe(true);
   });
 
   it('adds FAMS-only spouses and FAMC-only children; warns on missing links', () => {
-    const r = parseGedcom(['0 HEAD', '0 @P1@ INDI', '1 NAME Arun /Joshi/', '1 SEX M', '1 FAMS @F1@',
-      '0 @P2@ INDI', '1 NAME Meera /Joshi/', '1 SEX F', '1 FAMS @F1@', '0 @P3@ INDI', '1 NAME Kiran /Joshi/', '1 FAMC @F1@',
+    const r = parseGedcom(['0 HEAD', '0 @P1@ INDI', '1 NAME Arun /Joshimar/', '1 SEX M', '1 FAMS @F1@',
+      '0 @P2@ INDI', '1 NAME Meera /Joshimar/', '1 SEX F', '1 FAMS @F1@', '0 @P3@ INDI', '1 NAME Kiran /Joshimar/', '1 FAMC @F1@',
       '1 FAMC @F9@', '0 @F1@ FAM', '1 CHIL @P404@', '0 TRLR'].join('\n'));
     expect(r.relationships.filter((x) => x.type === 'spouse')).toHaveLength(1);
     expect(r.relationships.filter((x) => x.type === 'parent')).toHaveLength(2);
@@ -213,8 +213,8 @@ describe('GEDCOM quirks', () => {
   });
 
   it('reads OCCU with AGNC as work and ADOP FAMC as adoptive for one parent', () => {
-    const r = parseGedcom(['0 @A@ INDI', '1 NAME Dev /Iyer/', '1 SEX M', '1 FAMS @F@', '0 @B@ INDI', '1 NAME Gita /Iyer/', '1 SEX F', '1 FAMS @F@',
-      '0 @C@ INDI', '1 NAME Nila /Iyer/', '1 OCCU Clerk', '2 AGNC Imaginary Rail Co', '2 DATE FROM 1980 TO 1995',
+    const r = parseGedcom(['0 @A@ INDI', '1 NAME Dev /Iyerdas/', '1 SEX M', '1 FAMS @F@', '0 @B@ INDI', '1 NAME Gita /Iyerdas/', '1 SEX F', '1 FAMS @F@',
+      '0 @C@ INDI', '1 NAME Nila /Iyerdas/', '1 OCCU Clerk', '2 AGNC Imaginary Rail Co', '2 DATE FROM 1980 TO 1995',
       '1 ADOP', '2 FAMC @F@', '3 ADOP WIFE', '1 FAMC @F@',
       '0 @F@ FAM', '1 HUSB @A@', '1 WIFE @B@', '1 CHIL @C@'].join('\n'));
     const c = r.people[2];
@@ -283,15 +283,15 @@ describe('exportGedcom', () => {
       facts: [{ label: 'Death date', value: 'about 1999' }, { label: 'Religion', value: 'Hindu' }, { label: 'Gotra', value: 'Kashyapa' }],
       origin: { city: 'Kothapalle', district: 'Nalgonda', state: 'Telangana', country: 'India' }, notes: 'Line one\nLine two with an @ sign' }),
     mk('gm', { firstName: 'Sarala', lastName: 'Devipuri', gender: 'female', birthDate: '1935-06', nickname: 'Sallu',
-      phones: [{ label: 'mobile', value: '+91 90000 00001' }], emails: [{ label: 'home', value: 'sarala@example.org' }],
+      phones: [{ label: 'mobile', value: '+1 202-555-0101' }], emails: [{ label: 'home', value: 'sarala@example.com' }],
       address: { city: 'Secunderabad', state: 'Telangana' } }),
     mk('dad', { firstName: 'Mohan', lastName: 'Vermalu', gender: 'male', occupation: 'Engineer',
       work: [{ organization: 'Imaginary Dams Ltd', role: 'Site engineer', from: '1985', to: '2001' }],
       education: [{ institution: 'Fictional Institute of Technology', course: 'B.Tech', from: '1978', to: '1982' }] }),
-    mk('mom', { firstName: 'Padma', lastName: 'Vermalu', gender: 'female', otherNames: 'Padma Iyengar (maiden)' }),
+    mk('mom', { firstName: 'Padma', lastName: 'Vermalu', gender: 'female', otherNames: 'Padma Ayyamkar (maiden)' }),
     mk('me', { firstName: 'Anika', lastName: 'Vermalu', gender: 'female', isMe: true, birthDate: '1990-01-05', howWeMet: 'Family' }),
     mk('sib', { firstName: 'Arjun', lastName: 'Vermalu', gender: 'male' }),
-    mk('step', { firstName: 'Vikram', lastName: 'Sethi', gender: 'male' }),
+    mk('step', { firstName: 'Vikram', lastName: 'Sethiraman', gender: 'male' }),
     mk('friend', { firstName: 'Zoya', lastName: 'Friendly', gender: 'female' }),
   ];
   const rels: Relationship[] = [
@@ -399,5 +399,95 @@ describe('exportGedcom', () => {
     const p = [mk('a', { firstName: 'Uma' }), mk('b', { firstName: 'Usha' })];
     const back = parseGedcom(exportGedcom(p, [rel('s', 'a', 'b', 'sibling')]));
     expect(back.relationships).toEqual([expect.objectContaining({ type: 'sibling' })]);
+  });
+  const sibKey = (r: { fromId: string; toId: string; subtype?: string }, names: Map<string, string>) =>
+    `${[names.get(r.fromId), names.get(r.toId)].sort().join('|')}:${r.subtype ?? ''}`;
+  const roundTrip = (p: Person[], r: Relationship[]) => {
+    const back = parseGedcom(exportGedcom(p, r));
+    const names = new Map(back.people.map((x) => [x.id, x.firstName]));
+    return { back, names, sibs: back.relationships.filter((x) => x.type === 'sibling').map((x) => sibKey(x, names)).sort() };
+  };
+
+  it('keeps a parentless full sibling linked to someone with parents (joins their family)', () => {
+    const p = [mk('m', { firstName: 'Meena', gender: 'female' }), mk('a', { firstName: 'Anu' }), mk('b', { firstName: 'Bala' }),
+      mk('c', { firstName: 'Chitra' })];
+    const out = exportGedcom(p, [rel('1', 'm', 'a', 'parent', 'biological'), rel('2', 'b', 'a', 'sibling'), rel('3', 'c', 'b', 'sibling', 'full')]);
+    const { back, names } = roundTrip(p, [rel('1', 'm', 'a', 'parent', 'biological'), rel('2', 'b', 'a', 'sibling'), rel('3', 'c', 'b', 'sibling', 'full')]);
+    const parentOf = back.relationships.filter((x) => x.type === 'parent').map((x) => `${names.get(x.fromId)}>${names.get(x.toId)}:${x.subtype ?? ''}`).sort();
+    // Bala and Chitra (Bala's parentless full sibling) both become Meena's children with Anu's subtype.
+    expect(parentOf).toEqual(['Meena>Anu:biological', 'Meena>Bala:biological', 'Meena>Chitra:biological']);
+    expect(out).not.toContain('ASSO');
+    expect(back.warnings).toEqual([]);
+  });
+
+  it('round-trips half and step sibling edges via ASSO/RELA', () => {
+    const p = [mk('m', { firstName: 'Meena', gender: 'female' }), mk('a', { firstName: 'Anu' }), mk('h', { firstName: 'Hema' }),
+      mk('s', { firstName: 'Sunil' }), mk('x', { firstName: 'Xavi' }), mk('y', { firstName: 'Yamini' }), mk('d', { firstName: 'Dinesh', gender: 'male' })];
+    const r = [rel('1', 'm', 'a', 'parent'), rel('2', 'a', 'h', 'sibling', 'half'), rel('3', 's', 'a', 'sibling', 'step'),
+      // both have parents but no shared parent: plain sibling edge must survive too
+      rel('4', 'd', 'x', 'parent'), rel('5', 'x', 'a', 'sibling'),
+      // adoptive sibling of a child with parents
+      rel('6', 'y', 'a', 'sibling', 'adoptive')];
+    const out = exportGedcom(p, r);
+    expect(out).toMatch(/1 ASSO @I\d+@\n2 RELA half-sibling/);
+    expect(out).toMatch(/1 ASSO @I\d+@\n2 RELA step-sibling/);
+    const { sibs } = roundTrip(p, r);
+    expect(sibs).toEqual(['Anu|Hema:half', 'Anu|Sunil:step', 'Anu|Xavi:', 'Anu|Yamini:adoptive'].sort());
+  });
+
+  it('imports ASSO sibling associations from other tools and ignores non-sibling ones', () => {
+    const r = parseGedcom(['0 @A@ INDI', '1 NAME Anu //', '1 ASSO @B@', '2 RELA Half Brother', '1 ASSO @C@', '2 RELA Sister',
+      '1 ASSO @D@', '2 RELA Godfather', '1 ASSO @B@', '2 RELA Brother-in-law', '0 @B@ INDI', '1 NAME Bala //', '1 ASSO @A@', '2 RELA half-sibling',
+      '0 @C@ INDI', '1 NAME Chitra //', '0 @D@ INDI', '1 NAME Dinesh //'].join('\n'));
+    const names = new Map(r.people.map((x) => [x.id, x.firstName]));
+    expect(r.relationships.map((x) => `${x.type}:${sibKey(x, names)}`).sort()).toEqual(['sibling:Anu|Bala:half', 'sibling:Anu|Chitra:']);
+    expect(relaToSibling('Step-sister')).toEqual({ subtype: 'step' });
+    expect(relaToSibling('full sibling')).toEqual({ subtype: 'full' });
+    expect(relaToSibling('Adopted brother')).toEqual({ subtype: 'adoptive' });
+    expect(relaToSibling('godsister')).toBeNull();
+  });
+
+  describe("privacy: 'tree'", () => {
+    const secretPeople: Person[] = [
+      mk('g', { firstName: 'Govind', lastName: 'Vermalu', gender: 'male', deceased: true, birthDate: '1920', deathDate: '1990',
+        origin: { area: 'Ward 4', city: 'Kothapalle', state: 'Telangana', country: 'India' },
+        facts: [{ label: 'Place of death', value: 'Kothapalle' }, { label: 'Cause of death', value: 'Secret illness' }],
+        notes: 'Grandpa kept the ledger hidden' }),
+      mk('l', { firstName: 'Lakshmi', lastName: 'Vermalu', gender: 'female', birthDate: '1960-02-03', occupation: 'Teacher',
+        education: [{ institution: 'Imaginary Arts College', course: 'B.Ed' }],
+        phones: [{ label: 'mobile', value: '+1 202-555-0177' }], emails: [{ label: 'home', value: 'lakshmi.secret@example.com' }],
+        address: { line: '42 Imaginary Lane', area: 'Fictional Colony', city: 'Pune', state: 'Maharashtra', country: 'India' },
+        origin: { area: 'Old Quarter', city: 'Nashik', country: 'India' },
+        howWeMet: 'Met at the hidden cafe', metOn: '2001-07-07', appearance: 'Tall, birthmark on cheek',
+        facts: [{ label: 'Blood group', value: 'Rare-Z' }], notes: 'Private note about Lakshmi' }),
+    ];
+    const r = [rel('1', 'g', 'l', 'parent'), rel('2', 'l', 'g', 'sibling', 'step')];
+    const out = exportGedcom(secretPeople, r, { privacy: 'tree' });
+
+    it('leaves out contact details, street lines, notes, how-we-met and facts', () => {
+      for (const secret of ['202-555-0177', 'lakshmi.secret', 'example.com', '42 Imaginary Lane', 'Private note', 'Grandpa kept',
+        'hidden cafe', '2001', 'birthmark', 'Rare-Z', 'Blood group', 'Secret illness', 'PHON', 'EMAIL', 'NOTE', 'ADDR', 'DSCR']) {
+        expect(out).not.toContain(secret);
+      }
+    });
+
+    it('keeps names, dates, town-level places, occupation, education and structure', () => {
+      const back = parseGedcom(out);
+      const [g, l] = back.people;
+      expect(l).toMatchObject({ firstName: 'Lakshmi', lastName: 'Vermalu', gender: 'female', birthDate: '1960-02-03', occupation: 'Teacher',
+        education: [{ institution: 'Imaginary Arts College', course: 'B.Ed' }] });
+      // Living: city level, no locality.
+      expect(l.address).toEqual({ city: 'Pune', state: 'Maharashtra', country: 'India' });
+      expect(l.origin).toEqual({ city: 'Nashik', country: 'India' });
+      // Deceased: locality kept, place of death kept.
+      expect(g.origin).toEqual({ area: 'Ward 4', city: 'Kothapalle', state: 'Telangana', country: 'India' });
+      expect(g.facts).toEqual([{ label: 'Place of death', value: 'Kothapalle' }]);
+      expect(back.relationships.map((x) => `${x.type}:${x.subtype ?? ''}`).sort()).toEqual(['parent:', 'sibling:step']);
+    });
+
+    it("'full' (the default) still includes everything", () => {
+      const full = exportGedcom(secretPeople, r, { privacy: 'full' });
+      for (const s of ['202-555-0177', 'lakshmi.secret@@example.com', '42 Imaginary Lane', 'Private note', 'hidden cafe', 'Rare-Z']) expect(full).toContain(s);
+    });
   });
 });

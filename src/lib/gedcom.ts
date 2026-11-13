@@ -3,11 +3,12 @@
  *
  * Import maps INDI/FAM records onto Person + parent/spouse/sibling edges, with fresh ids.
  * Export writes a lineage-linked GEDCOM 5.5.1 file. Families (FAM) are rebuilt by grouping each
- * child's parent edges into parent pairs.
+ * child's parent edges into parent pairs. Sibling edges that the family structure cannot express
+ * (half, step, or siblings with different recorded parents) are written as `ASSO` + `RELA`.
  */
 import { FamilyGraph } from './kinship';
 import { emptyPerson, newId, parsePartialDate } from './person';
-import type { Fact, Gender, ParentSubtype, Person, Place, Relationship, SpouseSubtype } from './types';
+import type { Fact, Gender, ParentSubtype, Person, Place, Relationship, SiblingSubtype, SpouseSubtype } from './types';
 
 export type ParsedRelationship = Omit<Relationship, 'createdAt'>;
 
@@ -343,6 +344,25 @@ function statToSubtype(v: string): SpouseSubtype | undefined {
   return undefined;
 }
 
+/**
+ * ASSO RELA text → sibling subtype. `null` when it is not a sibling association at all;
+ * `undefined` subtype for a plain "sibling" / "brother" / "sister".
+ */
+export function relaToSibling(v: string): { subtype?: SiblingSubtype } | null {
+  // "Sibling", "Half-sibling", "step brother", "Adopted sister", "full sibling"; not "brother-in-law" or "godsister".
+  const m = v.trim().toLowerCase().match(/^(half|step|adoptive|adopted|full)?[\s_-]*(?:sibling|brother|sister)$/);
+  if (!m) return null;
+  if (m[1] === 'half') return { subtype: 'half' };
+  if (m[1] === 'step') return { subtype: 'step' };
+  if (m[1] === 'adoptive' || m[1] === 'adopted') return { subtype: 'adoptive' };
+  if (m[1] === 'full') return { subtype: 'full' };
+  return {};
+}
+
+const SIBLING_RELA: Record<SiblingSubtype, string> = {
+  half: 'half-sibling', step: 'step-sibling', adoptive: 'adoptive-sibling', full: 'full-sibling',
+};
+
 // ---------------------------------------------------------------------------
 // Import
 
@@ -403,11 +423,13 @@ interface IndiInfo {
   adop: Map<string, 'HUSB' | 'WIFE' | 'BOTH'>;
   famc: string[];
   fams: string[];
+  /** ASSO links: target xref + RELA text */
+  asso: { xref: string; rela: string }[];
 }
 
 function readIndi(node: Node, notes: Map<string, string>, warn: (w: string) => void): IndiInfo {
   const p = emptyPerson({ source: 'manual' });
-  const info: IndiInfo = { person: p, pedi: new Map(), adop: new Map(), famc: [], fams: [] };
+  const info: IndiInfo = { person: p, pedi: new Map(), adop: new Map(), famc: [], fams: [], asso: [] };
   const noteTexts: string[] = [];
   const others: string[] = [];
   const occupations: string[] = [];
@@ -517,6 +539,9 @@ function readIndi(node: Node, notes: Map<string, string>, warn: (w: string) => v
       case 'FAMS':
         if (isPointer(text(c))) info.fams.push(text(c));
         break;
+      case 'ASSO':
+        if (isPointer(text(c))) info.asso.push({ xref: text(c), rela: sub(c, 'RELA') });
+        break;
       case 'FACT':
       case 'EVEN': {
         const label = sub(c, 'TYPE') || (c.tag === 'FACT' ? 'Fact' : 'Event');
@@ -584,7 +609,6 @@ export function parseGedcom(input: string): GedcomImport {
   const rels: ParsedRelationship[] = [];
   const parentKey = new Map<string, ParsedRelationship>();
   const spouseKey = new Set<string>();
-  const siblingKey = new Set<string>();
   let missing = 0;
 
   const idOf = (xref: string): string | undefined => {
@@ -611,12 +635,18 @@ export function parseGedcom(input: string): GedcomImport {
     spouseKey.add(k);
     rels.push({ id: newId(), fromId: a, toId: b, type: 'spouse', ...(subtype ? { subtype } : {}), ...(note ? { note } : {}) });
   };
-  const addSibling = (a: string, b: string) => {
+  const siblingKey = new Map<string, ParsedRelationship>();
+  const addSibling = (a: string, b: string, subtype?: SiblingSubtype) => {
     if (a === b) return;
     const k = [a, b].sort().join('|');
-    if (siblingKey.has(k)) return;
-    siblingKey.add(k);
-    rels.push({ id: newId(), fromId: a, toId: b, type: 'sibling' });
+    const existing = siblingKey.get(k);
+    if (existing) {
+      if (!existing.subtype && subtype) existing.subtype = subtype;
+      return;
+    }
+    const r: ParsedRelationship = { id: newId(), fromId: a, toId: b, type: 'sibling', ...(subtype ? { subtype } : {}) };
+    siblingKey.set(k, r);
+    rels.push(r);
   };
 
   const fams = new Map<string, Node>();
@@ -695,6 +725,15 @@ export function parseGedcom(input: string): GedcomImport {
     }
     // Children of a family with no recorded parents are still siblings of each other.
     if (!h && !w) for (let i = 1; i < kidIds.length; i++) addSibling(kidIds[0], kidIds[i]);
+  }
+  // ASSO + RELA sibling links (half/step siblings, or siblings the FAM records cannot express).
+  for (const info of indis.values()) {
+    for (const a of info.asso) {
+      const sib = relaToSibling(a.rela);
+      if (!sib) continue;
+      const other = idOf(a.xref);
+      if (other) addSibling(info.person.id, other, sib.subtype);
+    }
   }
   if (missing) warn(`${missing} family link${missing === 1 ? '' : 's'} pointed to people not in the file and were skipped.`);
   if (dangling) warn(`${dangling} link${dangling === 1 ? '' : 's'} pointed to families not in the file and were skipped.`);
@@ -808,16 +847,59 @@ interface Fam {
   kids: Map<string, Map<string, ParentSubtype | undefined>>;
 }
 
+export interface GedcomExportOptions {
+  /** Only write this person's family-connected component (friends are never included). */
+  familyOfId?: string;
+  /**
+   * 'full' (default) writes everything, for a private backup. 'tree' is safe to upload to a family
+   * tree site: names, gender, dates, town-level places, occupation, education and family structure;
+   * no phones, emails, street addresses, how-we-met, notes, appearance or custom facts. Living people's
+   * places are limited to city level (no locality/village).
+   */
+  privacy?: 'full' | 'tree';
+}
+
+/** Fact labels that are part of dates/places and still written in 'tree' mode. */
+const TREE_FACTS = new Set(['Birth date', 'Death date', 'Place of death']);
+
+/** A place reduced for 'tree' export: never the street line; locality only for the deceased. */
+function treePlace(pl: Place | undefined, deceased: boolean): Place | undefined {
+  if (!pl) return undefined;
+  const out: Place = {};
+  for (const k of ['city', 'district', 'state', 'country'] as const) if (pl[k]) out[k] = pl[k];
+  if (deceased && pl.area) out.area = pl.area;
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** Copy of a person with only what 'tree' mode may write. */
+function treePerson(p: Person): Person {
+  const dead = !!p.deceased;
+  return {
+    ...p,
+    phones: [],
+    emails: [],
+    notes: undefined,
+    howWeMet: undefined,
+    metOn: undefined,
+    appearance: undefined,
+    facts: p.facts.filter((f) => TREE_FACTS.has(f.label)),
+    origin: treePlace(p.origin, dead),
+    address: treePlace(p.address, dead),
+  };
+}
+
 /**
  * Export people and family edges as GEDCOM 5.5.1. With `familyOfId`, only that person's
  * family-connected component is written (friends and other social links are never exported).
  */
-export function exportGedcom(people: Person[], rels: Relationship[], opts: { familyOfId?: string } = {}): string {
+export function exportGedcom(people: Person[], rels: Relationship[], opts: GedcomExportOptions = {}): string {
+  const tree = opts.privacy === 'tree';
   let list = people;
   if (opts.familyOfId) {
     const comp = new FamilyGraph(people, rels).familyComponent(opts.familyOfId);
     list = people.filter((p) => comp.has(p.id));
   }
+  if (tree) list = list.map(treePerson);
   const ids = new Set(list.map((p) => p.id));
   const fam = rels.filter((r) => ids.has(r.fromId) && ids.has(r.toId) && r.fromId !== r.toId);
   const byId = new Map(list.map((p) => [p.id, p]));
@@ -868,27 +950,51 @@ export function exportGedcom(people: Person[], rels: Relationship[], opts: { fam
   }
   for (const r of fam) if (r.type === 'spouse') famFor(r.fromId, r.toId).spouse = r;
 
-  // Explicit full/adoptive sibling groups with no recorded parents become parentless families.
+  // Explicit full/adoptive/untyped sibling groups with no recorded parents: union-find them.
+  const isShared = (r: Relationship) => r.type === 'sibling' && r.subtype !== 'step' && r.subtype !== 'half';
   const parentless = new Map<string, string>();
   const findRoot = (x: string): string => {
     const p = parentless.get(x) ?? x;
     return p === x ? x : findRoot(p);
   };
   for (const r of fam) {
-    if (r.type !== 'sibling' || r.subtype === 'step' || r.subtype === 'half') continue;
-    if (parentsOf.has(r.fromId) || parentsOf.has(r.toId)) continue;
+    if (!isShared(r) || parentsOf.has(r.fromId) || parentsOf.has(r.toId)) continue;
     const a = findRoot(r.fromId);
     const b = findRoot(r.toId);
     if (!parentless.has(a)) parentless.set(a, a);
     if (!parentless.has(b)) parentless.set(b, b);
     if (a !== b) parentless.set(a, b);
   }
+  // A parentless person linked as a full/untyped sibling to someone with parents joins that person's
+  // families as a child, so the whole group re-imports with those parents. The first such link wins;
+  // other links are written as ASSO below if the families do not cover them.
+  const anchorOf = new Map<string, string>();
+  for (const r of fam) {
+    if (!isShared(r) || r.subtype === 'adoptive') continue;
+    const [lone, anchor] = !parentsOf.has(r.fromId) && parentsOf.has(r.toId) ? [r.fromId, r.toId]
+      : !parentsOf.has(r.toId) && parentsOf.has(r.fromId) ? [r.toId, r.fromId] : [];
+    if (!lone || !anchor) continue;
+    const root = findRoot(lone);
+    if (!anchorOf.has(root)) anchorOf.set(root, anchor);
+  }
   const sibGroups = new Map<string, string[]>();
   for (const x of parentless.keys()) (sibGroups.get(findRoot(x)) ?? sibGroups.set(findRoot(x), []).get(findRoot(x))!).push(x);
+  // Lone people with an anchor but no parentless sibling links of their own.
+  for (const [root] of anchorOf) if (!sibGroups.has(root)) sibGroups.set(root, [root]);
   let sibN = 0;
-  for (const members of sibGroups.values()) {
-    if (members.length < 2) continue;
-    fams.set(`~sib${sibN++}`, { xref: '', kids: new Map(members.map((m) => [m, new Map()])) });
+  const builtFams = [...fams.values()];
+  for (const [root, members] of sibGroups) {
+    const anchor = anchorOf.get(root);
+    if (anchor) {
+      for (const f of builtFams) {
+        const subs = f.kids.get(anchor);
+        if (!subs) continue;
+        // Same parent subtypes as the anchor: a full sibling of an adopted child shares those parents the same way.
+        for (const m of members) if (!f.kids.has(m)) f.kids.set(m, new Map(subs));
+      }
+    } else if (members.length >= 2) {
+      fams.set(`~sib${sibN++}`, { xref: '', kids: new Map(members.map((m) => [m, new Map()])) });
+    }
   }
 
   const famList = [...fams.values()];
@@ -898,6 +1004,22 @@ export function exportGedcom(people: Person[], rels: Relationship[], opts: { fam
   for (const f of famList) {
     for (const k of f.kids.keys()) (famc.get(k) ?? famc.set(k, []).get(k)!).push(f);
     for (const s of [f.husb, f.wife]) if (s) (famsOf.get(s) ?? famsOf.set(s, []).get(s)!).push(f);
+  }
+
+  // Sibling edges the families do not already express become ASSO + RELA on the first person.
+  const assoOf = new Map<string, { to: string; rela: string }[]>();
+  const assoSeen = new Set<string>();
+  for (const r of fam) {
+    if (r.type !== 'sibling') continue;
+    const st = r.subtype as SiblingSubtype | undefined;
+    const shareFam = (famc.get(r.fromId) ?? []).some((f) => f.kids.has(r.toId));
+    // Full/untyped/adoptive siblings in the same family are implied; half/step always need ASSO.
+    if (shareFam && st !== 'half' && st !== 'step') continue;
+    const k = [r.fromId, r.toId].sort().join('|');
+    if (assoSeen.has(k)) continue;
+    assoSeen.add(k);
+    const rela = st ? SIBLING_RELA[st] : 'sibling';
+    (assoOf.get(r.fromId) ?? assoOf.set(r.fromId, []).get(r.fromId)!).push({ to: r.toId, rela });
   }
 
   const w = new Writer();
@@ -914,7 +1036,10 @@ export function exportGedcom(people: Person[], rels: Relationship[], opts: { fam
   w.line(0, 'SUBM', undefined, { xref: '@U1@' });
   w.line(1, 'NAME', 'Lineage user');
 
-  for (const p of list) writeIndi(w, p, xrefOf.get(p.id)!, famc.get(p.id) ?? [], famsOf.get(p.id) ?? []);
+  for (const p of list) {
+    const asso = (assoOf.get(p.id) ?? []).map((a) => ({ xref: xrefOf.get(a.to)!, rela: a.rela }));
+    writeIndi(w, p, xrefOf.get(p.id)!, famc.get(p.id) ?? [], famsOf.get(p.id) ?? [], asso);
+  }
 
   for (const f of famList) {
     w.line(0, 'FAM', undefined, { xref: f.xref });
@@ -924,7 +1049,7 @@ export function exportGedcom(people: Person[], rels: Relationship[], opts: { fam
     if (st && st !== 'partner') w.line(1, 'MARR', 'Y');
     if (st === 'divorced') w.line(1, 'DIV', 'Y');
     if (st && st !== 'married' && st !== 'divorced') w.line(1, '_STAT', st === 'partner' ? 'Partners' : st[0].toUpperCase() + st.slice(1));
-    if (f.spouse?.note) w.line(1, 'NOTE', f.spouse.note);
+    if (f.spouse?.note && !tree) w.line(1, 'NOTE', f.spouse.note);
     for (const [kid, subs] of f.kids) {
       w.line(1, 'CHIL', xrefOf.get(kid), { pointer: true });
       if (!usePedi(subs)) {
@@ -960,7 +1085,7 @@ function orderCouple(a: string | undefined, b: string | undefined, byId: Map<str
   return [a, b];
 }
 
-function writeIndi(w: Writer, p: Person, xref: string, famc: Fam[], fams: Fam[]) {
+function writeIndi(w: Writer, p: Person, xref: string, famc: Fam[], fams: Fam[], asso: { xref: string; rela: string }[]) {
   w.line(0, 'INDI', undefined, { xref });
   const given = [p.firstName, p.middleName].map((x) => x?.trim()).filter(Boolean).join(' ');
   const surname = (p.lastName ?? '').replace(/\//g, ' ').trim();
@@ -1059,6 +1184,10 @@ function writeIndi(w: Writer, p: Person, xref: string, famc: Fam[], fams: Fam[])
     if (pedi) w.line(2, 'PEDI', pedi);
   }
   for (const f of fams) w.line(1, 'FAMS', f.xref, { pointer: true });
+  for (const a of asso) {
+    w.line(1, 'ASSO', a.xref, { pointer: true });
+    w.line(2, 'RELA', a.rela);
+  }
 }
 
 function range(from?: string, to?: string): string | undefined {

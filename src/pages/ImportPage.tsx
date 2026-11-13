@@ -109,8 +109,11 @@ export function ImportPage() {
 
   const familyCount = useMemo(() => (me ? graph.familyComponent(me.id).size : 0), [graph, me]);
   const stamp = () => new Date().toISOString().slice(0, 10);
-  const exportFamily = () => me && downloadText(`lineage-family-${stamp()}.ged`, exportGedcom(people, rels, { familyOfId: me.id }));
-  const exportAll = () => downloadText(`lineage-everyone-${stamp()}.ged`, exportGedcom(people, rels));
+  // Default to what is safe to upload to Ancestry and similar sites; the full export is a private backup.
+  const [privacy, setPrivacy] = useState<'tree' | 'full'>('tree');
+  const suffix = privacy === 'full' ? '-private' : '';
+  const exportFamily = () => me && downloadText(`lineage-family-${stamp()}${suffix}.ged`, exportGedcom(people, rels, { familyOfId: me.id, privacy }));
+  const exportAll = () => downloadText(`lineage-everyone-${stamp()}${suffix}.ged`, exportGedcom(people, rels, { privacy }));
 
   async function onPick() {
     try {
@@ -256,6 +259,22 @@ export function ImportPage() {
       <section className="mt-8">
         <h2 className="mb-2 px-1 text-sm font-semibold uppercase tracking-wide text-stone-500">Export</h2>
         <div className="card divide-y divide-stone-100 dark:divide-stone-800">
+          <div className="p-4">
+            <div className="mb-2 text-sm font-medium" id="export-contents">Contents</div>
+            <div role="radiogroup" aria-labelledby="export-contents" className="grid grid-cols-2 gap-1 rounded-xl bg-stone-100 p-1 text-sm dark:bg-stone-800">
+              {([['tree', 'Family tree only (safe to share)'], ['full', 'Everything (private backup)']] as const).map(([v, label]) => (
+                <button key={v} role="radio" aria-checked={privacy === v} onClick={() => setPrivacy(v)}
+                  className={`rounded-lg px-3 py-2 font-medium transition ${privacy === v ? 'bg-white text-stone-900 shadow-sm dark:bg-stone-700 dark:text-stone-50' : 'text-stone-500 hover:text-stone-700 dark:hover:text-stone-300'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-stone-500">
+              {privacy === 'tree'
+                ? 'Names, dates, towns, jobs and how everyone is related. No phone numbers, emails, street addresses or notes.'
+                : 'Includes phone numbers, emails, addresses and notes. Keep this file private; don’t upload it to tree sites.'}
+            </p>
+          </div>
           <button onClick={exportFamily} disabled={!me} className="flex w-full items-center gap-4 p-4 text-left transition enabled:hover:bg-stone-50 disabled:opacity-60 dark:enabled:hover:bg-stone-800/60">
             <Download size={19} className="shrink-0 text-brand-600 dark:text-brand-300" />
             <div>
