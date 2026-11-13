@@ -152,7 +152,7 @@ describe('importBackup', () => {
   it('normalises malformed people and keeps id/createdAt/updatedAt', async () => {
     await importBackup(
       backup([
-        { id: 'a', createdAt: 5, updatedAt: 7, lastName: 'Kumar' },
+        { id: 'a', createdAt: 5, updatedAt: 7, lastName: 'Example' },
         { id: 'b', firstName: 42, gender: 'robot', phones: null, tags: 'x' },
         { firstName: 'no id' },
         null,
@@ -161,7 +161,7 @@ describe('importBackup', () => {
       'replace',
     );
     const a = await db.people.get('a');
-    expect(a).toMatchObject({ id: 'a', createdAt: 5, updatedAt: 7, firstName: '', lastName: 'Kumar', gender: 'unknown' });
+    expect(a).toMatchObject({ id: 'a', createdAt: 5, updatedAt: 7, firstName: '', lastName: 'Example', gender: 'unknown' });
     for (const k of ['phones', 'emails', 'work', 'education', 'facts', 'tags'] as const) expect(a?.[k]).toEqual([]);
     const b = await db.people.get('b');
     expect(b?.firstName).toBe('');
@@ -226,29 +226,29 @@ describe('mergePeople', () => {
   it('fills keep\'s empty fields from drop and reports conflicts', async () => {
     await db.people.bulkPut([
       person('K', {
-        firstName: 'Ravi',
+        firstName: 'Testa',
         birthDate: '1988',
         gender: 'unknown',
         notes: 'Met at school',
-        origin: { city: 'Mysuru' },
+        origin: { city: 'Springfield' },
         createdAt: 500,
       }),
       person('D', {
-        firstName: 'Ravi',
-        lastName: 'Rao',
+        firstName: 'Testa',
+        lastName: 'Person',
         nickname: 'R',
         birthDate: '1987',
         gender: 'male',
         deceased: true,
         notes: 'Likes cricket',
-        origin: { city: 'Udupi' },
-        address: { city: 'Bengaluru' },
+        origin: { city: 'Shelbyville' },
+        address: { city: 'Ogdenville' },
         occupation: 'Engineer',
         photo: 'data:image/png;base64,xx',
         tags: ['school', 'Family'],
         facts: [{ label: 'Blood group', value: 'O+' }],
         work: [{ organization: 'Acme' }],
-        education: [{ institution: 'NIE' }],
+        education: [{ institution: 'Example College' }],
         createdAt: 100,
       }),
     ]);
@@ -258,21 +258,21 @@ describe('mergePeople', () => {
       work: [{ organization: 'acme', role: 'Lead' }],
     });
     const preview = await previewMerge('K', 'D');
-    expect(preview.conflicts).toEqual(['Birth date: 1988 kept, 1987 dropped', 'Origin: Mysuru kept, Udupi dropped']);
+    expect(preview.conflicts).toEqual(['Birth date: 1988 kept, 1987 dropped', 'Origin: Springfield kept, Shelbyville dropped']);
     expect(await db.people.count()).toBe(2); // preview did not write
 
     await mergePeople('K', 'D');
     expect(await db.people.get('D')).toBeUndefined();
     const k = (await db.people.get('K'))!;
     expect(k).toMatchObject({
-      firstName: 'Ravi',
-      lastName: 'Rao',
+      firstName: 'Testa',
+      lastName: 'Person',
       nickname: 'R',
       birthDate: '1988',
       gender: 'male',
       deceased: true,
-      origin: { city: 'Mysuru' },
-      address: { city: 'Bengaluru' },
+      origin: { city: 'Springfield' },
+      address: { city: 'Ogdenville' },
       occupation: 'Engineer',
       photo: 'data:image/png;base64,xx',
       notes: 'Met at school\n\nLikes cricket',
@@ -281,12 +281,12 @@ describe('mergePeople', () => {
     expect(k.tags).toEqual(['School', 'Family']);
     expect(k.facts).toHaveLength(1);
     expect(k.work).toEqual([{ organization: 'acme', role: 'Lead' }]);
-    expect(k.education).toEqual([{ institution: 'NIE' }]);
+    expect(k.education).toEqual([{ institution: 'Example College' }]);
   });
 
   it('tolerates old rows missing list fields', async () => {
     const legacy = { id: 'L', firstName: 'Old', gender: 'unknown', createdAt: 1, updatedAt: 1 } as unknown as ReturnType<typeof person>;
-    await db.people.bulkPut([person('K', { phones: [{ label: 'mobile', value: '9876543210' }] }), legacy]);
+    await db.people.bulkPut([person('K', { phones: [{ label: 'mobile', value: '5550100000' }] }), legacy]);
     await mergePeople('K', 'L');
     const k = (await db.people.get('K'))!;
     expect(k.phones).toHaveLength(1);
@@ -297,24 +297,24 @@ describe('mergePeople', () => {
   it('unions phones by last 10 digits and emails case-insensitively', async () => {
     await db.people.bulkPut([
       person('K', {
-        phones: [{ label: 'mobile', value: '+91 98765 43210' }],
-        emails: [{ label: 'home', value: 'Ravi@Example.com' }],
+        phones: [{ label: 'mobile', value: '+91 00000 00001' }],
+        emails: [{ label: 'home', value: 'Testa@Example.com' }],
       }),
       person('D', {
         phones: [
-          { label: 'mobile', value: '098765-43210' },
-          { label: 'work', value: '080 2222 3333' },
+          { label: 'mobile', value: '000000-00001' },
+          { label: 'work', value: '555-0100' },
         ],
         emails: [
-          { label: 'home', value: ' ravi@example.com ' },
-          { label: 'work', value: 'ravi@work.in' },
+          { label: 'home', value: ' testa@example.com ' },
+          { label: 'work', value: 'testa@example.org' },
         ],
       }),
     ]);
     await mergePeople('K', 'D');
     const k = (await db.people.get('K'))!;
-    expect(k.phones.map((x) => x.value)).toEqual(['+91 98765 43210', '080 2222 3333']);
-    expect(k.emails.map((x) => x.value)).toEqual(['Ravi@Example.com', 'ravi@work.in']);
+    expect(k.phones.map((x) => x.value)).toEqual(['+91 00000 00001', '555-0100']);
+    expect(k.emails.map((x) => x.value)).toEqual(['Testa@Example.com', 'testa@example.org']);
   });
 
   it('re-points drop\'s edges to keep', async () => {
@@ -353,6 +353,112 @@ describe('mergePeople', () => {
     expect(await db.relationships.get('k1')).toMatchObject({ subtype: 'biological', note: 'from drop' });
     expect(await db.relationships.get('k2')).toMatchObject({ subtype: 'married', note: 'keep note' });
     expect((await db.relationships.get('k3'))?.note).toBe('met in 2001');
+  });
+
+  it('copies drop\'s subtype onto a duplicate edge when keep\'s has none, and reports differing subtypes', async () => {
+    await db.people.bulkPut([
+      person('K'),
+      person('D', { firstName: 'K' }),
+      person('P', { firstName: 'Kiran', lastName: 'Example' }),
+      person('S', { firstName: 'Testa', lastName: 'Spouse' }),
+      person('B'),
+      person('Q', { firstName: 'Other', lastName: 'Parent' }),
+    ]);
+    await db.relationships.bulkPut([
+      rel('k1', 'P', 'K', 'parent'),
+      rel('d1', 'P', 'D', 'parent', { subtype: 'adoptive' }),
+      rel('k2', 'S', 'K', 'spouse'),
+      rel('d2', 'D', 'S', 'spouse', { subtype: 'divorced' }),
+      rel('k3', 'K', 'B', 'sibling'),
+      rel('d3', 'B', 'D', 'sibling', { subtype: 'half' }),
+      rel('k4', 'Q', 'K', 'parent', { subtype: 'adoptive' }),
+      rel('d4', 'Q', 'D', 'parent', { subtype: 'biological' }),
+    ]);
+    const preview = await previewMerge('K', 'D');
+    expect(preview).toMatchObject({ relationshipsMoved: 0, duplicatesDropped: 4 });
+    expect(preview.conflicts).toEqual(['Link to Other Parent: adoptive parent kept, biological dropped']);
+    expect((await db.relationships.get('k1'))?.subtype).toBeUndefined(); // preview did not write
+    await mergePeople('K', 'D');
+    expect((await db.relationships.toArray()).map((r) => r.id).sort()).toEqual(['k1', 'k2', 'k3', 'k4']);
+    expect((await db.relationships.get('k1'))?.subtype).toBe('adoptive');
+    expect((await db.relationships.get('k2'))?.subtype).toBe('divorced');
+    expect((await db.relationships.get('k3'))?.subtype).toBe('half');
+    expect((await db.relationships.get('k4'))?.subtype).toBe('adoptive');
+  });
+
+  it('removes sibling/spouse links that the merge turns into links with a parent, child or ancestor', async () => {
+    // S is K's parent; D is S's sibling. G is S's parent (K's grandparent); D is G's spouse.
+    // C is D's child; K is already C's sibling.
+    await db.people.bulkPut([
+      person('K'),
+      person('D', { firstName: 'K' }),
+      person('S', { firstName: 'Testa', lastName: 'Person' }),
+      person('G', { firstName: 'Grand', lastName: 'Example' }),
+      person('C', { firstName: 'Kiran', lastName: 'Example' }),
+      person('F'),
+    ]);
+    await db.relationships.bulkPut([
+      rel('p1', 'S', 'K', 'parent'),
+      rel('p2', 'G', 'S', 'parent'),
+      rel('sib', 'D', 'S', 'sibling'),
+      rel('sp', 'G', 'D', 'spouse'),
+      rel('pc', 'D', 'C', 'parent'),
+      rel('kc', 'K', 'C', 'sibling'),
+      rel('fr', 'D', 'F', 'friend'),
+    ]);
+    const preview = await previewMerge('K', 'D');
+    expect(preview).toMatchObject({ relationshipsMoved: 2, duplicatesDropped: 3 });
+    expect([...preview.conflicts].sort()).toEqual([
+      'Removed sibling link to Kiran Example: they are also a child',
+      'Removed sibling link to Testa Person: they are also a parent',
+      'Removed spouse link to Grand Example: they are also an ancestor',
+    ]);
+    await mergePeople('K', 'D');
+    const rels = (await db.relationships.toArray()).sort((a, b) => a.id.localeCompare(b.id));
+    expect(rels.map((r) => [r.id, r.fromId, r.toId, r.type])).toEqual([
+      ['fr', 'K', 'F', 'friend'],
+      ['p1', 'S', 'K', 'parent'],
+      ['p2', 'G', 'S', 'parent'],
+      ['pc', 'K', 'C', 'parent'],
+    ]);
+  });
+
+  it('leaves contradictions that already existed on keep alone', async () => {
+    await db.people.bulkPut([person('K'), person('D', { firstName: 'K' }), person('S'), person('X')]);
+    await db.relationships.bulkPut([rel('p', 'S', 'K', 'parent'), rel('s', 'K', 'S', 'sibling'), rel('x', 'D', 'X', 'friend')]);
+    expect(await previewMerge('K', 'D')).toMatchObject({ relationshipsMoved: 1, duplicatesDropped: 0, conflicts: [] });
+    await mergePeople('K', 'D');
+    expect((await db.relationships.toArray()).map((r) => r.id).sort()).toEqual(['p', 's', 'x']);
+  });
+
+  it('keeps drop\'s differing names searchable in otherNames', async () => {
+    await db.people.bulkPut([
+      person('K', { firstName: 'Testa', lastName: 'Person', nickname: 'Tess', otherNames: 'T. Person, Maiden Example' }),
+      person('D', { firstName: 'Kiran', lastName: 'Example', nickname: 'Kiki', otherNames: 'maiden example, Alias One' }),
+      person('E', { firstName: 'testa', lastName: 'PERSON', nickname: 'tess' }),
+      person('N'),
+      person('M', { firstName: 'Mono', nickname: 'Mo' }),
+    ]);
+    const preview = await previewMerge('K', 'D');
+    expect(preview.conflicts).toEqual(
+      expect.arrayContaining(['First name: Testa kept, Kiran dropped', 'Nickname: Tess kept, Kiki dropped']),
+    );
+    await mergePeople('K', 'D');
+    let k = (await db.people.get('K'))!;
+    expect(k).toMatchObject({ firstName: 'Testa', lastName: 'Person', nickname: 'Tess' });
+    expect(k.otherNames).toBe('T. Person, Maiden Example, Alias One, Kiran Example, Kiki');
+
+    // Same names differing only in case add nothing.
+    await mergePeople('K', 'E');
+    k = (await db.people.get('K'))!;
+    expect(k.otherNames).toBe('T. Person, Maiden Example, Alias One, Kiran Example, Kiki');
+
+    // Keep with no names takes drop's names without duplicating them into otherNames.
+    await db.people.update('N', { firstName: '' });
+    await mergePeople('N', 'M');
+    const n = (await db.people.get('N'))!;
+    expect(n).toMatchObject({ firstName: 'Mono', nickname: 'Mo' });
+    expect(n.otherNames).toBeUndefined();
   });
 
   it('drops edges between the two people (would be self-links)', async () => {
