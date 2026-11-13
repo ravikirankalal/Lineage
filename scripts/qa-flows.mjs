@@ -391,7 +391,10 @@ async function features(browser) {
     check(/Kamala Gupta\s*Grandmother · Nani/.test(await body(page)), '[8] connection row lacks term');
     await page.goto(BASE + '#/family');
     await page.getByText('Earliest ancestor').waitFor();
-    check(/Father · Pitaji/.test(await body(page)), '[8] tree card lacks term');
+    // Tree cards lead with the regional term, English label muted after it ("Pitaji · Father",
+    // or on two lines when there is no lifespan). Elsewhere it stays "Father · Pitaji".
+    const card = (await page.locator('button[title*="Pitaji"]').first().innerText()).replace(/\s+/g, ' ');
+    check(/Pitaji( ·)? Father/.test(card) && !/Father · Pitaji/.test(card), `[8] tree card not term-first: "${card}"`);
     await page.getByRole('button', { name: /Relatives \(/ }).click();
     const rl = await body(page);
     check(/Uncle · Mama · Mother's brother/.test(rl) && /Uncle · Chacha · Father's brother/.test(rl), '[8] Relatives list lacks terms');
@@ -423,13 +426,23 @@ async function features(browser) {
       await d.saveAs(path);
       return path;
     };
+    const radio = (n) => page.getByRole('radio', { name: n });
+    check(await radio(/Family tree only \(safe to share\)/).getAttribute('aria-checked') === 'true', '[9] export Contents not defaulting to "safe to share"');
     const famPath = await save('Download my family tree (.ged)');
+    check(!/-private/.test(famPath), `[9] safe export has -private suffix: ${famPath}`);
     const fam = readFileSync(famPath, 'utf8');
+    check(/^1 _LINEAGE_ME Y\s*$/m.test(fam), '[9] export lacks _LINEAGE_ME Y');
     check(/^0 HEAD/.test(fam) && /0 TRLR\s*$/.test(fam), '[9] .ged missing HEAD/TRLR');
     check(!/Sandeep|Farhan|Priya|Venu|Harish/.test(fam), '[9] friend exported in family tree .ged');
     check(!/98480|PHON/.test(fam), '[9] phone in "safe to share" export');
-    const allText = readFileSync(await save(/Download everyone/), 'utf8');
-    check(allText.includes('Sandeep'), '[9] "everyone" export missing friends');
+    const allSafe = readFileSync(await save(/Download everyone/), 'utf8');
+    check(allSafe.includes('Sandeep'), '[9] "everyone" export missing friends');
+    check(!/98480|PHON/.test(allSafe), '[9] phone in "safe to share" everyone export');
+    await radio(/Everything \(private backup\)/).click();
+    check(await radio(/Everything/).getAttribute('aria-checked') === 'true', '[9] full Contents option not selected');
+    const allPath = await save(/Download everyone/);
+    check(/-private\.ged$/.test(allPath), `[9] full export lacks -private suffix: ${allPath}`);
+    check(/98480/.test(readFileSync(allPath, 'utf8')), '[9] full export missing phone numbers');
     const famIndi = (fam.match(/^0 @[^@]+@ INDI/gm) || []).length;
 
     await page.goto(BASE + '#/settings');
@@ -439,18 +452,22 @@ async function features(browser) {
     await page.goto(BASE + '#/import');
     await page.locator('input[type=file]').setInputFiles(famPath);
     await page.getByText('Family tree ready to import').waitFor();
-    check((await body(page)).includes(`${famIndi} people`), '[9] import preview count mismatch');
+    const pv = await body(page);
+    check(pv.includes(`${famIndi} people`), '[9] import preview count mismatch');
+    check(pv.includes('Re-importing a file adds everyone again — use Merge on a person’s page to combine duplicates.'), '[9] GEDCOM summary card text missing');
     await page.getByRole('button', { name: /^Import \d/ }).click();
     await page.getByText(/Added \d+ new people/).waitFor();
     await page.goto(BASE + '#/settings');
     const after = await relCount();
     check(Number(after[1]) === famIndi && Number(after[1]) < Number(before[1]), `[9] people after import ${after[0]}`);
     await page.goto(BASE + '#/family');
-    await page.getByRole('button', { name: /Ravi Rao/ }).first().click(); // "Who are you?" picker
-    await page.getByText('Earliest ancestor').waitFor();
+    // _LINEAGE_ME restores "me": no "Who are you?" picker after wipe + re-import.
+    await page.getByText(/Earliest ancestor|Who are you\?/).first().waitFor();
     const fb = await body(page);
+    check(!/Who are you\?/.test(fb), '[9] "Who are you?" picker shown — me not restored from _LINEAGE_ME');
+    check(/Ravi R\.\s*You/.test(fb), '[9] Ravi not the tree ego after import');
     check(/5\s*Generations/.test(fb), '[9] generations not restored');
-    check(/Anjali R\.\s*Wife/.test(fb) && /Grandmother · Ammamma/.test(fb), '[9] spouse/kinship labels missing after import');
+    check(/Anjali R\.\s*(Bharya · )?Wife/.test(fb) && /Ammamma(\s*·)?\s*Grandmother/.test(fb), '[9] spouse/kinship labels missing after import: ' + fb.replace(/\n/g, ' | ').slice(0, 300));
     await shot(page, '9a-tree-after-ged');
     await openProfile(page, 'Prakash Rao');
     check(/Uncle · Babai/.test(await body(page)), '[9] Prakash not uncle after import');
@@ -461,17 +478,25 @@ async function features(browser) {
       '0 @I2@ INDI', '1 NAME Meenakshi /Iyer/', '1 SEX F', '1 FAMS @F1@',
       '0 @I3@ INDI', '1 NAME Ramesh /Iyer/', '1 SEX M', '1 FAMC @F1@',
       '0 @I4@ INDI', '1 NAME Lakshmi /Iyer/', '1 SEX F', '1 BIRT', '2 DATE ABT JUN 1975', '1 FAMC @F1@', '2 PEDI adopted',
+      '0 @I5@ INDI', '1 NAME Venkat /Iyer/', '1 SEX M', '1 BIRT', '2 DATE 1910', '1 DEAT', '2 DATE BEF 2010', '1 FAMC @F2@',
+      '0 @F2@ FAM', '1 CHIL @I1@', '1 CHIL @I5@',
       '0 @F1@ FAM', '1 HUSB @I1@', '1 WIFE @I2@', '1 CHIL @I3@', '1 CHIL @I4@', '0 TRLR', ''].join('\n'));
     await page.goto(BASE + '#/import');
     await page.locator('input[type=file]').setInputFiles(hand);
     await page.getByText('Family tree ready to import').waitFor();
     await page.getByRole('button', { name: /^Import \d/ }).click();
-    await page.getByText(/Added 4 new people/).waitFor();
+    await page.getByText(/Added 5 new people/).waitFor();
     await openProfile(page, 'Lakshmi Iyer');
     const lk = await body(page);
     check(/Gopal Iyer[\s\S]{0,20}Adoptive father/.test(lk) && /Ramesh Iyer\s*Brother/.test(lk), '[9] PEDI adopted not imported');
     check(/about Jun 1975/.test(lk), '[9] ABT date qualifier lost');
     await shot(page, '9b-adopted-child');
+    // DEAT BEF 2010: deceased, but no exact death date, so no "Lived N years".
+    await openProfile(page, 'Venkat Iyer');
+    const vk = await body(page);
+    check(!/Lived \d+ years/.test(vk), '[9] BEF death date treated as exact: "Lived N years" shown');
+    check(/Passed away/.test(vk), '[9] DEAT BEF 2010 did not mark Venkat deceased');
+    await shot(page, '9c-death-before');
   });
   await ctx.close();
 }
