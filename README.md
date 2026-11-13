@@ -2,7 +2,7 @@
 
 **Remember the people in your life — and trace your family back through the generations.**
 
-Lineage is a private, local-first app for people who find it hard to keep track of who's who.
+Lineage is a private, local-first app (with optional Google sign-in for sync and family sharing) for people who find it hard to keep track of who's who.
 Save anything about a person, link people together, and see how everyone is connected —
 with a dedicated section for your own family tree and ancestors.
 
@@ -36,8 +36,13 @@ with a dedicated section for your own family tree and ancestors.
   - the same views work for anyone ("Family tree" on any profile)
 - **Remember** — flash-card practice (face and clues → recall the name), upcoming birthdays, and
   a list of people whose profiles need details.
-- **Private** — data lives only in the browser's IndexedDB on your device. JSON backup/restore in
-  Settings. Installable as an app (PWA) and works offline. Light & dark mode.
+- **Sign in with Google (optional)** — sync your people across devices, and share the *family*
+  part of your tree with relatives as editors or viewers (Sharing page, invites by email). Friends,
+  colleagues and notes about non-family people are never shared. Relatives you share with see a
+  family member's full record, including phones, address and notes. Who can read or write what is
+  enforced on the server by Firestore security rules. Signing out never deletes your cloud data.
+- **Private** — signed out, data lives only in the browser's IndexedDB on your device. JSON
+  backup/restore in Settings. Installable as an app (PWA) and works offline. Light & dark mode.
 
 ## Run it
 
@@ -48,11 +53,18 @@ npm test           # unit tests (kinship engine, family terms, contacts, GEDCOM,
 npm run build      # static site in dist/ — host anywhere
 npm run verify     # tests + build + browser smoke test (needs Playwright + Chromium)
 npm run qa         # exploratory browser flows (import, merge, GEDCOM, backup/restore…)
+npm run test:rules # Firestore security-rules tests (Firebase emulator, needs Java)
+npm run qa:cloud   # sign-in, sync and sharing flows on the Firebase emulators
 ```
+
+Sign-in is off unless Firebase is configured: copy `.env.example` to `.env.local` and follow
+[FIREBASE_SETUP.md](FIREBASE_SETUP.md). With nothing set, the app runs local-only.
 
 On a phone: open the hosted site and choose **Add to Home screen**.
 Live: **https://ravikirankalal.github.io/Lineage/**, deployed from `master` by
 `.github/workflows/deploy.yml` (repo Settings → Pages → Source must be *GitHub Actions*).
+Firebase Hosting: **https://lineage-d575c.web.app**, deployed from `master` by
+`.github/workflows/firebase-deploy.yml` (live once this branch merges).
 
 Want to look around first? Settings → **Try a sample family** (only offered while the app is empty).
 
@@ -65,3 +77,4 @@ Want to look around first? Settings → **Try a sample family** (only offered wh
 | [MEMORY.md](MEMORY.md) | Decisions, conventions, gotchas — read before changing code |
 | [CLAUDE.md](CLAUDE.md) | Working agreement for AI-assisted sessions |
 | [AGENTS.md](AGENTS.md) | Subagent fleet: roster, routing, shared commands, fleet log |
+| [FIREBASE_SETUP.md](FIREBASE_SETUP.md) | One-time Firebase setup for sign-in, sync and sharing |

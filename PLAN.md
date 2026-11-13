@@ -25,7 +25,11 @@
 ## Architecture
 
 - **Local-first PWA**: React 19 + TypeScript + Vite, Tailwind CSS, Dexie
-  (IndexedDB). Data never leaves the device; JSON backup/restore for safety.
+  (IndexedDB). Without sign-in, data never leaves the device; JSON backup/restore for safety.
+- **Optional cloud** (contract: `src/lib/cloud/contract.ts`): Google sign-in (Firebase Auth) syncs
+  the user's own space across devices and shares the *family part* of the tree with relatives as
+  editor/viewer. Friends, colleagues and private notes about non-family stay in the owner's space.
+  Authorization is server-side in `firestore.rules`. Setup: [FIREBASE_SETUP.md](FIREBASE_SETUP.md).
 - `HashRouter` + relative `base` so the build runs from any static host
   (GitHub Pages, a phone's home screen, a USB stick).
 - Pure domain logic in `src/lib/` (kinship, connections, vCard/CSV parsing)
@@ -116,8 +120,28 @@
 - [x] Review (7 findings fixed) and QA (5 findings: 3 fixed, 1 warning added, 1 → backlog)
 - [x] Site live on GitHub Pages (source: GitHub Actions)
 
+### Phase 10 — Third fleet round: sign-in, sync, sharing ✅ (unmerged)
+- [x] Cloud contract (`src/lib/cloud/contract.ts`) agreed first; agents built against it in parallel
+- [x] New agent `security-engineer` (auth, rules, hosting)
+- [x] Firebase (lazy SDK load, emulator mode), Google sign-in (`auth.ts`), spaces/invites
+      (`spaces.ts`), Firestore `RemoteStore` (`firestoreRemote.ts`)
+- [x] `firestore.rules`: deny-by-default, owner/editor/viewer, validated writes, single-use invites,
+      `updatedAt` monotonic and ≤ now + 5 min, only the owner sets `isMe`, `data:image` photos,
+      `invitedByEmail`; 43 rules tests (`npm run test:rules`)
+- [x] Dexie v2 (relationship `updatedAt`, tombstones, meta), per-space DBs, `sync.ts` (LWW, scopes,
+      role-aware push, skew-safe watermarks, full resync prunes un-shared records, `forgetSpace`,
+      hostile-data hardening)
+- [x] UI: account card, Sign in with Google, `/sharing`, invites with sender, space switcher,
+      read-only mode (`usePermissions` / `useCanEdit`), account isolation, sign-out keeps cloud data
+- [x] Security review (3 high, 2 medium, 4 low: all fixed); emulator QA `npm run qa:cloud` 8/8
+- [x] Firebase Hosting config + `firebase-deploy.yml`; project lineage-d575c set up by the owner
+- [ ] Live on https://lineage-d575c.web.app (on merge)
+
 ### Backlog / ideas
-- [ ] Optional encrypted cloud sync between devices
+- [ ] Split family notes into shared and private (members currently see a family person's full record)
+- [ ] Server-time stamps instead of client clocks for sync
+- [ ] Invite cap per space
+- [ ] Member-device removal is best-effort; a device that never comes online keeps its copy
 - [ ] GEDCOM re-import that matches existing people instead of adding duplicates
 - [ ] Regional terms for great-grandparents, grand-uncles/aunts (plus Telugu younger cross-cousin,
       parallel nephew/niece, step/foster)

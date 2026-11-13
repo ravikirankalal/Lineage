@@ -11,7 +11,8 @@ are in `.claude/agents/`. Claude Code loads them automatically, so you can name 
 | `kinship-engineer` | `src/lib/kinship.ts`, `kinshipTerms.ts`, `tree.ts`, `connections.ts` + tests | yes | relationship labels, tree layout, connection grouping |
 | `ui-builder` | `src/pages`, `src/components`, `src/index.css` | yes | new screens, forms, polish, responsive/dark-mode fixes |
 | `import-specialist` | `src/lib/contacts.ts`, `gedcom.ts`, backup format, `ImportPage` | yes | contacts formats, dedupe/merge, GEDCOM |
-| `data-steward` | `src/lib/types.ts`, `src/lib/db.ts` (incl. `mergePeople`) | yes | any schema/field change, Dexie migrations, integrity rules |
+| `data-steward` | `src/lib/types.ts`, `src/lib/db.ts` (incl. `mergePeople`); built `src/lib/sync.ts` in round 3 | yes | any schema/field change, Dexie migrations, integrity rules, sync engine |
+| `security-engineer` | `src/lib/cloud/firebase.ts`, `auth.ts`, `spaces.ts`, `firestoreRemote.ts`, `firestore.rules`, `firebase.json`, `tests/rules/`, `firebase-deploy.yml`, `FIREBASE_SETUP.md` | yes | sign-in, who can read/write what, sharing roles, Firebase Hosting |
 | `code-reviewer` | — | no (read-only) | after non-trivial changes; whole-codebase audits |
 | `qa-tester` | `scripts/` test scripts only | no app code | before shipping; after UI changes; exploratory testing |
 | `docs-keeper` | `STATE.md`, `PLAN.md`, `MEMORY.md`, `README.md`, `AGENTS.md` | docs only | end of every session; after agent reports |
@@ -20,6 +21,7 @@ are in `.claude/agents/`. Claude Code loads them automatically, so you can name 
 
 ```
 feature request
+  ├─ touches who can sign in or access what? ──► security-engineer
   ├─ touches stored fields/schema? ──► data-steward first (migration plan)
   ├─ derivation / labels / layout? ──► kinship-engineer
   ├─ import / export formats?      ──► import-specialist
@@ -38,8 +40,12 @@ finally:            docs-keeper  (STATE / PLAN / MEMORY)
 - **Reviewers and QA don't fix.** They report confirmed findings, and the owning agent fixes them.
 - **Agents report, the main session decides.** Agent reports are inputs. The coordinating
   session checks them (e.g. re-runs `npm run verify`) before committing.
-- **Nothing leaves the device.** No agent adds network calls, analytics, or real personal data
-  to fixtures.
+- **Nothing leaves the device unless the user signs in.** The only network path is Firebase
+  (Auth + Firestore) behind Google sign-in, per `src/lib/cloud/contract.ts`. No agent adds other
+  network calls or analytics, and fixtures never contain real personal data.
+- **Cross-area features start from a contract** (e.g. `src/lib/cloud/contract.ts`), then owners
+  build against it in parallel.
+- **Never `git stash` or switch branches while agents are editing the working tree.**
 - Only the main session commits and pushes.
 
 ## Shared commands
@@ -51,6 +57,8 @@ finally:            docs-keeper  (STATE / PLAN / MEMORY)
 | `npm run smoke` | Serves `dist/`, drives main flows in Chromium at phone + desktop sizes, screenshots to `smoke-output/`, fails on any page/console error |
 | `npm run verify` | Tests, build and smoke, in order |
 | `npm run qa` | Exploratory browser flows written by qa-tester (`scripts/qa-flows.mjs`) |
+| `npm run test:rules` | Firestore security-rules tests on the emulator (port 8180, `tests/rules/`) |
+| `npm run qa:cloud` | Sign-in, sync and sharing flows on the Auth + Firestore emulators (`scripts/qa-cloud.mjs`; ports 8080/9099/4196) |
 
 `npm run smoke` needs Playwright with Chromium. It is pre-installed in Claude Code cloud
 sessions. Locally, run `npm i -D playwright && npx playwright install chromium`.
@@ -82,3 +90,18 @@ qa-tester added merge, family-terms and GEDCOM flows (10 total) and found 5 issu
 direct-relation merge warning added, and GEDCOM re-import duplicates kept by design (→ backlog).
 Result: 243 tests passing; smoke + qa pass. The site went live on GitHub Pages
 (source: GitHub Actions); it gets these features once the branch merges.
+
+**2026-11-13: third run (sign-in, sync, sharing).** The coordinator wrote the cloud contract
+(`src/lib/cloud/contract.ts`) and added a new agent, **security-engineer**. Three owners then built
+in parallel against it: security-engineer (Firebase with lazy SDK and emulator mode, Google sign-in,
+spaces/invites, Firestore remote, deny-by-default `firestore.rules`, 43 rules tests, Hosting +
+`firebase-deploy.yml`, `FIREBASE_SETUP.md`); data-steward (Dexie v2, per-space DBs, `sync.ts`
+with LWW, scopes, role-aware push, skew-safe watermarks, resync pruning, `forgetSpace`); ui-builder
+(CloudProvider, account card, `/sharing`, invites with sender, space switcher, read-only mode,
+account isolation). Security review (code-reviewer) found 3 high (rejoin via leftover invite, far-future
+`updatedAt` freezing sync, editor-planted `isMe` un-sharing the family), 2 medium (account-switch
+race, rejected edit wiping the editor's copy) and 4 low. All were fixed. Emulator QA
+(`npm run qa:cloud`) passed 7/8 at first: a removed member kept the family copy with no notice.
+The coordinator fixed it in `refreshSpaces`, and the result was 8/8.
+Result: 284 tests, 43 rules tests, smoke + qa (10) + qa:cloud (8) pass. The owner set up Firebase
+project lineage-d575c; Hosting goes live on merge.
