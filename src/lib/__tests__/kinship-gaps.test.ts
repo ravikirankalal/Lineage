@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { FamilyGraph, kinship, relativesOf } from '../kinship';
 import { emptyPerson } from '../person';
 import type { Gender, Relationship, RelType } from '../types';
+import { expectRelativesMatchKinship } from './families';
 
 function family() {
   const people = new Map<string, ReturnType<typeof emptyPerson>>();
@@ -23,6 +24,10 @@ describe('"Relative" fallback uses the path text', () => {
     f.rel('me', 'sib', 'sibling', subtype);
     return f.graph();
   }
+
+  it('relativesOf matches per-target kinship for every ego', () => {
+    for (const sub of ['step', 'half'] as const) for (const gen of ['male', 'female', 'unknown'] as const) expectRelativesMatchKinship(g(sub, gen));
+  });
   it('labels a parent\'s view of the child\'s explicit half / step sibling', () => {
     expect(kinship(g('half'), 'dad', 'sib')?.label).toBe("Son's half-sister");
     expect(kinship(g('half'), 'mom', 'sib')?.label).toBe("Son's half-sister");
@@ -51,6 +56,10 @@ describe('half-sibling edges extend to full siblings', () => {
     f.rel('b', 'c', 'sibling', bc);
     return f.graph();
   }
+
+  it('relativesOf matches per-target kinship for every ego', () => {
+    for (const bc of ['full', undefined, 'step', 'half'] as const) expectRelativesMatchKinship(g(bc));
+  });
   it('A–half–B and B–full–C makes A and C half-siblings, both ways', () => {
     for (const st of ['full', undefined] as const) {
       const G = g(st);
@@ -98,6 +107,10 @@ describe('foster siblings', () => {
     f.rel('mom', 'bio', 'parent');
     return f.graph();
   }
+
+  it('relativesOf matches per-target kinship for every ego', () => {
+    expectRelativesMatchKinship(g());
+  });
   it('labels two foster children of the same foster parent', () => {
     const G = g();
     expect(kinship(G, 'kid', 'girl')?.label).toBe('Foster sister');

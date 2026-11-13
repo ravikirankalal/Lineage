@@ -20,6 +20,9 @@ export class FamilyGraph {
   readonly looseSiblings = new Map<string, Edge<SiblingSubtype>[]>();
   /** Explicit full/adoptive/untyped sibling groups (union-find root per person); they share parents. */
   private sibRoot = new Map<string, string>();
+  /** Members of each explicit sibling group by root, in `sibRoot` insertion order. Built lazily:
+   * the graph is immutable after construction, so it never needs invalidating. */
+  private groups?: Map<string, string[]>;
 
   constructor(people: Person[] | Map<string, Person>, rels: Relationship[]) {
     this.people = people instanceof Map ? people : new Map(people.map((p) => [p.id, p]));
@@ -60,10 +63,11 @@ export class FamilyGraph {
 
   private explicitGroup(id: string): string[] {
     if (!this.sibRoot.has(id)) return [];
-    const root = this.find(id);
-    const out: string[] = [];
-    for (const k of this.sibRoot.keys()) if (k !== id && this.find(k) === root) out.push(k);
-    return out;
+    if (!this.groups) {
+      this.groups = new Map();
+      for (const k of this.sibRoot.keys()) push(this.groups, this.find(k), k);
+    }
+    return this.groups.get(this.find(id))!.filter((k) => k !== id);
   }
 
   person(id: string) {
@@ -389,9 +393,20 @@ function bloodLabel(bl: Blood, gender: Gender): { label: string; category: KinCa
 }
 
 /** Shortest family path from a to b as words, e.g. "Father's brother's son". */
-export function familyPath(graph: FamilyGraph, a: string, b: string): { steps: { id: string; step: Step }[]; text: string } | undefined {
+export function familyPath(graph: FamilyGraph, a: string, b: string): FamilyPath | undefined {
   if (a === b) return { steps: [], text: 'You' };
-  const prev = familyPathTree(graph, a, b);
+  return pathInTree(graph, familyPathTree(graph, a, b), a, b);
+}
+
+/** A family path from one person to another: steps in order, plus the words. */
+export interface FamilyPath {
+  steps: { id: string; step: Step }[];
+  text: string;
+}
+
+/** The path from the tree's root `a` to `b`, as `familyPath` would return it; undefined if `b` is not in the tree. */
+export function pathInTree(graph: FamilyGraph, prev: FamilyPathTree, a: string, b: string): FamilyPath | undefined {
+  if (a === b) return { steps: [], text: 'You' };
   if (!prev.has(b)) return undefined;
   const steps: { id: string; step: Step }[] = [];
   let cur = b;
@@ -446,13 +461,15 @@ function order(s: Step) {
 }
 
 /** Full kinship of `b` from `a`'s point of view, or undefined if not family-connected. */
-export function kinship(graph: FamilyGraph, a: string, b: string, aAnc = graph.ancestors(a)): Kinship | undefined {
+export function kinship(graph: FamilyGraph, a: string, b: string, aAnc = graph.ancestors(a),
+  /** Precomputed `familyPath(graph, a, b)` (e.g. from one `familyPathTree` for many targets); null = not connected. */
+  knownPath?: FamilyPath | null): Kinship | undefined {
   const target = graph.person(b);
   if (!target) return undefined;
   const gender = target.gender;
   if (a === b) return { label: 'You', path: 'You', category: 'self', generation: 0, degree: 0, blood: true };
 
-  const path = familyPath(graph, a, b);
+  const path = knownPath === undefined ? familyPath(graph, a, b) : knownPath;
   if (!path) return undefined;
 
   // Direct non-blood links first (step-parents, spouses).
@@ -610,12 +627,14 @@ export interface Relative {
 export function relativesOf(graph: FamilyGraph, ego: string): Relative[] {
   const comp = graph.familyComponent(ego);
   const aAnc = graph.ancestors(ego);
+  // One shortest-path tree for every target; each path equals familyPath(graph, ego, id).
+  const tree = familyPathTree(graph, ego);
   const out: Relative[] = [];
   for (const id of comp) {
     if (id === ego) continue;
     const p = graph.person(id);
     if (!p) continue;
-    const kin = kinship(graph, ego, id, aAnc);
+    const kin = kinship(graph, ego, id, aAnc, pathInTree(graph, tree, ego, id) ?? null);
     if (kin) out.push({ person: p, kin });
   }
   out.sort((x, y) => x.kin.degree - y.kin.degree || y.kin.generation - x.kin.generation || x.person.firstName.localeCompare(y.person.firstName));

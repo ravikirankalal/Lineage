@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { FamilyGraph, directLine, kinship, lineageStats, relativesOf } from '../kinship';
 import { emptyPerson } from '../person';
 import type { Gender, Relationship, RelType } from '../types';
+import { expectRelativesMatchKinship } from './families';
 
 function build() {
   const people = new Map<string, ReturnType<typeof emptyPerson>>();
@@ -37,6 +38,7 @@ function build() {
 
 describe('kinship', () => {
   const G = build();
+  it('relativesOf matches per-target kinship for every ego', () => expectRelativesMatchKinship(G));
   const k = (b: string) => kinship(G, 'me', b);
   it('labels blood relatives', () => {
     expect(k('dad')?.label).toBe('Father');
