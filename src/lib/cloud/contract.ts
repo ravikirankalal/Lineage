@@ -57,6 +57,7 @@ export interface InviteDoc {
   email: string; // lower-cased, == doc id
   role: MemberRole;
   invitedBy: string; // uid
+  invitedByEmail?: string; // inviter's verified auth email (rules require it on new writes)
   spaceName: string;
   createdAt: number;
 }

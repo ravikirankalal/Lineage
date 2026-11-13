@@ -126,6 +126,28 @@ async function deleteLocalDb() {
   lsSet(LS_LOCAL_OWNER, null);
 }
 
+/**
+ * Is the live local DB (the one `db` points at right now) really `uid`'s copy of `spaceId`?
+ * Read from localStorage at call time, so a change made by another tab is seen immediately.
+ */
+function localDbBelongsTo(uid: string, spaceId: string): boolean {
+  const active = activeSpaceId();
+  if (active === null) {
+    // The anonymous 'lineage' DB: only the account that claimed it may push it, and only to its own space.
+    return spaceId === uid && lsGet(LS_LOCAL_OWNER) === uid && !lsGet(lsSeparate(uid));
+  }
+  if (active === uid) {
+    // This account's separate personal DB.
+    return spaceId === uid && !!lsGet(lsSeparate(uid)) && lsGet(lsDbOwner(dbNameFor(uid))) === uid;
+  }
+  // A shared family's cache, filled by this account.
+  return spaceId === active && lsGet(lsDbOwner(dbNameFor(active))) === uid;
+}
+
+type ConsentState = 'unknown' | 'asking' | 'foreign' | 'granted' | 'declined';
+/** Consent is always bound to the account that gave it; it never carries over to another uid. */
+interface Consent { uid: string | null; state: ConsentState }
+
 const Ctx = createContext<CloudValue | null>(null);
 
 export function CloudProvider({ children }: { children: ReactNode }) {
@@ -139,13 +161,43 @@ export function CloudProvider({ children }: { children: ReactNode }) {
   const [activeId, setActiveId] = useState<string | null>(() => activeSpaceId());
   const [dataKey, setDataKey] = useState(() => 'db:' + (activeSpaceId() ?? 'local') + ':0');
   const [invites, setInvites] = useState<PendingInvite[]>([]);
-  const [consent, setConsent] = useState<'unknown' | 'asking' | 'foreign' | 'granted' | 'declined'>('unknown');
+  const [consent, setConsent] = useState<Consent>({ uid: null, state: 'unknown' });
   /** Local DB holding this account's own people: null = 'lineage', or the uid (separate DB). */
   const [personalDbId, setPersonalDbId] = useState<string | null>(null);
   const personalDb = useRef<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [localCount, setLocalCount] = useState(0);
   const [cloudHadData, setCloudHadData] = useState(false);
+  /** The uid whose sign-in bootstrap has finished (state for rendering, ref for async guards). */
+  const [initialisedUid, setInitialisedUid] = useState<string | null>(null);
+  const initialisedRef = useRef<string | null>(null);
+  /** Latest values for guards inside async code (closures may be from an earlier account). */
+  const uidRef = useRef(uid);
+  uidRef.current = uid;
+  const consentRef = useRef(consent);
+  consentRef.current = consent;
+
+  // --- Account change: reset synchronously, during render, before any effect can sync ------------
+  // (React re-renders immediately with the reset state; no effect ever runs with A's consent and B's uid.)
+  const [seenUid, setSeenUid] = useState(uid);
+  if (seenUid !== uid) {
+    setSeenUid(uid);
+    setConsent({ uid: uid ?? null, state: 'unknown' });
+    setInitialisedUid(null);
+    initialisedRef.current = null;
+    consentRef.current = { uid: uid ?? null, state: 'unknown' };
+    personalDb.current = null;
+    setPersonalDbId(null);
+    setStatus(OFF);
+    setSpaces([]);
+    setPersonal(null);
+    setInvites([]);
+    setLocalCount(0);
+    setCloudHadData(false);
+    setNotice(null);
+  }
+  /** Consent only counts for the account that gave it. */
+  const consentState: ConsentState = consent.uid === (uid ?? null) ? consent.state : 'unknown';
 
   // --- Space list -------------------------------------------------------------------------------
   const refreshSpaces = useCallback(async () => {
@@ -171,14 +223,7 @@ export function CloudProvider({ children }: { children: ReactNode }) {
 
   // --- Sign-in bootstrap: personal space and first-backup consent --------------------------------
   useEffect(() => {
-    if (!user) {
-      setStatus(OFF);
-      setSpaces([]);
-      setPersonal(null);
-      setInvites([]);
-      setConsent('unknown');
-      return;
-    }
+    if (!user) return; // everything was reset when the uid changed
     let cancelled = false;
     (async () => {
       setStatus({ state: 'syncing' });
@@ -225,7 +270,10 @@ export function CloudProvider({ children }: { children: ReactNode }) {
           if (activeSpaceId() !== null) swapDb(null);
           setStatus({ state: 'idle' });
         }
-        setConsent(next);
+        // Bootstrap for this uid is complete: only now may sync start (and only if consent is granted).
+        initialisedRef.current = user.uid;
+        setInitialisedUid(user.uid);
+        setConsent({ uid: user.uid, state: next });
         await refreshSpaces();
       } catch (e) {
         if (!cancelled) setStatus({ state: navigator.onLine ? 'error' : 'offline', error: friendlyError(e) });
@@ -233,13 +281,6 @@ export function CloudProvider({ children }: { children: ReactNode }) {
     })();
     return () => { cancelled = true; };
   }, [user, refreshSpaces, swapDb]);
-
-  useEffect(() => {
-    if (!user) {
-      personalDb.current = null;
-      setPersonalDbId(null);
-    }
-  }, [user]);
 
   // --- Active space and role ---------------------------------------------------------------------
   const activeSpace: MySpace | null = useMemo(() => {
@@ -261,7 +302,7 @@ export function CloudProvider({ children }: { children: ReactNode }) {
 
   // --- Sync engine -------------------------------------------------------------------------------
   const remoteSpaceId = user ? (activeId ?? user.uid) : null;
-  const canSync = !!user && consent === 'granted' && (!isShared || !!activeSpace);
+  const canSync = !!uid && consentState === 'granted' && initialisedUid === uid && (!isShared || !!activeSpace);
   const remote = useMemo(
     () => (canSync && uid && remoteSpaceId ? firestoreRemote(remoteSpaceId, uid, role) : null),
     [canSync, uid, remoteSpaceId, role],
@@ -272,10 +313,23 @@ export function CloudProvider({ children }: { children: ReactNode }) {
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const syncing = useRef(false);
 
+  /**
+   * M1 guard, re-checked right before every push: the account this sync was built for is still the
+   * signed-in one, it gave consent itself, its bootstrap finished, and the live local DB is its own
+   * copy of `spaceId`. Any mismatch means "do nothing" (never upload one account's rows to another).
+   */
+  const syncAllowed = useCallback((forUid: string, spaceId: string) => (
+    uidRef.current === forUid &&
+    consentRef.current.uid === forUid && consentRef.current.state === 'granted' &&
+    initialisedRef.current === forUid &&
+    localDbBelongsTo(forUid, spaceId)
+  ), []);
+
   /** One sync round. In a shared space, `forceFull` (or 6 h since the last one) re-pulls everything
    * so records the owner stopped sharing are pruned from this device. */
   const runSync = useCallback(async (forceFull = false) => {
     if (!remote || !uid || !remoteSpaceId) return;
+    if (!syncAllowed(uid, remoteSpaceId)) return;
     if (running.current) return running.current;
     if (!navigator.onLine) {
       setStatus((s) => ({ ...s, state: 'offline', error: undefined }));
@@ -291,20 +345,52 @@ export function CloudProvider({ children }: { children: ReactNode }) {
         const lastFull = Number(lsGet(lsLastFull(spaceId)) ?? 0);
         const full = isShared && (forceFull || Date.now() - lastFull > FULL_SYNC_EVERY);
         const meId = role === 'owner' && !isShared ? (await db.people.filter((x) => !!x.isMe).first())?.id : undefined;
+        if (!syncAllowed(uid, spaceId)) { setStatus((s) => ({ ...s, state: 'idle' })); return; }
         await syncOnce(db, remote, { uid, role, meId, spaceKey: spaceId, full });
         if (full) lsSet(lsLastFull(spaceId), String(Date.now()));
         setStatus({ state: 'idle', lastSyncedAt: Date.now() });
       } catch (e) {
         if (isShared && isPermissionError(e)) {
-          // Access was removed: drop this family's copy from the device and go back to our own people.
-          await forgetSpace(spaceId).catch(() => undefined);
-          lsSet(lsDbOwner(dbNameFor(spaceId)), null);
-          lsSet(lsLastFull(spaceId), null);
-          lsSet(LS_ACTIVE, null);
-          swapDb(personalDb.current);
-          setNotice(`You no longer have access to ${spaceName ?? 'that family'}. It has been removed from this device.`);
-          setStatus({ state: 'idle' });
-          void refreshSpaces();
+          // One rejected write is not proof of lost access (e.g. an offline edit to a person the owner
+          // has since made private). Ask the server whether we're still a member before wiping anything.
+          let list: MySpace[] | null = null;
+          try { list = await listMySpaces(uid); } catch { list = null; }
+          if (uidRef.current !== uid) return;
+          const still = list?.find((s) => s.id === spaceId);
+          if (list && !still) {
+            // Membership really is gone: drop this family's copy and go back to our own people.
+            await forgetSpace(spaceId).catch(() => undefined);
+            lsSet(lsDbOwner(dbNameFor(spaceId)), null);
+            lsSet(lsLastFull(spaceId), null);
+            lsSet(LS_ACTIVE, null);
+            swapDb(personalDb.current);
+            setNotice(`You no longer have access to ${spaceName ?? 'that family'}. It has been removed from this device.`);
+            setStatus({ state: 'idle' });
+            setSpaces(list);
+          } else if (!list) {
+            // Couldn't check (offline, flaky network): keep everything and try again later.
+            setStatus((s) => ({ ...s, state: navigator.onLine ? 'error' : 'offline', error: navigator.onLine ? 'Sync didn’t work. Your changes are saved on this device.' : undefined }));
+          } else if (still && still.role !== role) {
+            // Our role changed (e.g. editor -> viewer): the new remote re-syncs with the right role.
+            setSpaces(list);
+            setStatus({ state: 'idle' });
+          } else {
+            // Still a member with the same role: a full sync prunes what's no longer shared, then retry once.
+            setSpaces(list);
+            try {
+              if (!syncAllowed(uid, spaceId)) return;
+              await syncOnce(db, remote, { uid, role, spaceKey: spaceId, full: true });
+              lsSet(lsLastFull(spaceId), String(Date.now()));
+              if (!syncAllowed(uid, spaceId)) return;
+              await syncOnce(db, remote, { uid, role, spaceKey: spaceId });
+              setStatus({ state: 'idle', lastSyncedAt: Date.now() });
+            } catch (e2) {
+              // Never wipe here: the notice below explains it; other errors show as usual.
+              if (isPermissionError(e2)) setStatus({ state: 'idle' });
+              else setStatus((s) => ({ ...s, state: navigator.onLine ? 'error' : 'offline', error: navigator.onLine ? friendlyError(e2) : undefined }));
+            }
+            setNotice('Some changes couldn’t be saved because that person is no longer shared.');
+          }
         } else {
           setStatus((s) => ({ ...s, state: navigator.onLine ? 'error' : 'offline', error: navigator.onLine ? friendlyError(e) : undefined }));
           if (isPermissionError(e)) void refreshSpaces();
@@ -316,7 +402,7 @@ export function CloudProvider({ children }: { children: ReactNode }) {
     })();
     running.current = p;
     await p;
-  }, [remote, uid, role, isShared, remoteSpaceId, activeSpace, refreshSpaces, swapDb]);
+  }, [remote, uid, role, isShared, remoteSpaceId, activeSpace, refreshSpaces, swapDb, syncAllowed]);
 
   const schedule = useCallback((ms: number) => {
     clearTimeout(timer.current);
@@ -458,19 +544,20 @@ export function CloudProvider({ children }: { children: ReactNode }) {
   }, [auth, spaces, user, swapDb]);
 
   const backup = useMemo(() => ({
-    asking: consent === 'asking',
-    foreign: consent === 'foreign',
-    paused: consent === 'declined',
+    asking: consentState === 'asking',
+    foreign: consentState === 'foreign',
+    paused: consentState === 'declined',
     count: localCount,
     combine: cloudHadData,
     separateLocal: personalDbId !== null,
     approve: () => {
       if (!uid) return;
       lsSet(LS_LOCAL_OWNER, uid);
-      setConsent('granted');
+      setConsent({ uid, state: 'granted' });
     },
     decline: () => {
-      setConsent('declined');
+      if (!uid) return;
+      setConsent({ uid, state: 'declined' });
       setStatus({ state: 'idle' });
     },
     keepSeparate: async () => {
@@ -480,7 +567,7 @@ export function CloudProvider({ children }: { children: ReactNode }) {
       personalDb.current = uid;
       setPersonalDbId(uid);
       swapDb(uid);
-      setConsent('granted');
+      setConsent({ uid, state: 'granted' });
     },
     removeLocal: async () => {
       if (!uid) return;
@@ -489,9 +576,9 @@ export function CloudProvider({ children }: { children: ReactNode }) {
       lsSet(LS_LOCAL_OWNER, uid);
       swapDb(null);
       setLocalCount(0);
-      setConsent('granted');
+      setConsent({ uid, state: 'granted' });
     },
-  }), [consent, localCount, cloudHadData, personalDbId, uid, swapDb]);
+  }), [consentState, localCount, cloudHadData, personalDbId, uid, swapDb]);
 
   const value = useMemo<CloudValue>(() => ({
     auth: auth as AuthState,

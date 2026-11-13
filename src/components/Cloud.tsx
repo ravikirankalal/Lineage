@@ -140,6 +140,9 @@ export function InviteBanner() {
             <Mail size={20} className="mt-0.5 shrink-0 text-brand-700 dark:text-brand-300" />
             <div className="min-w-0 text-sm">
               <div className="font-semibold text-brand-900 dark:text-brand-100">You’re invited to {i.spaceName}</div>
+              {i.invitedByEmail && (
+                <div className="break-all font-medium text-brand-900 dark:text-brand-100">From {i.invitedByEmail}</div>
+              )}
               <div className="text-brand-800/80 dark:text-brand-200/80">
                 {i.role === 'editor' ? 'You’ll be able to see their family tree and add or edit relatives.' : 'You’ll be able to see their family tree.'}
               </div>
