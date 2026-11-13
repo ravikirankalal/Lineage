@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie';
-import { emptyPerson, newId } from './person';
-import type { Gender, Person, RelType, Relationship } from './types';
+import { emptyPerson, formatPlace, newId, norm } from './person';
+import type { Gender, LabeledValue, Person, Place, RelType, Relationship } from './types';
 
 export class LineageDB extends Dexie {
   people!: EntityTable<Person, 'id'>;
@@ -100,6 +100,221 @@ export function ensureRelationship(r: Omit<Relationship, 'id' | 'createdAt'>): P
 
 export async function deleteRelationship(id: string) {
   await db.relationships.delete(id);
+}
+
+// ---------------------------------------------------------------------------
+// Merge two people
+
+export interface MergePreview {
+  relationshipsMoved: number;
+  duplicatesDropped: number;
+  conflicts: string[];
+}
+
+interface MergePlan {
+  person: Person;
+  /** Edges of drop, re-pointed to keep, to be written back. */
+  moved: Relationship[];
+  /** Edge ids to delete (self-links and duplicates). */
+  dropped: string[];
+  /** Existing edges (keep's, or already-moved ones) that get an empty note filled. */
+  noteFills: { id: string; note: string }[];
+  preview: MergePreview;
+}
+
+const blank = (s?: string) => !s || !s.trim();
+const placeEmpty = (pl?: Place) => !pl || !formatPlace(pl);
+const phoneKey = (v: string) => {
+  const d = (v ?? '').replace(/\D/g, '');
+  return d ? d.slice(-10) : norm(v);
+};
+
+function unionBy<T>(a: T[] | undefined, b: T[] | undefined, key: (x: T) => string): T[] {
+  const out: T[] = [];
+  const seen = new Set<string>();
+  for (const x of [...(a ?? []), ...(b ?? [])]) {
+    if (x === null || x === undefined) continue;
+    const k = key(x);
+    if (k && seen.has(k)) continue;
+    if (k) seen.add(k);
+    out.push(x);
+  }
+  return out;
+}
+
+function mergeFields(keep: Person, drop: Person): { person: Person; conflicts: string[] } {
+  const p: Person = { ...keep };
+  const conflicts: string[] = [];
+
+  const text: [keyof Person, string][] = [
+    ['firstName', 'First name'],
+    ['middleName', 'Middle name'],
+    ['lastName', 'Last name'],
+    ['nickname', 'Nickname'],
+    ['otherNames', 'Other names'],
+    ['birthDate', 'Birth date'],
+    ['deathDate', 'Death date'],
+    ['appearance', 'Appearance'],
+    ['howWeMet', 'How we met'],
+    ['metOn', 'Met on'],
+    ['occupation', 'Occupation'],
+  ];
+  for (const [k, label] of text) {
+    const kv = keep[k] as string | undefined;
+    const dv = drop[k] as string | undefined;
+    if (blank(dv)) continue;
+    if (blank(kv)) (p as unknown as Record<string, unknown>)[k] = dv;
+    else if (norm(kv) !== norm(dv)) conflicts.push(`${label}: ${kv!.trim()} kept, ${dv!.trim()} dropped`);
+  }
+
+  const kg = keep.gender ?? 'unknown';
+  const dg = drop.gender ?? 'unknown';
+  if (kg === 'unknown' && dg !== 'unknown') p.gender = dg;
+  else if (kg !== 'unknown' && dg !== 'unknown' && kg !== dg) conflicts.push(`Gender: ${kg} kept, ${dg} dropped`);
+  if (!p.gender) p.gender = 'unknown';
+
+  if (!keep.deceased && drop.deceased) p.deceased = true;
+
+  for (const [k, label] of [['origin', 'Origin'], ['address', 'Address']] as const) {
+    const kp = keep[k];
+    const dp = drop[k];
+    if (placeEmpty(dp)) continue;
+    if (placeEmpty(kp)) p[k] = { ...dp };
+    else if (norm(formatPlace(kp)) !== norm(formatPlace(dp))) {
+      conflicts.push(`${label}: ${formatPlace(kp)} kept, ${formatPlace(dp)} dropped`);
+    }
+  }
+
+  if (!blank(drop.photo)) {
+    if (blank(keep.photo)) p.photo = drop.photo;
+    else if (keep.photo !== drop.photo) conflicts.push("Photo: both have a photo; the kept person's photo is used");
+  }
+
+  if (!blank(drop.notes)) {
+    if (blank(keep.notes)) p.notes = drop.notes;
+    else if (keep.notes!.trim() !== drop.notes!.trim()) p.notes = `${keep.notes!.trim()}\n\n${drop.notes!.trim()}`;
+  }
+
+  p.phones = unionBy<LabeledValue>(keep.phones, drop.phones, (x) => phoneKey(x.value));
+  p.emails = unionBy<LabeledValue>(keep.emails, drop.emails, (x) => norm(x.value));
+  p.tags = unionBy<string>(keep.tags, drop.tags, (x) => norm(x));
+  p.facts = unionBy(keep.facts, drop.facts, (x) => `${norm(x.label)}\u0000${norm(x.value)}`);
+  p.work = unionBy(keep.work, drop.work, (x) => norm(x.organization));
+  p.education = unionBy(keep.education, drop.education, (x) => norm(x.institution));
+
+  const kc = typeof keep.createdAt === 'number' ? keep.createdAt : Infinity;
+  const dc = typeof drop.createdAt === 'number' ? drop.createdAt : Infinity;
+  const created = Math.min(kc, dc);
+  p.createdAt = Number.isFinite(created) ? created : Date.now();
+  p.updatedAt = Date.now();
+  if (keep.isMe || drop.isMe) p.isMe = true;
+  else delete p.isMe;
+  return { person: p, conflicts };
+}
+
+const edgeKey = (r: Pick<Relationship, 'fromId' | 'toId' | 'type'>) =>
+  SYMMETRIC(r.type) ? `${r.type}|${[r.fromId, r.toId].sort().join('|')}` : `${r.type}|${r.fromId}|${r.toId}`;
+
+/** Reads everything it needs; must run inside a transaction covering people and relationships. */
+async function planMerge(keepId: string, dropId: string): Promise<MergePlan> {
+  if (!keepId || !dropId || keepId === dropId) throw new Error('Choose two different people to merge.');
+  const [keep, drop] = await Promise.all([db.people.get(keepId), db.people.get(dropId)]);
+  if (!keep || !drop) throw new Error('One of these people no longer exists.');
+
+  const { person, conflicts } = mergeFields(keep, drop);
+
+  const all = await db.relationships.toArray();
+  const touchesDrop = (r: Relationship) => r.fromId === dropId || r.toId === dropId;
+  const byKey = new Map<string, Relationship>();
+  for (const r of all) if (!touchesDrop(r)) byKey.set(edgeKey(r), r);
+
+  const moved: Relationship[] = [];
+  const dropped: string[] = [];
+  const noteFill = new Map<string, string>();
+  for (const r of all) {
+    if (!touchesDrop(r)) continue;
+    const next: Relationship = {
+      ...r,
+      fromId: r.fromId === dropId ? keepId : r.fromId,
+      toId: r.toId === dropId ? keepId : r.toId,
+    };
+    if (next.fromId === next.toId) {
+      dropped.push(r.id);
+      continue;
+    }
+    const k = edgeKey(next);
+    const existing = byKey.get(k);
+    if (existing) {
+      dropped.push(r.id);
+      if (blank(existing.note) && !blank(r.note)) {
+        existing.note = r.note; // keeps moved/our copy in sync for later duplicates
+        noteFill.set(existing.id, r.note!);
+      }
+      continue;
+    }
+    byKey.set(k, next);
+    moved.push(next);
+  }
+
+  // A new parent cycle can only pass through keep, so check whether keep becomes its own ancestor.
+  const children = new Map<string, string[]>();
+  for (const r of byKey.values()) {
+    if (r.type !== 'parent') continue;
+    const list = children.get(r.fromId);
+    if (list) list.push(r.toId);
+    else children.set(r.fromId, [r.toId]);
+  }
+  const seen = new Set<string>();
+  const stack = [...(children.get(keepId) ?? [])];
+  while (stack.length) {
+    const cur = stack.pop()!;
+    if (cur === keepId) throw new Error('Merging would make someone their own ancestor.');
+    if (seen.has(cur)) continue;
+    seen.add(cur);
+    stack.push(...(children.get(cur) ?? []));
+  }
+
+  // Note fills on edges that are themselves being moved are carried in the moved row.
+  const movedIds = new Set(moved.map((m) => m.id));
+  const noteFills = [...noteFill].filter(([id]) => !movedIds.has(id)).map(([id, note]) => ({ id, note }));
+
+  return {
+    person,
+    moved,
+    dropped,
+    noteFills,
+    preview: { relationshipsMoved: moved.length, duplicatesDropped: dropped.length, conflicts },
+  };
+}
+
+/**
+ * What `mergePeople(keepId, dropId)` would do, without writing. `duplicatesDropped` counts both
+ * duplicate edges and edges between the two people (which would become self-links).
+ * Throws the same errors as `mergePeople` (same person, missing person, parent cycle).
+ */
+export async function previewMerge(keepId: string, dropId: string): Promise<MergePreview> {
+  return db.transaction('r', db.people, db.relationships, async () => (await planMerge(keepId, dropId)).preview);
+}
+
+/**
+ * Merge `dropId` into `keepId`: keep's non-empty fields win, empty ones are filled from drop, lists
+ * are unioned, drop's edges are re-pointed to keep (self-links and duplicates removed), then drop
+ * is deleted. All checks run before any write; everything happens in one transaction.
+ */
+export async function mergePeople(keepId: string, dropId: string): Promise<void> {
+  await db.transaction('rw', db.people, db.relationships, async () => {
+    const plan = await planMerge(keepId, dropId);
+    if (plan.person.isMe) {
+      await db.people.filter((x) => x.isMe === true && x.id !== keepId && x.id !== dropId).modify((x) => {
+        delete x.isMe;
+      });
+    }
+    await db.people.put(plan.person);
+    if (plan.dropped.length) await db.relationships.bulkDelete(plan.dropped);
+    if (plan.moved.length) await db.relationships.bulkPut(plan.moved);
+    for (const f of plan.noteFills) await db.relationships.update(f.id, { note: f.note });
+    await db.people.delete(dropId);
+  });
 }
 
 // ---------------------------------------------------------------------------
