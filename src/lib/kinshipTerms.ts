@@ -1,4 +1,4 @@
-import { familyPath, type FamilyGraph, type Step } from './kinship';
+import { familyPath, familyPathTree, type FamilyGraph, type Step } from './kinship';
 import type { Gender, Person } from './types';
 
 /**
@@ -56,16 +56,52 @@ interface Ctx {
   last: number;
 }
 
-/** Native kinship term for `targetId` from `egoId`'s view, romanised (e.g. "Chacha", "Babai"), or undefined if none/unknown. */
+/** Native kinship term for `targetId` from `egoId`'s view, romanised (e.g. "Chacha", "Babai"), or undefined if none/unknown.
+ * For many targets from one ego use `regionalTermsFor` (one path search instead of one per target). */
 export function regionalTerm(graph: FamilyGraph, egoId: string, targetId: string, lang: KinLang): string | undefined {
   if (lang === 'en' || egoId === targetId) return undefined;
   const path = familyPath(graph, egoId, targetId);
   if (!path || !path.steps.length) return undefined;
-  if (path.steps.some((s) => weakStep(s.step))) return undefined;
-  const ids = [egoId, ...path.steps.map((s) => s.id)];
+  return termForPath(graph, egoId, path.steps, lang);
+}
+
+/** Longest step pattern any vocabulary below names (e.g. "PSH"); `regionalTermsFor` skips longer paths.
+ * Raise it when adding a longer pattern (the equality test against `regionalTerm` catches a miss). */
+const MAX_PATTERN = 3;
+
+/**
+ * Regional terms for every family-connected person from `egoId`'s view, keyed by person id.
+ * People without a term are absent. Uses ONE shortest-path tree from ego (the same tree, with the
+ * same tie-breaks, that `familyPath` builds), so each entry equals `regionalTerm(graph, egoId, id, lang)`.
+ */
+export function regionalTermsFor(graph: FamilyGraph, egoId: string, lang: KinLang): Map<string, string> {
+  const out = new Map<string, string>();
+  if (lang === 'en') return out;
+  const prev = familyPathTree(graph, egoId);
+  for (const targetId of prev.keys()) {
+    // Walk the predecessor chain back to ego; give up once it is longer than any named pattern.
+    const steps: { id: string; step: Step }[] = [];
+    let cur = targetId;
+    while (cur !== egoId && steps.length <= MAX_PATTERN) {
+      const p = prev.get(cur)!;
+      steps.push({ id: cur, step: p.step });
+      cur = p.from;
+    }
+    if (cur !== egoId) continue;
+    steps.reverse();
+    const t = termForPath(graph, egoId, steps, lang);
+    if (t) out.set(targetId, t);
+  }
+  return out;
+}
+
+/** Term for a path from ego (steps in order from ego to target); lang is 'hi' or 'te'. */
+function termForPath(graph: FamilyGraph, egoId: string, steps: { id: string; step: Step }[], lang: KinLang): string | undefined {
+  if (steps.some((s) => weakStep(s.step))) return undefined;
+  const ids = [egoId, ...steps.map((s) => s.id)];
   const people = ids.map((id) => graph.person(id));
   const ctx: Ctx = {
-    pat: path.steps.map((s) => KIND[s.step.kind]).join(''),
+    pat: steps.map((s) => KIND[s.step.kind]).join(''),
     sex: people.map((p) => sexOf(p?.gender)),
     age: (i, j) => compareAge(people[i], people[j]),
     last: ids.length - 1,

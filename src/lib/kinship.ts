@@ -391,10 +391,35 @@ function bloodLabel(bl: Blood, gender: Gender): { label: string; category: KinCa
 /** Shortest family path from a to b as words, e.g. "Father's brother's son". */
 export function familyPath(graph: FamilyGraph, a: string, b: string): { steps: { id: string; step: Step }[]; text: string } | undefined {
   if (a === b) return { steps: [], text: 'You' };
-  const prev = new Map<string, { from: string; step: Step }>();
+  const prev = familyPathTree(graph, a, b);
+  if (!prev.has(b)) return undefined;
+  const steps: { id: string; step: Step }[] = [];
+  let cur = b;
+  while (cur !== a) {
+    const p = prev.get(cur)!;
+    steps.unshift({ id: cur, step: p.step });
+    cur = p.from;
+  }
+  const words = steps.map((s) => stepWord(s.step, graph.person(s.id)?.gender ?? 'unknown'));
+  const text = words.map((w, i) => (i === 0 ? w : w.toLowerCase())).join("'s ");
+  return { steps, text };
+}
+
+/** Predecessor of each node on its shortest family path from the BFS root. */
+export type FamilyPathTree = Map<string, { from: string; step: Step }>;
+
+/**
+ * Shortest-path tree of family links from `a` (breadth-first, neighbours tried in `order`).
+ * Every node's predecessor is fixed when it is first reached, independent of `stopAt`, so the
+ * tree with or without `stopAt` gives the same path to each node it contains. `familyPath` and
+ * `regionalTermsFor` both rely on that: one full tree answers every target identically.
+ * `stopAt` ends the search after the level that reaches it.
+ */
+export function familyPathTree(graph: FamilyGraph, a: string, stopAt?: string): FamilyPathTree {
+  const prev: FamilyPathTree = new Map();
   const seen = new Set([a]);
   let frontier = [a];
-  while (frontier.length && !seen.has(b)) {
+  while (frontier.length && !(stopAt !== undefined && seen.has(stopAt))) {
     const next: string[] = [];
     for (const n of frontier) {
       // prefer sibling/spouse words first for nicer phrasing
@@ -408,17 +433,7 @@ export function familyPath(graph: FamilyGraph, a: string, b: string): { steps: {
     }
     frontier = next;
   }
-  if (!seen.has(b)) return undefined;
-  const steps: { id: string; step: Step }[] = [];
-  let cur = b;
-  while (cur !== a) {
-    const p = prev.get(cur)!;
-    steps.unshift({ id: cur, step: p.step });
-    cur = p.from;
-  }
-  const words = steps.map((s) => stepWord(s.step, graph.person(s.id)?.gender ?? 'unknown'));
-  const text = words.map((w, i) => (i === 0 ? w : w.toLowerCase())).join("'s ");
-  return { steps, text };
+  return prev;
 }
 
 /** Neighbour preference for path search; within a kind, blood/current links beat step/foster/ex links. */
