@@ -379,10 +379,15 @@ class Cross {
          * same as ancestor couples; children of a later partner from that partner's card; children with no
          * partner shown from the person's own card. Both parents' edges share the path.
          */
-        const childLines = (person: string, personY: number, partners: string[], kids: { id: string; y: number }[], xbOwn: number, xbCouple: number) => {
+        const childLines = (person: string, personY: number, partners: string[], kids: { id: string; y: number }[], xbOwn: number, xbCouple: number, joinUnknown = false) => {
           for (const k of kids) {
             if (!this.isParent(person, k.id)) continue;
-            const j = partners.findIndex((sp) => this.isParent(sp, k.id));
+            let j = partners.findIndex((sp) => this.isParent(sp, k.id));
+            // A child whose other parent isn't recorded at all joins the couple's single line (drawn from the
+            // person only), so a family with one partner shown never gets two lines.
+            const unknownOther = this.g.parentsOf(k.id).every((e) => e.id === person);
+            const adopted = j < 0 && joinUnknown && partners.length > 0 && unknownOther;
+            if (adopted) j = 0;
             let start: [number, number];
             let xbk = xbOwn;
             if (j === 0) {
@@ -394,7 +399,7 @@ class Cross {
             } else start = [xFrom, personY + H2];
             const yc = k.y + H2;
             const pts: [number, number][] = [start, [xbk, start[1]], [xbk, yc], [edgeX, yc]];
-            for (const par of j >= 0 ? [person, partners[j]] : [person]) {
+            for (const par of j >= 0 && !adopted ? [person, partners[j]] : [person]) {
               this.edges.push(this.edge(this.descentKind(par, k.id), pts.map((q) => [q[0], q[1]]), par, k.id));
             }
           }
@@ -408,7 +413,7 @@ class Cross {
         for (const cr of cousinRows) {
           if (cr.parent !== parent) continue;
           const kids = cr.kids.map((c, j) => ({ id: c, y: this.node(c, 'relative', 0, xS, yRow(cr.row + j)).y }));
-          childLines(cr.uncle, yRow(cr.row), this.columnPartners(cr.uncle, parent, grp.sideOk), kids, xb, xb);
+          childLines(cr.uncle, yRow(cr.row), this.columnPartners(cr.uncle, parent, grp.sideOk), kids, xb, xb, true);
         }
       };
       if (dad) side(dad, -1);
