@@ -435,6 +435,51 @@ describe('layoutFamily', () => {
     }
   });
 
+  it("cross layout, Everyone: grandfathers' brothers and sisters with their descendants, by generation", () => {
+    const f = family();
+    f.add('me', 'male', '1980'); f.add('dad', 'male', '1950'); f.add('mom', 'female', '1952');
+    const fam = (a: string, b: string | null, ...cs: string[]) => { if (b) f.rel(a, b, 'spouse'); for (const c of cs) { f.rel(a, c, 'parent'); if (b) f.rel(b, c, 'parent'); } };
+    fam('dad', 'mom', 'me');
+    for (const s of ['dgf', 'dgm', 'mgf', 'mgm']) {
+      f.add(s, s.endsWith('f') ? 'male' : 'female', '1920'); f.add(s + 'Dad', 'male', '1890'); f.add(s + 'Mom', 'female', '1892');
+      f.add(s + 'Bro', 'male', '1918'); f.add(s + 'BroWife', 'female', '1919'); f.add(s + 'Sis', 'female', '1924');
+      f.add(s + 'BroKid', 'male', '1945'); f.add(s + 'BroKid2', 'female', '1947'); f.add(s + 'BroGk', 'female', '1970'); f.add(s + 'SisKid', 'male', '1950');
+      fam(s + 'Dad', s + 'Mom', s, s + 'Bro', s + 'Sis');
+      fam(s + 'Bro', s + 'BroWife', s + 'BroKid', s + 'BroKid2');
+      fam(s + 'BroKid', null, s + 'BroGk');
+      fam(s + 'Sis', null, s + 'SisKid');
+    }
+    fam('dgf', 'dgm', 'dad'); fam('mgf', 'mgm', 'mom');
+    const G = f.graph();
+    const L = lay(G, 'me', 'everyone', [], false, 'cross');
+    checkGeometry(L, 'great-uncles');
+    const main = (id: string) => L.nodes.find((n) => n.personId === id && !n.dupOf && !n.key.includes('/'));
+    for (const [gf, dir] of [['dgf', -1], ['mgf', 1]] as const) {
+      const at = (id: string) => main(gf + id)!;
+      expect(at('Bro').x, `${gf} brother`).toBe(main(gf)!.x);
+      expect(at('Bro').y).toBeLessThan(main(gf)!.y); // brothers above
+      expect(at('Sis').y).toBeGreaterThan(main(gf)!.y); // sisters below
+      // His children (the parents' cousins) in the parents' column, the first level with him.
+      expect(at('BroKid').x).toBe(dir * 208);
+      expect(at('BroKid').y).toBe(at('Bro').y);
+      expect(at('BroKid2').y).toBeGreaterThan(at('BroKid').y);
+      expect(at('BroWife').y).toBe(at('Bro').y + 100); // his wife right below him
+      expect(at('SisKid').x).toBe(dir * 208);
+      // Grandchildren (second cousins) in my column, level with their parent.
+      expect(at('BroGk').x).toBe(0);
+      expect(at('BroGk').y).toBe(at('BroKid').y);
+      for (const [a, b] of [[gf + 'Bro', gf + 'BroKid'], [gf + 'BroWife', gf + 'BroKid2'], [gf + 'BroKid', gf + 'BroGk'], [gf + 'Sis', gf + 'SisKid']]) {
+        expect(L.edges.some((e) => e.from === a && e.to === b), `${a}→${b}`).toBe(true);
+      }
+    }
+    // Grandmothers married in: their brothers and sisters aren't in the main tree (they're in her own tree).
+    for (const id of ['dgmBro', 'mgmSis', 'dgmBroKid']) expect(main(id), id).toBeUndefined();
+    expect(L.nodes.some((n) => n.personId === 'dgmBro')).toBe(true);
+    // Extended: only the parents' brothers and sisters; the grandfathers' stay hidden.
+    const ext = lay(G, 'me', 'extended', [], false, 'cross');
+    expect(ext.nodes.some((n) => n.personId === 'dgfBro')).toBe(false);
+  });
+
   it('Everyone draws every person in the family, in every layout', () => {
     for (const seed of [1, 3, 7, 11]) {
       const G = generatedFamily(150, seed);
