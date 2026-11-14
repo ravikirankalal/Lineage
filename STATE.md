@@ -129,6 +129,11 @@ _Last updated: 2026-11-13_
   explicit full/untyped sibling link, as kinship already does), e.g. a great-uncle added as "brother of".
   Ancestors too: when only one great-grandparent is recorded as the parent and the other is just their spouse
   (sitting right below), the line still starts from the middle of their marriage line, centred like a couple. Tested.
+- Cross layout, Everyone (owner's request): below the main tree, a descendants tree for each person drawn whose
+  children aren't (e.g. your children and grandchildren, a sister's children, a cousin's children, a great-uncle's
+  line) and a tree for each person who married in and has recorded parents (grandmothers, your spouse, siblings'
+  and uncles' spouses), each with its own titled band. Their main card is there; beside the spouse a copy.
+  Tested (every person drawn with exactly one main card, unique keys, geometry, titles); screenshot-checked.
 - No "Brother"/"Sister" when adding someone (owner's request, to keep it simple): a sibling is added as a son
   or daughter of the parents ("Also <other parent>'s son" links both). Existing/imported sibling links still work.
   QA flows 1 and 6 updated to add the brother as a son.

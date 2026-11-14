@@ -154,6 +154,12 @@ Read this before changing code. Append new learnings at the bottom.
 - (2026-11-14) The owner asked: **no subagents until they say so.** Do the work directly.
 - (2026-11-14) **Cross layout lineage rule** (owner): above the focus's parents only the father's line continues on
   each side; wives married in (grandmothers etc.) sit below their husband, without their own ancestors.
+- (2026-11-14) **Cross Everyone shows everyone** (owner): the main cross tree stays as above, and BELOW it
+  `crossEveryone.ts` stacks more trees: a top-to-bottom descendants tree for anyone drawn whose children aren't,
+  and a cross tree for anyone who married in AND has recorded parents (grandmothers, spouse, in-laws). That tree
+  holds their main card; the card beside their spouse becomes the "shown elsewhere" copy. Married-in people
+  without recorded parents keep ONE card (no copy). Step-families aren't chased (owner didn't ask). Keys are
+  prefixed `t<i>/` per extra tree. Other levels and layouts are unchanged.
 - (2026-11-14) **No Add Brother/Sister** (owner): siblings are added as the parents' children. Keep reading
   existing explicit sibling edges (kinship infers shared parents), but don't offer creating them in the UI.
 - (2026-11-14) **Main card rule** (owner): a person shown twice has their MAIN card in the birth family (joined to
