@@ -78,6 +78,8 @@ export interface TreeLayout {
   /** Cross layout only: the three side-by-side regions (father's side | siblings & descendants |
    * mother's side) with a title for each card column, for the background. */
   regions?: TreeRegion[];
+  /** Cross layout: people left out because a couple's children are collapsed (each card's button opens them). */
+  hidden?: string[];
 }
 export interface TreeRegion {
   side: 'father' | 'middle' | 'mother';

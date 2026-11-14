@@ -58,6 +58,8 @@ export const TreeCard = memo(function TreeCard({ node, info, onTap, onToggle }: 
   const { label, term } = info;
   const badge = node.step ? 'Step' : node.half ? 'Half' : undefined;
   const canExpand = !!node.expandable && (node.expandable.up || node.expandable.down || node.expandable.side);
+  // A couple's children (cross layout: an ancestor's brother or sister): the button only opens those.
+  const kidsOnly = !!node.expandable?.down && !node.expandable.up && !node.expandable.side && node.generation > 0;
   const ring = focus
     ? 'bg-brand-600 text-white ring-2 ring-brand-600 ring-offset-2 ring-offset-stone-100 dark:ring-offset-stone-900'
     : info.isMe
@@ -114,8 +116,8 @@ export const TreeCard = memo(function TreeCard({ node, info, onTap, onToggle }: 
         <button
           type="button"
           onClick={() => onToggle(p.id)}
-          aria-label={node.expanded ? `Hide ${cardName(p)}'s relatives` : `Show ${cardName(p)}'s relatives`}
-          title={node.expanded ? 'Hide relatives' : 'Show more relatives'}
+          aria-label={`${node.expanded ? 'Hide' : 'Show'} ${cardName(p)}'s ${kidsOnly ? 'children' : 'relatives'}`}
+          title={kidsOnly ? (node.expanded ? 'Hide children' : 'Show children') : node.expanded ? 'Hide relatives' : 'Show more relatives'}
           className="absolute -right-4 -top-4 flex h-10 w-10 print:hidden items-center justify-center"
         >
           <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-brand-700 shadow ring-1 ring-stone-300 dark:bg-stone-700 dark:text-brand-200 dark:ring-stone-600">

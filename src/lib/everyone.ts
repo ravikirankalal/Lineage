@@ -49,11 +49,15 @@ export function completeEveryone(graph: FamilyGraph, opts: TreeOptions, main: Tr
 
   const kinOf = kinFrom(graph, opts.focusId);
   const kinLabel = (id: string) => kinOf(id)?.label;
-  const order = everyoneIds(graph, opts.focusId, cross, kinOf);
-  const allowed = new Set(order);
-  /** Add an extra tree. Cross: without anyone below the focus's generation (a parent's other children). */
+  // Cross: people left out because a couple's children are collapsed stay out (unless drawn anyway).
+  const hidden = new Set<string>(main.hidden ?? []);
+  const skip = (id: string) => hidden.has(id) && !shown.has(id);
+  const currentOrder = () => everyoneIds(graph, opts.focusId, cross, kinOf, skip);
+  /** Add an extra tree. Cross: without anyone below the focus's generation or in a collapsed family. */
   const add = (L: TreeLayout, root: string) => {
+    for (const id of L.hidden ?? []) hidden.add(id);
     if (cross) {
+      const allowed = new Set(currentOrder());
       const gone = new Set(L.nodes.filter((n) => n.personId && !allowed.has(n.personId)).map((n) => n.personId!));
       if (gone.size) {
         L.nodes = L.nodes.filter((n) => !n.personId || !gone.has(n.personId));
@@ -70,7 +74,7 @@ export function completeEveryone(graph: FamilyGraph, opts: TreeOptions, main: Tr
     // Anyone in the family still not drawn (a step-parent's family, a parent of unknown gender, someone
     // linked only as a brother or sister, …): a top-to-bottom tree around the closest one, which draws
     // every kind of link. Their tree is scanned like the others. Each round draws at least that person.
-    const x = order.find((id) => !shown.has(id));
+    const x = currentOrder().find((id) => !shown.has(id));
     if (!x) break;
     const L = layoutFamilyV2(graph, { focusId: x, level: 'everyone', expanded: opts.expanded, up: 1, down: cross ? 0 : 1, noInLaws: true, orient: opts.orient === 'right' ? 'right' : 'down' });
     for (const n of L.nodes) if (n.role === 'focus') n.role = 'relative';
@@ -79,7 +83,9 @@ export function completeEveryone(graph: FamilyGraph, opts: TreeOptions, main: Tr
     add(L, x);
   }
   if (parts.length === 1) return main;
-  return stack(parts);
+  const out = stack(parts);
+  const left = [...hidden].filter((id) => !shown.has(id));
+  return left.length ? { ...out, hidden: left } : out;
 
   function scan(i: number) {
     if (!cross) return;
@@ -170,28 +176,31 @@ function stack(parts: { layout: TreeLayout; root?: string; family: boolean }[]):
 /** Kinship from `ego`'s view, from ONE path search. */
 function kinFrom(graph: FamilyGraph, ego: string) {
   let get: ((id: string) => ReturnType<typeof kinship>) | undefined;
+  const memo = new Map<string, ReturnType<typeof kinship>>();
   return (id: string) => {
     if (!get) {
       const aAnc = graph.ancestors(ego);
       const tree = familyPathTree(graph, ego);
       get = (x) => kinship(graph, ego, x, aAnc, pathInTree(graph, tree, ego, x) ?? null);
     }
-    return get(id);
+    if (!memo.has(id)) memo.set(id, get(id));
+    return memo.get(id);
   };
 }
 
 /**
  * Who Everyone draws, closest first (breadth-first from the focus over family links): the whole family,
- * except in the cross layout nobody below the focus's generation, nor anyone reached only through them.
+ * except in the cross layout nobody below the focus's generation, nor anyone reached only through them,
+ * and nobody `skip` says (in a collapsed family), nor anyone reached only through them.
  */
-export function everyoneIds(graph: FamilyGraph, focus: string, cross: boolean, kinOf = kinFrom(graph, focus)): string[] {
+export function everyoneIds(graph: FamilyGraph, focus: string, cross: boolean, kinOf = kinFrom(graph, focus), skip: (id: string) => boolean = () => false): string[] {
   const order: string[] = [focus];
   const seen = new Set(order);
   for (let k = 0; k < order.length; k++) {
     for (const m of graph.familyNeighbors(order[k])) {
       if (seen.has(m.id) || !graph.person(m.id)) continue;
       seen.add(m.id);
-      if (cross && (kinOf(m.id)?.generation ?? 0) < 0) continue;
+      if (cross && ((kinOf(m.id)?.generation ?? 0) < 0 || skip(m.id))) continue;
       order.push(m.id);
     }
   }

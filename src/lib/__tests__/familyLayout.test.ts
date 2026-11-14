@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CARD, type TreeLayout, type TreeLevel, type TreeOrient } from '../graph/contract';
-import { FamilyGraph } from '../kinship';
+import { FamilyGraph, relativesOf } from '../kinship';
 import { emptyPerson } from '../person';
 import { layoutFamily } from '../tree';
 import type { Gender, Person, Relationship, RelType } from '../types';
@@ -191,8 +191,19 @@ describe('layoutFamily', () => {
     f.rel('uncle', 'cousin', 'parent'); f.rel('uncle', 'cousin2', 'parent'); f.rel('mAunt', 'mCousin', 'parent'); f.rel('son', 'grandson', 'parent');
     f.rel('bro', 'broWife', 'spouse'); f.rel('bro', 'nephew', 'parent'); f.rel('broWife', 'nephew', 'parent');
     const G = f.graph();
-    for (const level of ['immediate', 'extended', 'everyone'] as const) checkGeometry(lay(G, 'me', level, [], true, 'cross'), `cross ${level}`);
-    const L = lay(G, 'me', 'extended', [], false, 'cross');
+    for (const level of ['immediate', 'extended', 'everyone'] as const) {
+      checkGeometry(lay(G, 'me', level, [], true, 'cross'), `cross ${level}`);
+      checkGeometry(lay(G, 'me', level, ['uncle', 'mAunt'], true, 'cross'), `cross ${level} open`);
+    }
+    // Each uncle's and aunt's children (the cousins) start collapsed: the card's button opens them.
+    const shut = lay(G, 'me', 'extended', [], false, 'cross');
+    expect(shut.nodes.some((n) => n.personId === 'cousin' || n.personId === 'mCousin')).toBe(false);
+    expect(shut.nodes.find((n) => n.personId === 'uncle')?.expandable?.down).toBe(true);
+    expect(shut.nodes.find((n) => n.personId === 'mAunt')?.expandable?.down).toBe(true);
+    expect(shut.nodes.find((n) => n.personId === 'aunt')?.expandable).toBeUndefined(); // no children: no button
+    expect(shut.hidden).toEqual(expect.arrayContaining(['cousin', 'cousin2', 'mCousin']));
+    const L = lay(G, 'me', 'extended', ['uncle', 'mAunt'], false, 'cross');
+    expect(L.nodes.find((n) => n.personId === 'uncle')).toMatchObject({ expanded: true, expandable: { down: true } });
     const at = (id: string) => L.nodes.find((n) => n.personId === id && !n.dupOf)!;
     const me = at('me');
     expect([me.x, me.y]).toEqual([0, 0]);
@@ -239,7 +250,7 @@ describe('layoutFamily', () => {
     }
     // Both lines run straight across at the parent's row, even past the cousins: nothing goes overhead.
     for (const lvl of ['immediate', 'extended', 'everyone'] as const) {
-      const M = lay(G, 'me', lvl, [], false, 'cross');
+      const M = lay(G, 'me', lvl, ['uncle', 'mAunt'], false, 'cross');
       for (const par of ['dad', 'mom']) {
         const e = M.edges.find((x) => x.from === par && x.to === 'me')!;
         expect(Math.min(...e.points.map((q) => q[1])), `${lvl} ${par}`).toBeGreaterThanOrEqual(0);
@@ -325,8 +336,8 @@ describe('layoutFamily', () => {
     // A cousin recorded with only the uncle as parent still shares the couple's single line.
     f.add('cousinB', 'female', '1977'); f.rel('uncle', 'cousinB', 'parent');
     const G = f.graph();
-    for (const level of ['immediate', 'extended', 'everyone'] as const) checkGeometry(lay(G, 'me', level, [], false, 'cross'), `spouses ${level}`);
-    const L = lay(G, 'me', 'extended', [], false, 'cross');
+    for (const level of ['immediate', 'extended', 'everyone'] as const) checkGeometry(lay(G, 'me', level, ['uncle'], false, 'cross'), `spouses ${level}`);
+    const L = lay(G, 'me', 'extended', ['uncle'], false, 'cross');
     const at = (id: string) => L.nodes.find((n) => n.personId === id && !n.dupOf)!;
     const below = (a: string, b: string) => {
       expect(at(b).x, `${b} under ${a}`).toBe(at(a).x);
@@ -452,8 +463,19 @@ describe('layoutFamily', () => {
     }
     fam('dgf', 'dgm', 'dad'); fam('mgf', 'mgm', 'mom');
     const G = f.graph();
-    const L = lay(G, 'me', 'everyone', [], false, 'cross');
+    // Collapsed at first: the grandfathers' brothers and sisters show, their children don't.
+    const shut = lay(G, 'me', 'everyone', [], false, 'cross');
+    checkGeometry(shut, 'great-uncles shut');
+    expect(shut.nodes.some((n) => n.personId === 'dgfBroKid' || n.personId === 'mgfSisKid')).toBe(false);
+    expect(shut.nodes.find((n) => n.personId === 'dgfBro' && !n.dupOf)?.expandable?.down).toBe(true);
+    const open = ['dgfBro', 'dgfBroKid', 'dgfSis', 'mgfBro', 'mgfBroKid', 'mgfSis'];
+    const L = lay(G, 'me', 'everyone', open, false, 'cross');
     checkGeometry(L, 'great-uncles');
+    // Opening a great-uncle shows his children; each child with children has its own button.
+    const half = lay(G, 'me', 'everyone', ['dgfBro'], false, 'cross');
+    expect(half.nodes.some((n) => n.personId === 'dgfBroKid')).toBe(true);
+    expect(half.nodes.some((n) => n.personId === 'dgfBroGk')).toBe(false);
+    expect(half.nodes.find((n) => n.personId === 'dgfBroKid')?.expandable?.down).toBe(true);
     const main = (id: string) => L.nodes.find((n) => n.personId === id && !n.dupOf && !n.key.includes('/'));
     for (const [gf, dir] of [['dgf', -1], ['mgf', 1]] as const) {
       const at = (id: string) => main(gf + id)!;
@@ -477,7 +499,7 @@ describe('layoutFamily', () => {
     for (const id of ['dgmBro', 'mgmSis', 'dgmBroKid']) expect(main(id), id).toBeUndefined();
     expect(L.nodes.some((n) => n.personId === 'dgmBro')).toBe(true);
     // Extended: only the parents' brothers and sisters; the grandfathers' stay hidden.
-    const ext = lay(G, 'me', 'extended', [], false, 'cross');
+    const ext = lay(G, 'me', 'extended', open, false, 'cross');
     expect(ext.nodes.some((n) => n.personId === 'dgfBro')).toBe(false);
   });
 
@@ -494,7 +516,7 @@ describe('layoutFamily', () => {
     f.rel('cousinF', 'cousinFHusband', 'spouse'); f.rel('secondCousin', 'scHusband', 'spouse');
     const G = f.graph();
     for (const level of ['extended', 'everyone'] as const) {
-      const L = lay(G, 'me', level, [], false, 'cross');
+      const L = lay(G, 'me', level, ['uncle', 'aunt', 'gUncle', 'dadCousin'], false, 'cross');
       checkGeometry(L, `cousin spouses ${level}`);
       const at = (id: string) => L.nodes.find((n) => n.personId === id && !n.key.includes('/'));
       const pairs = [['cousin', 'cousinEx'], ['cousinF', 'cousinFHusband'], ...(level === 'everyone' ? [['secondCousin', 'scHusband']] : [])];
@@ -514,11 +536,15 @@ describe('layoutFamily', () => {
       const G = generatedFamily(150, seed);
       for (const orient of ['cross', 'down', 'right'] as const) {
         // Cross: the whole family except the generations below the focus (no children in that view).
-        const want = orient === 'cross' ? everyoneIds(G, 'p40', true) : [...G.familyComponent('p40')].filter((id) => G.person(id));
         const L = lay(G, 'p40', 'everyone', [], false, orient);
+        // Cross: the whole family except the generations below the focus and the collapsed families.
+        const drawn = new Set(L.nodes.map((n) => n.personId));
+        const hid = new Set(L.hidden ?? []);
+        const want = orient === 'cross' ? everyoneIds(G, 'p40', true, undefined, (id) => hid.has(id) && !drawn.has(id)) : [...G.familyComponent('p40')].filter((id) => G.person(id));
         if (orient === 'cross') {
-          const ok = new Set(want);
-          for (const n of L.nodes) if (n.personId) expect(ok.has(n.personId), `seed ${seed} cross draws ${n.personId}`).toBe(true);
+          // Nobody below the focus's generation, in any tree.
+          const gen = new Map(relativesOf(G, 'p40').map((r) => [r.person.id, r.kin.generation]));
+          for (const n of L.nodes) if (n.personId) expect(gen.get(n.personId) ?? 0, `seed ${seed} cross draws ${n.personId}`).toBeGreaterThanOrEqual(0);
         }
         const label = `seed ${seed} ${orient}`;
         checkGeometry(L, label);
@@ -556,7 +582,11 @@ describe('layoutFamily', () => {
     kids('cousin', null, 'cousinKid');
     kids('greatUncle', null, 'dadsCousin');
     const G = f.graph();
-    const L = lay(G, 'me', 'everyone', [], false, 'cross');
+    // Collapsed: the uncle's and great-uncle's children aren't drawn, not even in the trees below.
+    const shut = lay(G, 'me', 'everyone', [], false, 'cross');
+    checkGeometry(shut, 'everyone shut');
+    for (const id of ['cousin', 'dadsCousin']) expect(shut.nodes.some((n) => n.personId === id), id).toBe(false);
+    const L = lay(G, 'me', 'everyone', ['uncle', 'greatUncle'], false, 'cross');
     checkGeometry(L, 'everyone trees');
     expect(new Set(L.nodes.map((n) => n.key)).size).toBe(L.nodes.length); // keys stay unique
     const ids = new Set(L.nodes.map((n) => n.personId));

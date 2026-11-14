@@ -166,6 +166,12 @@ Read this before changing code. Append new learnings at the bottom.
   one column further in (first kid level with the parent), recursively down to the focus's column (there:
   partners below them, as for siblings — owner: every spouse of someone in your generation is in that band; no kids). Line ancestors are centred on their children's group and the row range grows to fit them.
   Grandmothers' siblings stay out of the main tree (owner): only the father's line continues, as before.
+- (2026-11-14) **Couples' children collapsed by default** (owner; "for now only ancestors"): in the cross layout
+  every ancestor's brother/sister (and their descendants down to the focus's column) with children gets a
+  +/- button; children start hidden at EVERY level, the person id in `expanded` (URL `open=`) opens them.
+  Line ancestors' children always show. Collapsed people come back as `TreeLayout.hidden`; Everyone's
+  catch-all (`everyoneIds` skip) leaves them and anyone reached only through them out. Descendants of the
+  focus's generation are NOT handled yet (owner: later).
 - (2026-11-14) **Everyone = every person in the family** (owner, repeated): `everyone.ts` `completeEveryone` runs
   for every layout. After the cross-only steps above, while anyone in `familyComponent(focus)` is undrawn, the
   closest one (BFS) gets a small top-to-bottom tree (up 1, down 1; bigger ones made thousands of copies on
