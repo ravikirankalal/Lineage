@@ -113,6 +113,10 @@ _Last updated: 2026-11-13_
 - Cross layout parents' lines: both parents sit level with the focus; the father's line reaches the siblings via
   a bracket on the LEFT of their column, the mother's via one on the RIGHT, both straight across at the parent's
   row (cousins sit level with their own parents, so that row is always free). Nothing goes overhead. Tested.
+- Cross layout side columns (owner's request): like the middle, every person in the father's/mother's columns has
+  their spouse directly below with a marriage line: uncles'/aunts' spouses, a parent's other partner (step-parent),
+  and ancestor couples (husband above wife; a loop on the outer side when siblings sit between them). Rows are
+  reserved so cousins stay level with their parents. Tested.
 - Main vs secondary cards (owner's rule): when someone appears twice, the card in their birth family (joined
   to their parents) is the main card; the card beside their spouse is a secondary "Also shown elsewhere" stub that
   can't expand to their ancestors. Cross layout makes spouse cards last; the other layouts re-run with that
