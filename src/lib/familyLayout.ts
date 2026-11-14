@@ -441,10 +441,10 @@ class Builder {
 
   /**
    * Collaterals (outer edge only) and parents of an already placed person, then recurse upwards.
-   * `inlaw`: the pedigree of the focus's spouse (role 'relative', its own bar height; outside Everyone
-   * only the parents, and only when the spouse card is expanded).
+   * `inlaw`: the pedigree of someone who married in (role 'relative', its own bar heights; outside Everyone
+   * only the parents, and only when that card is expanded). `depth` counts generations above them.
    */
-  ancestry(occ: Occupancy, all: Shape, x: string, gen: number, side: 'L' | 'R', outer: boolean, inlaw = false) {
+  ancestry(occ: Occupancy, all: Shape, x: string, gen: number, side: 'L' | 'R', outer: boolean, inlaw = false, depth = 0) {
     const g = this.g;
     const xn = this.byId.get(x);
     if (!xn) return;
@@ -475,7 +475,7 @@ class Builder {
     // Parents above, centred over x and its siblings.
     const parents = this.pedigreeParents(x);
     if (!parents.length) return;
-    if ((gen + 1 > this.up || (inlaw && gen > 0 && this.level !== 'everyone')) && !this.isExpanded(x)) {
+    if ((gen + 1 > this.up || (inlaw && depth > 0 && this.level !== 'everyone')) && !this.isExpanded(x)) {
       xn.expandable = { ...xn.expandable, up: true };
       return;
     }
@@ -498,7 +498,12 @@ class Builder {
       sy = top + CARD.h / 2;
     }
     // In-law bars run just under their parents' row so they don't merge with the family's own bars.
-    const barY = inlaw ? top + CARD.h + 12 : top + CARD.h + ROW_GAP / 2 + dir * 4;
+    let barY = top + CARD.h + ROW_GAP / 2 + dir * 4;
+    if (inlaw) {
+      const k = this.inlawBars.get(gen) ?? 0;
+      this.inlawBars.set(gen, k + 1);
+      barY = top + CARD.h + 8 + (k % 3) * 6;
+    }
     const childTop = rowTop(gen);
     for (const kn of row) {
       const kid = kn.personId!;
@@ -517,21 +522,43 @@ class Builder {
     const sides: ('L' | 'R')[] = pn.length === 2 ? ['L', 'R'] : [side];
     pn.forEach((n, i) => {
       if (n.dupOf) return;
-      this.ancestry(occ, all, parents[i], gen + 1, sides[i], outer && sides[i] === side, inlaw);
+      this.ancestry(occ, all, parents[i], gen + 1, sides[i], outer && sides[i] === side, inlaw, depth + 1);
     });
   }
 
-  /** The focus's spouses' parents (and in Everyone their ancestors), above each spouse card. */
+  /** In-law bars per gap, so two in-law families sharing a gap get different heights. */
+  private inlawBars = new Map<number, number>();
+
+  /**
+   * Parents of everyone who married in (drawn as a partner): the focus's spouses first, then the closest.
+   * In Everyone they're drawn with their ancestors; elsewhere the card gets "+" (expand shows the parents).
+   */
   inLaws(occ: Occupancy, all: Shape) {
-    const fn = this.byId.get(this.opts.focusId);
+    const f = this.opts.focusId;
+    const fn = this.byId.get(f);
     if (!fn) return;
-    for (const e of this.g.spousesOf(this.opts.focusId)) {
-      const sn = this.byId.get(e.id);
-      if (!sn || sn.role !== 'spouse' || sn.generation !== 0) continue; // drawn elsewhere (e.g. a cousin)
-      if (!this.pedigreeParents(e.id).some((p) => !this.placed.has(p))) continue;
-      if (this.level === 'everyone' || this.isExpanded(e.id)) this.ancestry(occ, all, e.id, 0, sn.x < fn.x ? 'L' : 'R', false, true);
+    const mine = new Set(this.g.spousesOf(f).map((e) => e.id));
+    const rank = (n: TreeNode) => (mine.has(n.personId!) ? 0 : 1);
+    const cands = this.nodes
+      .filter((n) => n.role === 'spouse' && !n.dupOf && n.personId)
+      .sort((a, b) => rank(a) - rank(b) || Math.abs(a.generation) - Math.abs(b.generation) || Math.abs(a.x - fn.x) - Math.abs(b.x - fn.x));
+    for (const sn of cands) {
+      const id = sn.personId!;
+      if (!this.pedigreeParents(id).some((p) => !this.placed.has(p))) continue;
+      if (this.level === 'everyone' || this.isExpanded(id)) this.ancestry(occ, all, id, sn.generation, this.sideOf(sn, fn), false, true);
       else sn.expandable = { ...sn.expandable, up: true };
     }
+  }
+
+  /** Which way an in-law's family goes: away from the person they married (else away from the focus). */
+  private sideOf(sn: TreeNode, fn: TreeNode): 'L' | 'R' {
+    const id = sn.personId!;
+    const partners = [...this.g.spousesOf(id).map((e) => e.id), ...this.g.childrenOf(id).flatMap((c) => this.g.parentsOf(c.id).map((e) => e.id))];
+    for (const p of partners) {
+      const pn = this.byId.get(p);
+      if (pn && p !== id && pn.generation === sn.generation) return sn.x < pn.x ? 'L' : 'R';
+    }
+    return sn.x < fn.x ? 'L' : 'R';
   }
 }
 

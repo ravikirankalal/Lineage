@@ -62,7 +62,7 @@ function remarried() {
   f.add('dad', 'male', '1950'); f.add('mom', 'female', '1952'); f.add('stepmom', 'female', '1955'); f.add('mom2', 'male', '1949');
   f.add('me', 'male', '1980'); f.add('sis', 'female', '1978'); f.add('halfBro', 'male', '1990'); f.add('halfSis', 'female', '1992');
   f.add('gf', 'male', '1920'); f.add('gm', 'female', '1922'); f.add('uncle', 'male', '1948'); f.add('aunty', 'female', '1950'); f.add('cousin', 'female', '1975');
-  f.add('wife', 'female', '1981'); f.add('wifeDad', 'male', '1955'); f.add('wifeMom', 'female', '1957'); f.add('wifeBro', 'male', '1984'); f.add('son', 'male', '2010'); f.add('sisHusband', 'male', '1976'); f.add('niece', 'female', '2005');
+  f.add('wife', 'female', '1981'); f.add('wifeDad', 'male', '1955'); f.add('wifeMom', 'female', '1957'); f.add('wifeBro', 'male', '1984'); f.add('son', 'male', '2010'); f.add('sisHusband', 'male', '1976'); f.add('shDad', 'male', '1950'); f.add('shMom', 'female', '1952'); f.add('smDad', 'male', '1930'); f.add('niece', 'female', '2005');
   f.rel('dad', 'mom', 'spouse', 'divorced'); f.rel('dad', 'stepmom', 'spouse'); f.rel('mom', 'mom2', 'spouse');
   for (const c of ['me', 'sis']) { f.rel('dad', c, 'parent'); f.rel('mom', c, 'parent'); }
   f.rel('dad', 'halfBro', 'parent'); f.rel('stepmom', 'halfBro', 'parent');
@@ -71,6 +71,8 @@ function remarried() {
   f.rel('uncle', 'aunty', 'spouse'); f.rel('uncle', 'cousin', 'parent'); f.rel('aunty', 'cousin', 'parent');
   f.rel('wifeDad', 'wifeMom', 'spouse'); for (const c of ['wife', 'wifeBro']) { f.rel('wifeDad', c, 'parent'); f.rel('wifeMom', c, 'parent'); }
   f.rel('me', 'wife', 'spouse'); f.rel('me', 'son', 'parent'); f.rel('wife', 'son', 'parent');
+  f.rel('shDad', 'shMom', 'spouse'); f.rel('shDad', 'sisHusband', 'parent'); f.rel('shMom', 'sisHusband', 'parent');
+  f.rel('smDad', 'stepmom', 'parent');
   f.rel('sis', 'sisHusband', 'spouse'); f.rel('sis', 'niece', 'parent'); f.rel('sisHusband', 'niece', 'parent');
   return f.graph();
 }
@@ -132,6 +134,24 @@ describe('layoutFamily', () => {
     expect(at(lay(G, 'wife', 'everyone'), 'wifeDad')?.role).toBe('ancestor');
   });
 
+  it("shows every in-law's parents in Everyone, and on request elsewhere", () => {
+    const G = remarried();
+    const at = (L: TreeLayout, id: string) => L.nodes.find((n) => n.personId === id && !n.dupOf);
+    const all = lay(G, 'me', 'everyone');
+    checkGeometry(all, 'all in-laws');
+    for (const id of ['shDad', 'shMom']) expect(at(all, id)).toMatchObject({ generation: 1, role: 'relative' });
+    expect(at(all, 'smDad')).toMatchObject({ generation: 2, role: 'relative' }); // the stepmother's father
+    expect(all.edges.some((e) => e.from === 'shMom' && e.to === 'sisHusband')).toBe(true);
+    const ext = lay(G, 'me', 'extended');
+    expect(at(ext, 'shDad')).toBeUndefined();
+    expect(at(ext, 'sisHusband')?.expandable?.up).toBe(true);
+    expect(at(ext, 'stepmom')?.expandable?.up).toBe(true);
+    const opened = lay(G, 'me', 'extended', ['sisHusband']);
+    checkGeometry(opened, 'sister-in-law family expanded');
+    expect(at(opened, 'shMom')?.generation).toBe(1);
+    expect(at(opened, 'sisHusband')?.expanded).toBe(true);
+  });
+
   it('expands a card on request', () => {
     const G = remarried();
     const L = lay(G, 'me');
@@ -146,7 +166,7 @@ describe('layoutFamily', () => {
 
   it('draws ghosts for missing parents', () => {
     const G = remarried();
-    const L = lay(G, 'sisHusband', 'immediate', [], true);
+    const L = lay(G, 'aunty', 'immediate', [], true);
     expect(L.nodes.filter((n) => n.role === 'ghost').map((n) => n.ghost).sort()).toEqual(['father', 'mother']);
     checkGeometry(L, 'ghosts');
   });
