@@ -365,6 +365,15 @@ describe('layoutFamily', () => {
         expect(at(gm).role).toBe('ancestor');
         expect(at(gm).expandable?.up).toBeUndefined();
         expect(L.edges.some((e) => e.from === gm && (e.to === 'dad' || e.to === 'mom'))).toBe(true); // still her child's line
+        // ONE line from the couple: both parents' edges to the child follow the same path, starting from the
+        // middle of their marriage line (between the two cards), not from each card.
+        const child = gf === 'dgf' ? 'dad' : 'mom';
+        const fromGf = L.edges.find((e) => e.from === gf && e.to === child)!.points;
+        const fromGm = L.edges.find((e) => e.from === gm && e.to === child)!.points;
+        expect(fromGm).toEqual(fromGf);
+        expect(fromGf[0][0]).toBe(at(gf).x);
+        expect(fromGf[0][1]).toBeGreaterThan(at(gf).y + CARD.h);
+        expect(fromGf[0][1]).toBeLessThan(at(gm).y);
       }
     }
   });
