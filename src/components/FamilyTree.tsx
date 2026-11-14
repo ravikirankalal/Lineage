@@ -1,6 +1,6 @@
-import { Crosshair, Download, Maximize, Maximize2, Minimize2, Minus, Plus, Printer, Search, Share2, X } from 'lucide-react';
+import { ArrowDownFromLine, ArrowRightFromLine, Crosshair, Download, Maximize, Maximize2, Minimize2, Minus, Plus, Printer, Search, Share2, X } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { CARD, type TreeLayout, type TreeLevel, type TreeNode } from '../lib/graph/contract';
+import { CARD, type TreeLayout, type TreeLevel, type TreeNode, type TreeOrient } from '../lib/graph/contract';
 import { displayName, initials, lifespan, matchesQuery } from '../lib/person';
 import type { Person } from '../lib/types';
 import { Avatar } from './Avatar';
@@ -22,7 +22,7 @@ export interface FindCandidate { person: Person; label?: string }
  * It never computes kinship itself: the caller passes labels for the whole tree in `cardInfo`.
  */
 export function FamilyTree({
-  layout, focusId, centreId, centreLabel, cardInfo, path, panTo, level, onLevel, candidates, onFind,
+  layout, focusId, centreId, centreLabel, cardInfo, path, panTo, level, onLevel, orient, onOrient, candidates, onFind,
   onTap, onToggle, onAddParent, onRecentre, banner, exportTitle,
 }: {
   layout: TreeLayout;
@@ -37,6 +37,8 @@ export function FamilyTree({
   panTo?: { id: string; nonce: number };
   level: TreeLevel;
   onLevel: (l: TreeLevel) => void;
+  orient: TreeOrient;
+  onOrient: (o: TreeOrient) => void;
   candidates: FindCandidate[];
   onFind: (id: string) => void;
   onTap: (n: TreeNode) => void;
@@ -307,6 +309,7 @@ export function FamilyTree({
         <div className="flex flex-wrap items-start gap-2">
           <FindInTree candidates={candidates} onFind={onFind} />
           <LevelPicker level={level} onLevel={onLevel} />
+          <OrientButton orient={orient} onOrient={onOrient} />
           <SaveMenu onImage={saveImage} />
         </div>
         {banner}
@@ -420,6 +423,19 @@ function LevelPicker({ level, onLevel }: { level: TreeLevel; onLevel: (l: TreeLe
         </button>
       ))}
     </div>
+  );
+}
+
+/** Switch between generations top to bottom and left to right (better on a tall phone screen). */
+function OrientButton({ orient, onOrient }: { orient: TreeOrient; onOrient: (o: TreeOrient) => void }) {
+  const next: TreeOrient = orient === 'right' ? 'down' : 'right';
+  const label = next === 'right' ? 'Show generations left to right' : 'Show generations top to bottom';
+  return (
+    <button type="button" data-orient={orient}
+      className="icon-btn pointer-events-auto bg-white/95 shadow-card ring-1 ring-stone-200 dark:bg-stone-800/95 dark:ring-stone-700"
+      aria-label={label} title={label} onClick={() => onOrient(next)}>
+      {next === 'right' ? <ArrowRightFromLine size={18} /> : <ArrowDownFromLine size={18} />}
+    </button>
   );
 }
 

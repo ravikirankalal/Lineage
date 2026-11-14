@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import type { TreeLevel } from '../../lib/graph/contract';
+import type { TreeLevel, TreeOrient } from '../../lib/graph/contract';
 
 export type LineageTab = 'tree' | 'relatives' | 'lines';
 const LEVELS: TreeLevel[] = ['immediate', 'extended', 'everyone'];
@@ -28,6 +28,8 @@ export interface TreeParams {
   /** Person whose path from the ego is highlighted ("How are we related?", Find, Show in tree). */
   hl?: string;
   expanded: ReadonlySet<string>;
+  /** Generations top to bottom ('down') or left to right ('right'). */
+  orient: TreeOrient;
 }
 
 /**
@@ -40,6 +42,9 @@ export function useTreeParams(egoId: string, isValid: (id: string) => boolean) {
   // Default level is chosen once per visit: Immediate on phones, Extended on larger screens.
   const [defaultLevel] = useState<TreeLevel>(() =>
     typeof window !== 'undefined' && window.matchMedia?.(PHONE_QUERY).matches ? 'immediate' : 'extended');
+  // Default direction: left to right on tall screens (portrait phones), top to bottom otherwise.
+  const [defaultOrient] = useState<TreeOrient>(() =>
+    typeof window !== 'undefined' && window.innerHeight > window.innerWidth * 1.2 ? 'right' : 'down');
 
   // Keep the Set identity stable while the list is unchanged, so the layout isn't recomputed
   // (and running animations aren't interrupted) on unrelated URL changes.
@@ -51,16 +56,18 @@ export function useTreeParams(egoId: string, isValid: (id: string) => boolean) {
     const l = sp.get('level') as TreeLevel | null;
     const t = sp.get('tab') as LineageTab | null;
     const hl = sp.get('hl');
+    const dir = sp.get('dir');
     return {
       tab: t && TABS.includes(t) ? t : 'tree',
       focus: f && isValid(f) ? f : egoId,
       level: l && LEVELS.includes(l) ? l : defaultLevel,
       hl: hl && isValid(hl) && hl !== egoId ? hl : undefined,
       expanded,
+      orient: dir === 'right' || dir === 'down' ? dir : defaultOrient,
     };
-  }, [sp, egoId, isValid, defaultLevel, expanded]);
+  }, [sp, egoId, isValid, defaultLevel, defaultOrient, expanded]);
 
-  const update = useCallback((patch: Partial<{ tab: LineageTab; focus: string; level: TreeLevel; hl: string | null; expanded: ReadonlySet<string> }>, opts: { push?: boolean } = {}) => {
+  const update = useCallback((patch: Partial<{ tab: LineageTab; focus: string; level: TreeLevel; hl: string | null; expanded: ReadonlySet<string>; orient: TreeOrient }>, opts: { push?: boolean } = {}) => {
     setSp((prev) => {
       const next = new URLSearchParams(prev);
       const put = (k: string, v: string | null | undefined) => (v ? next.set(k, v) : next.delete(k));
@@ -69,6 +76,7 @@ export function useTreeParams(egoId: string, isValid: (id: string) => boolean) {
       if (patch.level !== undefined) put('level', patch.level);
       if (patch.hl !== undefined) put('hl', patch.hl);
       if (patch.expanded !== undefined) put('open', [...patch.expanded].join(','));
+      if (patch.orient !== undefined) put('dir', patch.orient);
       return next;
     }, { replace: !opts.push });
   }, [setSp, egoId]);

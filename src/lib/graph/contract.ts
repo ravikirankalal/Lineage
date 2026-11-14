@@ -28,7 +28,11 @@ export interface TreeOptions {
   up?: number; // generations above the focus (default 4)
   down?: number; // generations below the focus (default 3)
   ghosts?: boolean; // "Add father/mother" placeholders above the focus when parents are missing
+  /** 'down' (default): generations are rows, ancestors on top. 'right': generations are columns,
+   * ancestors on the left, siblings stacked; fills a tall phone screen better. */
+  orient?: TreeOrient;
 }
+export type TreeOrient = 'down' | 'right';
 
 /** Card geometry in layout units (px at zoom 1). Sized to stay readable on a phone at about 0.8 zoom. */
 export const CARD = { w: 164, h: 76, gapX: 20, rowH: 128 } as const;
