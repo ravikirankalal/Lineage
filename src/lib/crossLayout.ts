@@ -294,10 +294,11 @@ class Cross {
         const yP = pNode.y + H2;
         const sub = g.spousesOf(bd.id).find((e) => e.id === p.id)?.subtype;
         const kind: TreeEdge['kind'] = sub === 'divorced' || sub === 'separated' ? 'divorced' : 'marriage';
-        if (j === 0 && !kids.length) {
+        // A couple with children is already joined through the children's lines: no extra line.
+        if (!kids.length && j === 0) {
           this.edges.push(this.edge(kind, [[xS + W2, yS], [xP - W2, yP]], bd.id, p.id));
-        } else {
-          // Round the children: down the sibling's bracket, under the family, up the spouse's bracket.
+        } else if (!kids.length) {
+          // A later partner without children: down the sibling's bracket, under the row, up to the partner.
           const yBelow = yRow(r) - GY * 0.35;
           this.edges.push(this.edge(kind, [[xS + W2, yS], [xs2, yS], [xs2, yBelow], [xp, yBelow], [xp, yP], [xP - W2, yP]], bd.id, p.id));
         }

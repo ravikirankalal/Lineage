@@ -219,6 +219,9 @@ describe('layoutFamily', () => {
     expect(at('aunt').y).toBeGreaterThan(at('dad').y);
     expect(at('mUncle').y).toBeLessThan(at('mom').y);
     expect(at('mAunt').y).toBeGreaterThan(at('mom').y);
+    // A couple with children has no separate husband–wife line (the children's lines join them).
+    expect(L.edges.some((e) => [e.from, e.to].sort().join() === 'me,wife')).toBe(false);
+    expect(L.edges.some((e) => [e.from, e.to].sort().join() === 'bro,broWife')).toBe(false);
     // Every parent-child link is drawn.
     for (const [a, b] of [['dad', 'me'], ['mom', 'me'], ['me', 'son'], ['wife', 'son'], ['dgf', 'dad'], ['mgm', 'mom']]) {
       expect(L.edges.some((e) => e.from === a && e.to === b), `${a}→${b}`).toBe(true);
