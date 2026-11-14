@@ -46,7 +46,7 @@ export interface SpaceDoc {
   name: string; // e.g. "Ravi's family"
   ownerUid: string;
   members: Record<string, Role>; // uid -> role (owner included)
-  memberInfo?: Record<string, { email: string; name?: string }>; // display only
+  memberInfo?: Record<string, { email: string; name?: string; personId?: string }>; // display, plus who they are in the tree
   createdAt: number;
 }
 export interface Space extends SpaceDoc {
@@ -60,6 +60,8 @@ export interface InviteDoc {
   invitedByEmail?: string; // inviter's verified auth email (rules require it on new writes)
   spaceName: string;
   createdAt: number;
+  /** Who they are in the tree. Required for editors: a person with a phone number (rules). */
+  personId?: string;
 }
 
 /** A synced record. `data` is the local Person/Relationship. */
@@ -105,12 +107,12 @@ export interface AuthState {
 export interface SpacesApi {
   ensurePersonalSpace(user: CloudUser, name: string): Promise<Space>; // id == uid
   listMySpaces(uid: string): Promise<(Space & { role: Role })[]>;
-  invite(spaceId: string, email: string, role: MemberRole): Promise<void>;
+  invite(spaceId: string, email: string, role: MemberRole, personId?: string): Promise<void>; // editors need personId
   revokeInvite(spaceId: string, email: string): Promise<void>;
   listInvites(spaceId: string): Promise<InviteDoc[]>; // owner only
   myPendingInvites(user: CloudUser): Promise<(InviteDoc & { spaceId: string })[]>; // collectionGroup query by email
   acceptInvite(user: CloudUser, spaceId: string): Promise<void>;
-  setRole(spaceId: string, uid: string, role: MemberRole): Promise<void>; // owner only
+  setRole(spaceId: string, uid: string, role: MemberRole, personId?: string): Promise<void>; // owner only
   removeMember(spaceId: string, uid: string): Promise<void>; // owner, or self (leave)
 }
 
