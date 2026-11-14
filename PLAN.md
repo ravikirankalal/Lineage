@@ -152,6 +152,8 @@
 - [x] Tree: cross layout (father's side left, mother's right, brothers up, sisters down, children between
       siblings and spouses), default on portrait phones
 - [x] Cross layout: cousins and grandchildren
+- [x] Tree: generation bands in the background, labelled
+- [ ] Generation band labels that stay visible while panning
 - [ ] Cross layout: uncles'/aunts' spouses, in-laws' parents, parents' other partners, children's spouses; compact cards
 - [ ] Tree: compact cards for left-to-right so more generations fit across a phone
 - [x] Tree: every in-law's parents (siblings'/children's/cousins' spouses, step-parents)
