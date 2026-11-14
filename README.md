@@ -19,8 +19,10 @@ with a dedicated section for your own family tree and ancestors.
   addresses. *Everything (private backup)* is optional. Re-importing the same file adds duplicates.
 - **Merge duplicates** — combine two profiles of the same person. You see a preview first, and
   the dropped copy's name is kept as an other name.
-- **Relationships** — family (parent, spouse, sibling; biological, adoptive, step, foster,
+- **Relationships** — family (parent, child, spouse; biological, adoptive, step, foster,
   divorced…) and social (close friend, friend, colleague, classmate, neighbour, acquaintance).
+  Brothers and sisters are added as children of the parents, so they always share them.
+  (Sibling links from older data or a GEDCOM import are still understood.)
 - **Connections view** — every person's page lists everyone connected to them, closest first:
   immediate family → extended family → close friends → friends → colleagues → classmates →
   acquaintances → neighbours → *same neighbourhood → same city → same home town → same college →

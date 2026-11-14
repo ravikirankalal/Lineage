@@ -8,17 +8,20 @@ import { PersonRow } from './PersonRow';
 import { Sheet } from './Sheet';
 
 export type RelChoice =
-  | 'father' | 'mother' | 'son' | 'daughter' | 'husband' | 'wife' | 'brother' | 'sister'
-  | 'parent' | 'child' | 'spouse' | 'sibling'
+  | 'father' | 'mother' | 'son' | 'daughter' | 'husband' | 'wife'
+  | 'parent' | 'child' | 'spouse'
   | 'close_friend' | 'friend' | 'colleague' | 'classmate' | 'neighbor' | 'acquaintance' | 'other';
 
+/**
+ * No "Brother"/"Sister" here (the owner's choice, to keep things simple): a brother or sister is added
+ * as a son or daughter of the parents, so they share the parents and every view draws them correctly.
+ * Sibling links that already exist (or come from a GEDCOM import) are still understood.
+ */
 const FAMILY_CHOICES: { key: RelChoice; label: string }[] = [
   { key: 'father', label: 'Father' },
   { key: 'mother', label: 'Mother' },
   { key: 'husband', label: 'Husband' },
   { key: 'wife', label: 'Wife' },
-  { key: 'brother', label: 'Brother' },
-  { key: 'sister', label: 'Sister' },
   { key: 'son', label: 'Son' },
   { key: 'daughter', label: 'Daughter' },
 ];
@@ -42,9 +45,6 @@ const CHOICE_INFO: Record<RelChoice, { type: RelType; gender?: Gender; dir?: 'in
   husband: { type: 'spouse', gender: 'male', label: 'husband' },
   wife: { type: 'spouse', gender: 'female', label: 'wife' },
   spouse: { type: 'spouse', label: 'spouse' },
-  brother: { type: 'sibling', gender: 'male', label: 'brother' },
-  sister: { type: 'sibling', gender: 'female', label: 'sister' },
-  sibling: { type: 'sibling', label: 'sibling' },
   close_friend: { type: 'close_friend', label: 'close friend' },
   friend: { type: 'friend', label: 'friend' },
   colleague: { type: 'colleague', label: 'colleague' },
@@ -84,10 +84,6 @@ function AddRelationBody({ person, preset, familyOnly, onClose }: { person: Pers
   // Helpful extra links.
   const spouses = graph.spousesOf(person.id).filter((s) => s.subtype !== 'divorced').map((s) => byId.get(s.id)!).filter(Boolean);
   const parents = graph.parentsOf(person.id).filter((e) => e.subtype !== 'step').map((e) => byId.get(e.id)!).filter(Boolean);
-  // Parents a full/adoptive sibling would share: only biological or adoptive edges (not step/foster).
-  const sharedParents = graph.parentsOf(person.id)
-    .filter((e) => !e.subtype || e.subtype === 'biological' || e.subtype === 'adoptive')
-    .map((e) => byId.get(e.id)!).filter(Boolean);
   const otherParent = info?.dir === 'in' && parents.length === 1 ? parents[0] : undefined;
   const [alsoSpouse, setAlsoSpouse] = useState(true);
   // A step/foster child of this person is not automatically the spouse's child.
@@ -124,19 +120,6 @@ function AddRelationBody({ person, preset, familyOnly, onClose }: { person: Pers
           }
           if (coParent && alsoCoParent && sub !== 'step' && sub !== 'foster') {
             await ensureRelationship({ fromId: coParent.id, toId: other.id, type: 'parent', subtype: sub === 'adoptive' ? 'adoptive' : 'biological' });
-          }
-        } else if (info.type === 'sibling') {
-          // Full/adoptive siblings: link to the same (biological/adoptive) parents so the tree is complete.
-          // Step/half siblings, or no known parents: store an explicit sibling edge.
-          const viaParents = (!sub || sub === 'full' || sub === 'adoptive') && sharedParents.length > 0;
-          if (viaParents) {
-            const parentSub: ParentSubtype = sub === 'adoptive' ? 'adoptive' : 'biological';
-            for (const p of sharedParents) {
-              if (p.id === other.id) continue;
-              await ensureRelationship({ fromId: p.id, toId: other.id, type: 'parent', subtype: parentSub });
-            }
-          } else {
-            await addRelationship({ fromId: person.id, toId: other.id, type: 'sibling', subtype: sub as never, note: note || undefined });
           }
         } else {
           await userEdge({ fromId: person.id, toId: other.id, type: info.type, subtype: sub as SpouseSubtype | undefined, note: note || undefined }, info.type === 'spouse' ? 'married' : undefined);
@@ -188,7 +171,6 @@ function AddRelationBody({ person, preset, familyOnly, onClose }: { person: Pers
   const subtypeOptions =
     info.type === 'parent' ? [['biological', 'Biological'], ['adoptive', 'Adoptive'], ['step', 'Step'], ['foster', 'Foster']]
       : info.type === 'spouse' ? [['married', 'Married'], ['partner', 'Partner'], ['divorced', 'Divorced'], ['separated', 'Separated'], ['widowed', 'Widowed']]
-        : info.type === 'sibling' ? [['full', 'Full'], ['half', 'Half'], ['step', 'Step'], ['adoptive', 'Adoptive']]
           : null;
 
   return (

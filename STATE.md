@@ -127,6 +127,9 @@ _Last updated: 2026-11-13_
   parent only), so a family never shows two lines; a child with a different recorded other parent keeps its own.
   Parent lines also reach people linked to the family only as a brother/sister (parents inferred through the
   explicit full/untyped sibling link, as kinship already does), e.g. a great-uncle added as "brother of".
+- No "Brother"/"Sister" when adding someone (owner's request, to keep it simple): a sibling is added as a son
+  or daughter of the parents ("Also <other parent>'s son" links both). Existing/imported sibling links still work.
+  QA flows 1 and 6 updated to add the brother as a son.
 - Main vs secondary cards (owner's rule): when someone appears twice, the card in their birth family (joined
   to their parents) is the main card; the card beside their spouse is a secondary "Also shown elsewhere" stub that
   can't expand to their ancestors. Cross layout makes spouse cards last; the other layouts re-run with that

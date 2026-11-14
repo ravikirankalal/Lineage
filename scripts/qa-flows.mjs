@@ -71,7 +71,7 @@ async function main(browser) {
   watch(page, 'main');
   await page.goto(BASE);
 
-  await flow('1 add self, parents via ghost cards, brother', async () => {
+  await flow('1 add self, parents via ghost cards, brother (as the parents\' son)', async () => {
     await page.getByRole('button', { name: /Add yourself first/ }).click();
     await page.getByLabel('First name *').fill('Arun');
     await page.getByLabel('Last name / surname').fill('Kumar');
@@ -89,8 +89,17 @@ async function main(browser) {
     await addViaSheet(page, 'Lata Kumar');
     await shot(page, '1a-tree-parents');
 
+    // There is no "Brother" option (kept simple on purpose): a brother is the parents' son.
     await openProfile(page, 'Arun Kumar');
-    await profileAdd(page, 'Brother', 'Vijay Kumar');
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    check(!(await page.getByRole('button', { name: 'Brother', exact: true }).count()), '[1] "Brother" option should be gone');
+    check(!(await page.getByRole('button', { name: 'Sister', exact: true }).count()), '[1] "Sister" option should be gone');
+    await page.keyboard.press('Escape');
+    await openProfile(page, 'Raj Kumar');
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    await page.getByRole('button', { name: 'Son', exact: true }).click();
+    check(await page.getByText(/Also Lata.s son/).isVisible(), '[1] "Also Lata\'s son" option missing');
+    await addViaSheet(page, 'Vijay Kumar');
     await page.goto(BASE + '#/family');
     await page.getByText('Vijay K.').waitFor();
     const tree = await body(page);
@@ -298,7 +307,7 @@ async function dark(browser) {
     await shot(page, '6a-dark-people');
     await openProfile(page, 'Ravi Rao');
     const LONG = 'Venkatasubrahmanya Lakshminarasimha Chakravarthy-Ramanujam Iyengar';
-    await profileAdd(page, 'Brother', LONG);
+    await profileAdd(page, 'Son', LONG);
     await shot(page, '6b-dark-profile');
     await page.getByText('Venkatasubrahmanya').first().click();
     await page.getByText('Connections').first().waitFor();
