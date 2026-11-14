@@ -26,7 +26,6 @@ import type { FamilyGraph } from './kinship';
 const PC = CARD.w + 44; // column pitch
 const RP = CARD.h + 24; // row pitch
 const GX = PC - CARD.w; // gap between columns (lines run here)
-const GY = RP - CARD.h; // gap between rows
 const W2 = CARD.w / 2;
 const H2 = CARD.h / 2;
 const MANY = 99;
@@ -169,8 +168,8 @@ class Cross {
    * line, their other partners (not `linePartner`, the other parent of the child we came from); for their
    * brothers and sisters, every partner (when those siblings are shown).
    */
-  columnPartners(id: string, p: string, sideOk: boolean, linePartner?: string): string[] {
-    if (id === p) return this.partners(p).filter((x) => x !== linePartner);
+  columnPartners(id: string, p: string, sideOk: boolean, linePartner?: string, wife?: string): string[] {
+    if (id === p) return [...(wife ? [wife] : []), ...this.partners(p).filter((x) => x !== linePartner && x !== wife)];
     return sideOk ? this.partners(id) : [];
   }
 
@@ -181,11 +180,11 @@ class Cross {
    * `relY` (parents only): where each of the parent's brothers and sisters sits, relative to the parent,
    * so each is level with their children (the cousins) in the middle column.
    */
-  pedigree(p: string, gen: number, relY?: Map<string, number>, linePartner?: string): Block {
+  pedigree(p: string, gen: number, relY?: Map<string, number>, linePartner?: string, wife?: string): Block {
     const b: Block = { nodes: [], edges: [], cont: new Map() };
     const hasSibs = this.g.siblingsOf(p).some((s) => !this.placed.has(s.id));
     const { ids, info, sideOk } = this.ancestorGroup(p, gen);
-    const partnersOf = new Map(ids.map((id) => [id, this.columnPartners(id, p, sideOk, linePartner)]));
+    const partnersOf = new Map(ids.map((id) => [id, this.columnPartners(id, p, sideOk, linePartner, wife)]));
     // Rows: each person, then their partners below them.
     const seqRow = new Map<string, number>();
     let r = 0;
@@ -203,7 +202,8 @@ class Cross {
       group.push(n);
       cards.push(n);
       partnersOf.get(id)!.forEach((sp, j) => {
-        const pn = this.node(sp, 'spouse', gen, 0, y + (1 + j) * RP);
+        // The wife who married into this line is an ancestor too, but her own ancestors aren't shown.
+        const pn = this.node(sp, sp === wife ? 'ancestor' : 'spouse', gen, 0, y + (1 + j) * RP);
         cards.push(pn);
         const sub = this.g.spousesOf(id).find((e) => e.id === sp)?.subtype;
         const kind: TreeEdge['kind'] = sub === 'divorced' || sub === 'separated' ? 'divorced' : 'marriage';
@@ -224,40 +224,19 @@ class Cross {
       pn.expandable = { ...pn.expandable, up: true };
       return b;
     }
-    // Parents' blocks, father's packed above mother's, then centred on the sibling column.
-    const blocks = ps.map((q, i) => {
-      const blk = this.pedigree(q, gen + 1, undefined, ps[1 - i]);
-      moveBlock(blk, 1, 0);
-      return blk;
-    });
-    const tops = [0, 0];
-    if (blocks.length === 2) {
-      let off: number | undefined;
-      for (const [k, [t]] of blocks[1].cont) {
-        const a = blocks[0].cont.get(k);
-        if (!a) continue;
-        const need = a[1] + (k % 2 === 0 ? GY : 10) - t;
-        off = off === undefined ? need : Math.max(off, need);
-      }
-      tops[1] = Math.max(off ?? RP, RP);
-      moveBlock(blocks[1], 0, tops[1]);
-    }
+    // Above the parents' generation each side follows the father's line: the mother married into it, so
+    // she sits directly below him as his wife and her own ancestors aren't drawn. (With only a mother
+    // known, her line continues instead.)
+    const [line, married] = ps;
+    const blk = this.pedigree(line, gen + 1, undefined, undefined, married);
+    moveBlock(blk, 1, 0);
+    const yOf = (id: string) => blk.nodes.find((n) => n.personId === id && n.x === PC)?.y ?? 0;
+    const tops = ps.map((q) => yOf(q));
     const groupMid = (Math.min(...group.map((n) => n.y)) + Math.max(...group.map((n) => n.y))) / 2;
-    const pairMid = (tops[0] + tops[blocks.length - 1]) / 2;
+    const pairMid = (Math.min(...tops) + Math.max(...tops)) / 2;
     const dy = groupMid - pairMid;
-    blocks.forEach((blk) => moveBlock(blk, 0, dy));
-
-    // The parents' marriage line: straight down when the mother sits right below the father, otherwise
-    // round the outer side of their column.
-    if (ps.length === 2) {
-      const [y0, y1] = [tops[0] + dy, tops[1] + dy];
-      const sub = this.g.spousesOf(ps[0]).find((e) => e.id === ps[1])?.subtype;
-      const kind: TreeEdge['kind'] = sub === 'divorced' || sub === 'separated' ? 'divorced' : 'marriage';
-      const xo = PC + W2 + 16;
-      b.edges.push(y1 - y0 === RP
-        ? this.edge(kind, [[PC, y0 + CARD.h], [PC, y1]], ps[0], ps[1])
-        : this.edge(kind, [[PC + W2, y0 + H2], [xo, y0 + H2], [xo, y1 + H2], [PC + W2, y1 + H2]], ps[0], ps[1]));
-    }
+    moveBlock(blk, 0, dy);
+    const blocks = [blk];
 
     // Bracket in the gap between column 0 and column 1.
     const xb = PC / 2;

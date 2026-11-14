@@ -117,6 +117,9 @@ _Last updated: 2026-11-13_
   their spouse directly below with a marriage line: uncles'/aunts' spouses, a parent's other partner (step-parent),
   and ancestor couples (husband above wife; a loop on the outer side when siblings sit between them). Rows are
   reserved so cousins stay level with their parents. Tested.
+- Cross layout lineage (owner's rule): above the parents, each side follows the grandfather's line. A grandmother
+  (and every wife further up) married into the line: she sits right below her husband with a marriage line and her
+  own ancestors aren't drawn. The mother's own ancestors still form the mother's side. Tested at every level.
 - Main vs secondary cards (owner's rule): when someone appears twice, the card in their birth family (joined
   to their parents) is the main card; the card beside their spouse is a secondary "Also shown elsewhere" stub that
   can't expand to their ancestors. Cross layout makes spouse cards last; the other layouts re-run with that

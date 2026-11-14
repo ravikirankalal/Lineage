@@ -341,6 +341,34 @@ describe('layoutFamily', () => {
     expect(imm.nodes.some((n) => n.personId === 'uncleWife')).toBe(false);
   });
 
+  it("cross layout: above the parents each side follows the grandfather's line; grandmothers married in", () => {
+    const f = family();
+    f.add('me', 'male', '1980'); f.add('dad', 'male', '1950'); f.add('mom', 'female', '1952');
+    f.add('dgf', 'male', '1920'); f.add('dgm', 'female', '1922'); f.add('mgf', 'male', '1925'); f.add('mgm', 'female', '1927');
+    for (const [a, b] of [['dgfF', 'dgfM'], ['dgmF', 'dgmM'], ['mgfF', 'mgfM'], ['mgmF', 'mgmM']]) { f.add(a, 'male', '1890'); f.add(b, 'female', '1892'); }
+    f.rel('dad', 'me', 'parent'); f.rel('mom', 'me', 'parent');
+    f.rel('dgf', 'dad', 'parent'); f.rel('dgm', 'dad', 'parent'); f.rel('mgf', 'mom', 'parent'); f.rel('mgm', 'mom', 'parent');
+    for (const [kid, a, b] of [['dgf', 'dgfF', 'dgfM'], ['dgm', 'dgmF', 'dgmM'], ['mgf', 'mgfF', 'mgfM'], ['mgm', 'mgmF', 'mgmM']]) { f.rel(a, kid, 'parent'); f.rel(b, kid, 'parent'); }
+    const G = f.graph();
+    for (const level of ['immediate', 'extended', 'everyone'] as const) {
+      const L = lay(G, 'me', level, [], false, 'cross');
+      checkGeometry(L, `patriline ${level}`);
+      const ids = new Set(L.nodes.map((n) => n.personId));
+      // Mother's own parents are shown (her side), and each grandfather's parents...
+      for (const id of ['mgf', 'mgm', 'dgf', 'dgm', 'dgfF', 'dgfM', 'mgfF', 'mgfM']) expect(ids.has(id), `${level} ${id}`).toBe(true);
+      // ...but not the parents of a grandmother, who married into the line.
+      for (const id of ['dgmF', 'dgmM', 'mgmF', 'mgmM']) expect(ids.has(id), `${level} ${id}`).toBe(false);
+      const at = (id: string) => L.nodes.find((n) => n.personId === id && !n.dupOf)!;
+      for (const [gf, gm] of [['dgf', 'dgm'], ['mgf', 'mgm']]) {
+        expect(at(gm).x).toBe(at(gf).x);
+        expect(at(gm).y).toBe(at(gf).y + 100); // wife right below her husband
+        expect(at(gm).role).toBe('ancestor');
+        expect(at(gm).expandable?.up).toBeUndefined();
+        expect(L.edges.some((e) => e.from === gm && (e.to === 'dad' || e.to === 'mom'))).toBe(true); // still her child's line
+      }
+    }
+  });
+
   it('keeps the main card in the birth family when someone also appears beside a spouse', () => {
     // My sister married our cousin (my uncle's son): he is drawn under his parents and beside her.
     const f = family();
