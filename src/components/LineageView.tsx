@@ -1,5 +1,5 @@
 import { ArrowDown, Crosshair, GitBranch, List, Search, UserPlus, X } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useCanEdit } from '../lib/cloud/CloudProvider';
 import { useData } from '../lib/data';
@@ -36,9 +36,10 @@ export function LineageView({ ego, egoLabel = 'You' }: { ego: Person; egoLabel?:
 
   // ONE batch label search per ego (never kinship() per card).
   const labels = useMemo(() => labelsFor(graph, ego.id), [graph, ego.id]);
+  const aspect = useScreenAspect();
   const layout = useMemo(
-    () => layoutFamily(graph, { focusId, level, expanded, ghosts: canEdit, orient }),
-    [graph, focusId, level, expanded, canEdit, orient],
+    () => layoutFamily(graph, { focusId, level, expanded, ghosts: canEdit, orient, aspect }),
+    [graph, focusId, level, expanded, canEdit, orient, aspect],
   );
   const path = useMemo(() => (hl ? new Set(relationPath(graph, ego.id, hl)) : undefined), [graph, ego.id, hl]);
   const relatives = useMemo(() => (tab === 'relatives' ? relativesOf(graph, ego.id) : undefined), [graph, ego.id, tab]);
@@ -313,4 +314,20 @@ function Lines({ ego }: { ego: Person }) {
       {col("Mother's line", 'Mother → her mother → …', mat)}
     </div>
   );
+}
+
+/**
+ * The screen's width ÷ height, in coarse steps (so the tree is only laid out again when the shape really
+ * changes, e.g. on rotating a phone). The cross layout uses it to decide whether second cousins get their
+ * own column.
+ */
+function useScreenAspect(): number {
+  const read = () => (typeof window === 'undefined' || !window.innerHeight ? 1 : Math.round((window.innerWidth / window.innerHeight) * 4) / 4);
+  const [aspect, setAspect] = useState(read);
+  useEffect(() => {
+    const on = () => setAspect(read());
+    window.addEventListener('resize', on);
+    return () => window.removeEventListener('resize', on);
+  }, []);
+  return aspect;
 }

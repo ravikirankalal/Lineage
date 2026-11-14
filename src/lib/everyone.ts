@@ -20,7 +20,18 @@ const GAP = 80; // between stacked trees, above the next tree's titles
  * The new trees are scanned the same way, until every person in the family is drawn.
  */
 export function layoutCrossEveryone(graph: FamilyGraph, opts: TreeOptions): TreeLayout {
-  return completeEveryone(graph, opts, layoutCross(graph, opts));
+  const run = (split: boolean) => {
+    const o = { ...opts, secondCousinsColumn: split };
+    return completeEveryone(graph, o, layoutCross(graph, o));
+  };
+  if (opts.secondCousinsColumn !== undefined) return run(opts.secondCousinsColumn);
+  const plain = run(false);
+  if (!opts.aspect || !plain.secondCousins) return plain;
+  // Second cousins in their own column only when that brings the tree's shape closer to the screen's (the
+  // owner's rule): it makes the tree wider, never taller, so it helps on wide screens.
+  const split = run(true);
+  const fit = (L: TreeLayout) => Math.abs(Math.log((L.bounds.maxX - L.bounds.minX) / Math.max(1, L.bounds.maxY - L.bounds.minY)) - Math.log(opts.aspect!));
+  return fit(split) < fit(plain) ? split : plain;
 }
 
 /**
@@ -84,6 +95,7 @@ export function completeEveryone(graph: FamilyGraph, opts: TreeOptions, main: Tr
   }
   if (parts.length === 1) return main;
   const out = stack(parts);
+  if (parts.some((p) => p.layout.secondCousins)) out.secondCousins = true;
   const left = [...hidden].filter((id) => !shown.has(id));
   return left.length ? { ...out, hidden: left } : out;
 
@@ -94,7 +106,8 @@ export function completeEveryone(graph: FamilyGraph, opts: TreeOptions, main: Tr
     for (const id of ids) {
       if (familyDone.has(id) || withParents.has(id) || !graph.bloodParents(id).length) continue;
       familyDone.add(id);
-      const L = layoutCross(graph, { focusId: id, level: 'everyone', expanded: opts.expanded, orient: 'cross' });
+      // The same columns as the main tree, so the trees line up.
+      const L = layoutCross(graph, { focusId: id, level: 'everyone', expanded: opts.expanded, orient: 'cross', secondCousinsColumn: opts.secondCousinsColumn });
       for (const n of L.nodes) if (n.role === 'focus') n.role = 'relative';
       const who = name(id);
       L.regions = (L.regions ?? []).map((r) => ({

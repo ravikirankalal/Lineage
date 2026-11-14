@@ -37,6 +37,11 @@ export interface TreeOptions {
    * and sisters, and the parents of people who married in. */
   noSiblings?: boolean;
   noInLaws?: boolean;
+  /** The screen's width ÷ height. The cross layout then gives second cousins their own column when that
+   * brings the tree's shape closer to the screen's. */
+  aspect?: number;
+  /** Engine-internal (cross): second cousins in their own column. */
+  secondCousinsColumn?: boolean;
 }
 export type TreeOrient = 'down' | 'right' | 'cross';
 
@@ -80,6 +85,8 @@ export interface TreeLayout {
   regions?: TreeRegion[];
   /** Cross layout: people left out because a couple's children are collapsed (each card's button opens them). */
   hidden?: string[];
+  /** Cross layout: some second (or further) cousin is drawn. */
+  secondCousins?: boolean;
 }
 export interface TreeRegion {
   side: 'father' | 'middle' | 'mother';

@@ -151,16 +151,26 @@ class Cross {
     return sideOk ? this.partners(id) : [];
   }
 
+  /** Second cousins (and further) in their own column, between the first cousins and the parents. */
+  private get split() {
+    return !!this.opts.secondCousinsColumn;
+  }
+  /** Some second (or further) cousin was drawn: the caller may try the layout with their own column. */
+  hasDistant = false;
+
   /**
    * x of a card column on the father's side (dir −1) or the mother's (dir 1): generation 0 is that side's
-   * cousins column, right beside the focus's column (x = 0); each older generation one column further out.
+   * cousins column, right beside the focus's column (x = 0), with a second-cousins column after it when
+   * `split`; each older generation one column further out.
    */
-  private colX(dir: number, gen: number) {
-    return dir * (Math.max(gen, 0) + 1) * PC;
+  private colX(dir: number, gen: number, distant = false) {
+    const extra = this.split ? 1 : 0;
+    if (gen <= 0) return dir * (distant ? 1 + extra : 1) * PC;
+    return dir * (gen + 1 + extra) * PC;
   }
-  /** x of the gap between generation `gen`'s column and the next one in (where its lines to children run). */
+  /** x of the gap just inside generation `gen`'s column (where its lines to its children run). */
   private gapIn(dir: number, gen: number) {
-    return (this.colX(dir, gen) + this.colX(dir, gen - 1)) / 2;
+    return this.colX(dir, gen) - (dir * PC) / 2;
   }
 
   private memo = new Map<string, number>();
@@ -196,12 +206,16 @@ class Cross {
    * Draw a brother's or sister's family (see bandRows) with the person's card at `row`. Each child sits
    * level with the rows of their own family, the first one level with the parent, so lines run straight.
    */
-  placeBand(id: string, gen: number, dir: number, row: number, yRow: (r: number) => number, flags: Partial<TreeNode> = {}): TreeNode {
-    const x = this.colX(dir, gen);
+  placeBand(id: string, gen: number, dir: number, row: number, yRow: (r: number) => number, flags: Partial<TreeNode> = {}, origin = gen): TreeNode {
+    // `origin`: the generation of the ancestor's brother or sister the family hangs from; their
+    // grandchildren and further down at generation 0 are second (or further) cousins.
+    const distant = gen <= 0 && origin >= 2;
+    if (distant) this.hasDistant = true;
+    const x = this.colX(dir, gen, distant);
     const n = this.node(id, 'relative', gen, x, yRow(row), flags);
     if (n.dupOf) return n;
     const partners = this.partners(id);
-    this.partnerCards(id, partners, gen, dir, row, yRow, () => 'spouse');
+    this.partnerCards(id, partners, gen, dir, row, yRow, () => 'spouse', x);
     if (gen <= 0) return n;
     const kids = this.g.childrenOf(id).map((c) => c.id).sort(byBirth(this.g));
     if (!kids.length) return n;
@@ -214,18 +228,18 @@ class Cross {
     let r = row;
     const placed: { id: string; y: number }[] = [];
     for (const k of kids) {
-      const kn = this.placeBand(k, gen - 1, dir, r, yRow);
+      const kn = this.placeBand(k, gen - 1, dir, r, yRow, {}, origin);
       placed.push({ id: k, y: kn.y });
       r += this.bandRows(k, gen - 1);
     }
     const xb = this.gapIn(dir, gen);
-    this.childLines(id, n.y, partners, placed, dir, gen, xb, xb, true);
+    const kidsX = this.colX(dir, gen - 1, gen - 1 <= 0 && origin >= 2);
+    this.childLines(id, n.y, partners, placed, dir, gen, xb, xb, true, kidsX + dir * W2);
     return n;
   }
 
   /** Partner cards right below a person in their column, each joined by a marriage line. */
-  partnerCards(id: string, partners: string[], gen: number, dir: number, row: number, yRow: (r: number) => number, role: (sp: string) => TreeNode['role']) {
-    const x = this.colX(dir, gen);
+  partnerCards(id: string, partners: string[], gen: number, dir: number, row: number, yRow: (r: number) => number, role: (sp: string) => TreeNode['role'], x = this.colX(dir, gen)) {
     const y = yRow(row);
     // A later partner: a loop round the outer side of the column (the inner side for cousins, whose outer
     // gap carries their parents' lines).
@@ -470,7 +484,8 @@ class Cross {
       }
       return [...gens].sort((a, b) => a[0] - b[0]).map(([x, m]) => {
         const gen = [...m].sort((a, b) => b[1] - a[1])[0][0];
-        return { x, label: gen === 0 ? 'Cousins' : generationLabel(gen) };
+        const second = this.split && Math.abs(x) === 2 * PC;
+        return { x, label: gen === 0 ? (second ? 'Second cousins' : 'Cousins') : generationLabel(gen) };
       });
     };
     const fatherCols = sideColumns((x) => x < leftEdge);
@@ -524,5 +539,5 @@ export function layoutCross(graph: FamilyGraph, opts: TreeOptions): TreeLayout {
   const regions = c.regions.map((r) => ({ ...r, x0: Math.max(r.x0, minX - 20), x1: Math.min(r.x1, maxX + 20) }));
   const drawn = new Set(nodes.map((n) => n.personId));
   const hidden = [...c.hidden].filter((id) => !drawn.has(id));
-  return { nodes, edges: c.edges, bounds: { minX, maxX, minY, maxY }, regions, ...(hidden.length ? { hidden } : {}) };
+  return { nodes, edges: c.edges, bounds: { minX, maxX, minY, maxY }, regions, ...(hidden.length ? { hidden } : {}), ...(c.hasDistant ? { secondCousins: true } : {}) };
 }
