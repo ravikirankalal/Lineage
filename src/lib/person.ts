@@ -136,7 +136,6 @@ export function matchesQuery(p: Person, q: string): boolean {
 export function missingDetails(p: Person): string[] {
   const miss: string[] = [];
   if (!p.photo && !p.appearance) miss.push('what they look like');
-  if (!p.howWeMet && !p.isMe) miss.push('how you know them');
   if (!formatPlace(p.origin)) miss.push('where they are from');
   if (!formatPlace(p.address)) miss.push('where they live');
   if (!p.occupation && !p.work.length) miss.push('what they do');
@@ -148,7 +147,6 @@ export function completeness(p: Person): number {
   const checks = [
     !!p.lastName,
     !!(p.photo || p.appearance),
-    !!p.howWeMet || !!p.isMe,
     !!formatPlace(p.origin),
     !!formatPlace(p.address),
     !!(p.occupation || p.work.length),

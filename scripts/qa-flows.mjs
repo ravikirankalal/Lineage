@@ -147,12 +147,16 @@ async function main(browser) {
     await shot(page, '2-tree-son');
   });
 
-  await flow('friend never appears in My Family', async () => {
+  await flow('family only: no friends, colleagues or circles anywhere', async () => {
     await openProfile(page, 'Arun Kumar');
-    await profileAdd(page, 'Friend', 'Sunil Friend');
-    await page.goto(BASE + '#/family');
-    await page.getByRole('button', { name: /Relatives \(/ }).click(); await page.getByPlaceholder('Search relatives').waitFor(); await page.waitForFunction(() => document.querySelectorAll('section h3').length > 0);
-    check(!(await body(page)).includes('Sunil'), '[friend] friend leaked into My Family');
+    const pr = await body(page);
+    check(!/Connections|Friends|Colleagues|Same city|How you know them/.test(pr), '[family-only] profile shows non-family sections');
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    const sh = await body(page);
+    check(!/Friend|Colleague|Classmate|Neighbour|Acquaintance|Social/.test(sh), '[family-only] add sheet offers non-family links');
+    await page.keyboard.press('Escape');
+    await page.goto(BASE);
+    check(!/Friends & others/.test(await body(page)), '[family-only] people list has a friends filter');
   });
 
   // Give existing people typed details to test non-overwrite.
@@ -404,8 +408,6 @@ async function features(browser) {
       await openProfile(page, n);
       check((await body(page)).includes(t), `[8] ${n} chip not "${t}"`);
     }
-    await openProfile(page, 'Sandeep Kumar');
-    check(!/ · (Chacha|Mama|Bhai|Dost)/.test(await body(page)), '[8] friend got a family term');
     await openProfile(page, 'Ravi Rao');
     check(/Kamala Gupta\s*Grandmother · Nani/.test(await body(page)), '[8] connection row lacks term');
     await page.goto(BASE + '#/family');
@@ -452,10 +454,9 @@ async function features(browser) {
     const fam = readFileSync(famPath, 'utf8');
     check(/^1 _LINEAGE_ME Y\s*$/m.test(fam), '[9] export lacks _LINEAGE_ME Y');
     check(/^0 HEAD/.test(fam) && /0 TRLR\s*$/.test(fam), '[9] .ged missing HEAD/TRLR');
-    check(!/Sandeep|Farhan|Priya|Venu|Harish/.test(fam), '[9] friend exported in family tree .ged');
     check(!/98480|PHON/.test(fam), '[9] phone in "safe to share" export');
     const allSafe = readFileSync(await save(/Download everyone/), 'utf8');
-    check(allSafe.includes('Sandeep'), '[9] "everyone" export missing friends');
+    check(allSafe.includes('Kiran'), '[9] "everyone" export missing relatives');
     check(!/98480|PHON/.test(allSafe), '[9] phone in "safe to share" everyone export');
     await radio(/Everything \(private backup\)/).click();
     check(await radio(/Everything/).getAttribute('aria-checked') === 'true', '[9] full Contents option not selected');

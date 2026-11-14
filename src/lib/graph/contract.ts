@@ -116,25 +116,4 @@ export interface TreeRegion {
 /** Batch labels for many people from one ego: ONE path search (familyPathTree), never per card. */
 // export function labelsFor(graph: FamilyGraph, egoId: string): Map<string, { label: string; path: string }>
 
-// ---------------------------------------------------------------------------
-// kinship-engineer: src/lib/connections.ts (a social graph, separate from FamilyGraph)
-
-export interface SocialNode {
-  id: string;
-  ring: number; // 0 = the centre person, 1 = family & close friends, 2 = friends/colleagues/classmates, 3 = acquaintances/neighbours, 4 = implicit circles
-  group: string; // ConnectionGroup key, e.g. 'family', 'close_friend', 'colleague', 'city', 'school'
-  label: string; // e.g. "Close friend", "Same college · JNTU"
-}
-export interface SocialEdge {
-  a: string;
-  b: string;
-  kind: 'family' | 'social' | 'implicit';
-}
-export interface SocialGraph {
-  centerId: string;
-  nodes: SocialNode[];
-  edges: SocialEdge[]; // includes edges BETWEEN the centre's connections (friend-of-friend), so clusters show
-}
-// export function socialGraph(id: string, people: Person[], rels: Relationship[], graph?: FamilyGraph): SocialGraph
-
 export type _Unused = Person | Relationship | FamilyGraph; // keeps the type imports for documentation

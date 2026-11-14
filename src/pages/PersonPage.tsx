@@ -1,12 +1,11 @@
 import {
-  ArrowLeft, Briefcase, Cake, GitBranch, GraduationCap, Home, List, Mail, MapPin, Merge, MessageCircle, Network, Pencil, Phone, Plus,
+  ArrowLeft, Briefcase, Cake, GitBranch, GraduationCap, Home, Mail, MapPin, Merge, MessageCircle, Pencil, Phone, Plus,
   Sparkles, Trash2, Users, X,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useMemo, useState, type ReactNode } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AddRelationSheet } from '../components/AddRelationSheet';
 import { Avatar } from '../components/Avatar';
-import { ConnectionsMap } from '../components/ConnectionsMap';
 import { KinLabel } from '../components/KinLabel';
 import { MergeSheet } from '../components/MergeSheet';
 import { PersonRow } from '../components/PersonRow';
@@ -17,18 +16,7 @@ import { deletePerson, deleteRelationship } from '../lib/db';
 import { useData } from '../lib/data';
 import { kinship } from '../lib/kinship';
 import { age, displayName, formatPartialDate, formatPlace, missingDetails } from '../lib/person';
-import { SOCIAL_LABELS, isFamilyType, type SocialType } from '../lib/types';
-
-type ConnView = 'list' | 'map';
-const VIEW_KEY = 'lineage:connectionsView';
-function storedView(): ConnView {
-  try {
-    return localStorage.getItem(VIEW_KEY) === 'map' ? 'map' : 'list';
-  } catch { return 'list'; }
-}
-function storeView(v: ConnView) {
-  try { localStorage.setItem(VIEW_KEY, v); } catch { /* storage blocked: the choice lasts this visit */ }
-}
+import { isFamilyType } from '../lib/types';
 
 export function PersonPage() {
   const { id } = useParams();
@@ -39,35 +27,14 @@ export function PersonPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [merging, setMerging] = useState(false);
   const { canEdit, isShared } = usePermissions();
-  const [params, setParams] = useSearchParams();
-  const urlView = params.get('view');
-  const [savedView, setSavedView] = useState<ConnView>(storedView);
-  const view: ConnView = urlView === 'map' || urlView === 'list' ? urlView : savedView;
-  const setView = (v: ConnView) => {
-    setSavedView(v);
-    storeView(v);
-    setParams((sp) => { sp.set('view', v); return sp; }, { replace: true }); // so Back returns to the same view
-  };
   const hasFamily = useMemo(() => !!p && rels.some((r) => isFamilyType(r.type) && (r.fromId === p.id || r.toId === p.id)), [p, rels]);
-
-  // Arriving from the map ("Show X's connections", or Back to it): bring the map into view.
-  const connRef = useRef<HTMLDivElement>(null);
-  const pid = p?.id;
-  useEffect(() => {
-    if (!pid || params.get('view') !== 'map') return;
-    // After the app's scroll-to-top on route change (a parent effect, which runs after this one).
-    const raf = requestAnimationFrame(() => { connRef.current?.scrollIntoView({ block: 'start' }); });
-    return () => { cancelAnimationFrame(raf); };
-  }, [pid]);
 
   const groups = useMemo(() => (p ? connectionsOf(p.id, people, rels, graph) : []), [p, people, rels, graph]);
   const toMe = useMemo(() => {
     if (!p || !me || p.id === me.id) return undefined;
     const k = kinship(graph, me.id, p.id);
-    if (k) return { label: k.label, path: k.path !== k.label ? k.path : undefined, family: true };
-    const r = rels.find((x) => !isFamilyType(x.type) && ((x.fromId === me.id && x.toId === p.id) || (x.toId === me.id && x.fromId === p.id)));
-    return r ? { label: 'Your ' + SOCIAL_LABELS[r.type as SocialType].toLowerCase(), path: undefined, family: false } : undefined;
-  }, [p, me, graph, rels]);
+    return k ? { label: k.label, path: k.path !== k.label ? k.path : undefined } : undefined;
+  }, [p, me, graph]);
 
   if (!loaded) return null;
   if (!p) return <p className="p-6 text-stone-500">This person doesn’t exist anymore. <Link className="text-brand-600" to="/">Back to people</Link></p>;
@@ -92,9 +59,7 @@ export function PersonPage() {
         <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5">
           {p.isMe && !isShared && <span className="chip !bg-brand-100 !text-brand-800 dark:!bg-brand-900/60 dark:!text-brand-200">You</span>}
           {toMe && <span className="chip !bg-brand-100 !text-brand-800 dark:!bg-brand-900/60 dark:!text-brand-200" title={toMe.path}>
-            {toMe.family && me
-              ? <KinLabel label={toMe.label} egoId={me.id} targetId={p.id} termClassName="font-normal text-brand-700/75 dark:text-brand-300/80" />
-              : toMe.label}
+            {me && <KinLabel label={toMe.label} egoId={me.id} targetId={p.id} termClassName="font-normal text-brand-700/75 dark:text-brand-300/80" />}
           </span>}
           {a !== undefined && <span className="chip">{p.deceased ? `Lived ${a} years` : `${a} years`}</span>}
           {p.deceased && !a && <span className="chip">Passed away</span>}
@@ -120,33 +85,19 @@ export function PersonPage() {
 
       <Details p={p} />
 
-      {/* Connections */}
-      <div ref={connRef} className="mt-8 flex scroll-mt-4 items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">Connections {total > 0 && <span className="text-stone-400">· {total}</span>}</h2>
+      {/* Family */}
+      <div className="mt-8 flex items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold">Family {total > 0 && <span className="text-stone-400">· {total}</span>}</h2>
         {canEdit && <button className="btn-primary" onClick={() => setAdding(true)}><Plus size={17} /> Add</button>}
       </div>
-      {groups.length > 0 && (
-        <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl bg-stone-100 p-1 dark:bg-stone-800" role="tablist" aria-label="Show connections as">
-          {([['list', 'List', List], ['map', 'Map', Network]] as const).map(([v, label, Icon]) => (
-            <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)}
-              className={`flex h-11 items-center justify-center gap-2 rounded-lg text-sm font-medium transition ${view === v
-                ? 'bg-white text-stone-900 shadow-sm dark:bg-stone-900 dark:text-stone-100'
-                : 'text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200'}`}>
-              <Icon size={17} /> {label}
-            </button>
-          ))}
-        </div>
-      )}
       {groups.length === 0 && !canEdit ? (
-        <p className="card mt-3 px-6 py-8 text-center text-sm text-stone-500">No connections recorded yet.</p>
+        <p className="card mt-3 px-6 py-8 text-center text-sm text-stone-500">No family recorded yet.</p>
       ) : groups.length === 0 ? (
         <button onClick={() => setAdding(true)} className="card mt-3 flex w-full flex-col items-center px-6 py-10 text-center hover:bg-stone-50 dark:hover:bg-stone-800/60">
           <Users className="mb-2 text-stone-400" />
-          <div className="font-medium">No connections yet</div>
-          <div className="text-sm text-stone-500">Add family, friends or colleagues — people in the same city, home town or college appear automatically.</div>
+          <div className="font-medium">No family yet</div>
+          <div className="text-sm text-stone-500">Add {p.firstName}’s parents, partner, brothers, sisters or children.</div>
         </button>
-      ) : view === 'map' ? (
-        <ConnectionsMap key={p.id} centerId={p.id} />
       ) : (
         <div className="mt-3 space-y-4">
           {groups.map((g) => <Group key={g.key} group={g} personId={p.id} personName={p.firstName} canEdit={canEdit} />)}
@@ -160,7 +111,7 @@ export function PersonPage() {
         </div>
       )}
 
-      {canEdit && <AddRelationSheet person={p} open={adding} familyOnly={isShared} onClose={() => setAdding(false)} />}
+      {canEdit && <AddRelationSheet person={p} open={adding} onClose={() => setAdding(false)} />}
       {canEdit && <MergeSheet person={p} open={merging} onClose={() => setMerging(false)} />}
       <Sheet open={canEdit && confirmDelete} onClose={() => setConfirmDelete(false)} title={`Delete ${p.firstName}?`}
         footer={<div className="flex justify-end gap-2">
@@ -178,14 +129,11 @@ function Group({ group, personId, personName, canEdit }: { group: ConnectionGrou
   const [removing, setRemoving] = useState<string | null>(null);
   const LIMIT = 8;
   const items = all ? group.items : group.items.slice(0, LIMIT);
-  const implicit = !group.items.some((i) => i.relId) && ['area', 'city', 'origin', 'school', 'work'].includes(group.key);
-  const family = group.key === 'family' || group.key === 'extended';
   return (
     <section>
       <div className="mb-1 flex items-baseline gap-2 px-1">
         <h3 className="section-title">{group.title}</h3>
         <span className="text-xs text-stone-400">{group.items.length}</span>
-        {implicit && group.hint && <span className="truncate text-xs text-stone-400">· {group.hint}</span>}
       </div>
       <div className="card p-1.5">
         {items.map((it) => (
@@ -193,9 +141,7 @@ function Group({ group, personId, personName, canEdit }: { group: ConnectionGrou
             <div className="min-w-0 flex-1">
               <PersonRow person={it.person} to={`/people/${it.person.id}`}
                 subtitle={<>
-                  {family
-                    ? <KinLabel label={it.label} egoId={personId} targetId={it.person.id} className="font-medium text-brand-700 dark:text-brand-300" />
-                    : <span className={implicit ? '' : 'font-medium text-brand-700 dark:text-brand-300'}>{it.label}</span>}
+                  <KinLabel label={it.label} egoId={personId} targetId={it.person.id} className="font-medium text-brand-700 dark:text-brand-300" />
                   {it.side && <span className="text-stone-400"> · {it.side}</span>}
                   {it.detail && <span className="text-stone-400"> · {it.detail}</span>}
                 </>}
@@ -227,7 +173,6 @@ function Group({ group, personId, personName, canEdit }: { group: ConnectionGrou
 function Details({ p }: { p: ReturnType<typeof useData>['people'][number] }) {
   const rows: { icon: ReactNode; label: string; value: ReactNode }[] = [];
   if (p.appearance) rows.push({ icon: <Sparkles size={17} />, label: 'Looks', value: p.appearance });
-  if (p.howWeMet) rows.push({ icon: <Users size={17} />, label: 'How you know them', value: p.howWeMet + (p.metOn ? ` (${p.metOn})` : '') });
   if (p.birthDate || p.deathDate) {
     rows.push({ icon: <Cake size={17} />, label: p.deathDate ? 'Life' : 'Birthday', value: [p.birthDate && 'Born ' + formatPartialDate(p.birthDate), p.deathDate && 'Died ' + formatPartialDate(p.deathDate)].filter(Boolean).join(' · ') });
   }

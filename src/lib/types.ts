@@ -50,7 +50,7 @@ export interface Person {
   origin?: Place; // place of origin / native place / home town
   address?: Place; // where they live now
   appearance?: string; // how they look
-  howWeMet?: string;
+  howWeMet?: string; // older versions only; no longer shown or edited
   metOn?: string;
   occupation?: string;
   work: Work[];
@@ -66,6 +66,10 @@ export interface Person {
 
 /** Family edges. `parent`: fromId is a parent of toId. Others are symmetric. */
 export type FamilyType = 'parent' | 'spouse' | 'sibling';
+/**
+ * Non-family link types from older versions. Lineage is family-only now: nothing creates or shows
+ * these, but they stay in the type so old databases, backups and synced records still load.
+ */
 export type SocialType =
   | 'close_friend'
   | 'friend'
@@ -114,13 +118,3 @@ export const FAMILY_TYPES: FamilyType[] = ['parent', 'spouse', 'sibling'];
 export function isFamilyType(t: RelType): t is FamilyType {
   return t === 'parent' || t === 'spouse' || t === 'sibling';
 }
-
-export const SOCIAL_LABELS: Record<SocialType, string> = {
-  close_friend: 'Close friend',
-  friend: 'Friend',
-  colleague: 'Colleague',
-  classmate: 'Classmate',
-  neighbor: 'Neighbour',
-  acquaintance: 'Acquaintance',
-  other: 'Knows',
-};

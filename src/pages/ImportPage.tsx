@@ -285,7 +285,7 @@ export function ImportPage() {
       {!canImport ? (
         <div className="card p-5 text-sm text-stone-600 dark:text-stone-300">
           {canEdit
-            ? 'Importing is turned off while you’re in a shared family, so contacts and friends never end up in someone else’s tree. Switch to My people to import.'
+            ? 'Importing is turned off while you’re in a shared family, so your contacts never end up in someone else’s tree. Switch to My people to import.'
             : 'This family was shared with you to view, so you can’t import into it. You can still download a copy below.'}
         </div>
       ) : ged ? (
@@ -416,7 +416,7 @@ export function ImportPage() {
             <div>
               <div className="font-medium">Download my family tree (.ged)</div>
               <div className="text-sm text-stone-500">
-                {me ? `${familyCount} ${familyCount === 1 ? 'person' : 'people'} connected to you by family — friends are left out.` : 'Add yourself first: edit your own entry and tick “This is me”.'}
+                {me ? `${familyCount} ${familyCount === 1 ? 'person' : 'people'} connected to you by family — anyone not linked to the family is left out.` : 'Add yourself first: edit your own entry and tick “This is me”.'}
               </div>
             </div>
           </button>

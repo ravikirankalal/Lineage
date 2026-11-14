@@ -9,12 +9,12 @@ import { useData } from '../lib/data';
 import { loadDemo } from '../lib/demo';
 import { relativesOf } from '../lib/kinship';
 import { daysUntilBirthday, formatPlace, fullName, matchesQuery, missingDetails } from '../lib/person';
-import { SOCIAL_LABELS, isFamilyType, type Person, type SocialType } from '../lib/types';
+import type { Person } from '../lib/types';
 
-type Filter = 'all' | 'family' | 'friends' | 'thin' | `tag:${string}`;
+type Filter = 'all' | 'family' | 'thin' | `tag:${string}`;
 
 export function PeoplePage() {
-  const { people, rels, graph, me, loaded } = useData();
+  const { people, graph, me, loaded } = useData();
   const nav = useNavigate();
   const { canEdit, isOwner, isShared } = usePermissions();
   const [q, setQ] = useState('');
@@ -26,33 +26,20 @@ export function PeoplePage() {
     const m = new Map<string, string>();
     if (!me) return m;
     for (const r of relativesOf(graph, me.id)) m.set(r.person.id, r.kin.label);
-    for (const r of rels) {
-      if (isFamilyType(r.type)) continue;
-      const other = r.fromId === me.id ? r.toId : r.toId === me.id ? r.fromId : undefined;
-      if (other && !m.has(other)) m.set(other, SOCIAL_LABELS[r.type as SocialType]);
-    }
     return m;
-  }, [graph, rels, me]);
-
-  const friendIds = useMemo(() => {
-    const s = new Set<string>();
-    if (!me) return s;
-    for (const r of rels) if (!isFamilyType(r.type) && (r.fromId === me.id || r.toId === me.id)) s.add(r.fromId === me.id ? r.toId : r.fromId);
-    return s;
-  }, [rels, me]);
+  }, [graph, me]);
 
   const tags = useMemo(() => [...new Set(people.flatMap((p) => p.tags))].sort(), [people]);
 
   const list = useMemo(() => {
     let l = people.filter((p) => matchesQuery(p, q));
-    if (filter === 'family') l = l.filter((p) => p.isMe || (relToMe.has(p.id) && !friendIds.has(p.id)));
-    else if (filter === 'friends') l = l.filter((p) => friendIds.has(p.id));
+    if (filter === 'family') l = l.filter((p) => p.isMe || relToMe.has(p.id));
     else if (filter === 'thin') l = l.filter((p) => !p.isMe && missingDetails(p).length >= 3);
     else if (filter.startsWith('tag:')) l = l.filter((p) => p.tags.includes(filter.slice(4)));
     if (sort === 'name') l.sort((a, b) => fullName(a).localeCompare(fullName(b)));
     else l.sort((a, b) => b.updatedAt - a.updatedAt);
     return l;
-  }, [people, q, filter, sort, relToMe, friendIds]);
+  }, [people, q, filter, sort, relToMe]);
 
   const birthdays = useMemo(
     () => people.map((p) => ({ p, d: daysUntilBirthday(p) })).filter((x) => x.d !== undefined && x.d <= 14).sort((a, b) => a.d! - b.d!),
@@ -86,7 +73,7 @@ export function PeoplePage() {
                 {isOwner && <button className="btn-ghost" onClick={() => loadDemo()}><FlaskConical size={18} /> Try a sample family</button>}
               </div>
             }>
-            Add yourself, then your family and friends — or bring them in from your phone’s contacts. Everything stays on this device.
+            Add yourself, then your parents, partner, children and the rest of your family — or bring relatives in from your phone’s contacts. Everything stays on this device.
           </Empty>}
         </div>
       </div>
@@ -147,7 +134,6 @@ export function PeoplePage() {
         <div className="no-scrollbar mt-3 flex items-center gap-2 overflow-x-auto">
           {chip('all', 'All')}
           {me && chip('family', 'Family')}
-          {me && chip('friends', 'Friends & others')}
           {chip('thin', 'Needs details')}
           {tags.map((t) => chip(`tag:${t}`, '#' + t))}
           <select value={sort} onChange={(e) => setSort(e.target.value as 'name' | 'recent')}

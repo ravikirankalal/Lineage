@@ -3,14 +3,13 @@ import { useMemo, useState } from 'react';
 import { addRelationship, db, ensureRelationship, findRelationship, savePerson } from '../lib/db';
 import { useData } from '../lib/data';
 import { emptyPerson, formatPlace, matchesQuery } from '../lib/person';
-import type { Gender, ParentSubtype, Person, RelType, Relationship, SpouseSubtype } from '../lib/types';
+import type { FamilyType, Gender, ParentSubtype, Person, Relationship, SpouseSubtype } from '../lib/types';
 import { PersonRow } from './PersonRow';
 import { Sheet } from './Sheet';
 
 export type RelChoice =
   | 'father' | 'mother' | 'son' | 'daughter' | 'husband' | 'wife'
-  | 'parent' | 'child' | 'spouse'
-  | 'close_friend' | 'friend' | 'colleague' | 'classmate' | 'neighbor' | 'acquaintance' | 'other';
+  | 'parent' | 'child' | 'spouse';
 
 /**
  * No "Brother"/"Sister" here (the owner's choice, to keep things simple): a brother or sister is added
@@ -25,17 +24,7 @@ const FAMILY_CHOICES: { key: RelChoice; label: string }[] = [
   { key: 'son', label: 'Son' },
   { key: 'daughter', label: 'Daughter' },
 ];
-const SOCIAL_CHOICES: { key: RelChoice; label: string }[] = [
-  { key: 'close_friend', label: 'Close friend' },
-  { key: 'friend', label: 'Friend' },
-  { key: 'colleague', label: 'Colleague' },
-  { key: 'classmate', label: 'Classmate' },
-  { key: 'neighbor', label: 'Neighbour' },
-  { key: 'acquaintance', label: 'Acquaintance' },
-  { key: 'other', label: 'Other' },
-];
-
-const CHOICE_INFO: Record<RelChoice, { type: RelType; gender?: Gender; dir?: 'in' | 'out'; label: string }> = {
+const CHOICE_INFO: Record<RelChoice, { type: FamilyType; gender?: Gender; dir?: 'in' | 'out'; label: string }> = {
   father: { type: 'parent', gender: 'male', dir: 'in', label: 'father' },
   mother: { type: 'parent', gender: 'female', dir: 'in', label: 'mother' },
   parent: { type: 'parent', dir: 'in', label: 'parent' },
@@ -45,31 +34,22 @@ const CHOICE_INFO: Record<RelChoice, { type: RelType; gender?: Gender; dir?: 'in
   husband: { type: 'spouse', gender: 'male', label: 'husband' },
   wife: { type: 'spouse', gender: 'female', label: 'wife' },
   spouse: { type: 'spouse', label: 'spouse' },
-  close_friend: { type: 'close_friend', label: 'close friend' },
-  friend: { type: 'friend', label: 'friend' },
-  colleague: { type: 'colleague', label: 'colleague' },
-  classmate: { type: 'classmate', label: 'classmate' },
-  neighbor: { type: 'neighbor', label: 'neighbour' },
-  acquaintance: { type: 'acquaintance', label: 'acquaintance' },
-  other: { type: 'other', label: 'connection' },
 };
 
-export function AddRelationSheet({ person, open, onClose, preset, familyOnly }: {
+export function AddRelationSheet({ person, open, onClose, preset }: {
   person: Person;
   open: boolean;
   onClose: () => void;
   preset?: RelChoice;
-  /** Hide friends/colleagues etc. (used in the lineage section). */
-  familyOnly?: boolean;
 }) {
   return (
     <Sheet open={open} onClose={onClose} title={null}>
-      {open && <AddRelationBody key={person.id + (preset ?? '')} person={person} preset={preset} familyOnly={familyOnly} onClose={onClose} />}
+      {open && <AddRelationBody key={person.id + (preset ?? '')} person={person} preset={preset} onClose={onClose} />}
     </Sheet>
   );
 }
 
-function AddRelationBody({ person, preset, familyOnly, onClose }: { person: Person; preset?: RelChoice; familyOnly?: boolean; onClose: () => void }) {
+function AddRelationBody({ person, preset, onClose }: { person: Person; preset?: RelChoice; onClose: () => void }) {
   const { people, graph, byId } = useData();
   const [choice, setChoice] = useState<RelChoice | undefined>(preset);
   const [q, setQ] = useState('');
@@ -156,14 +136,6 @@ function AddRelationBody({ person, preset, familyOnly, onClose }: { person: Pers
             ))}
           </div>
         </div>
-        {!familyOnly && <div>
-          <div className="section-title mb-2">Social</div>
-          <div className="grid grid-cols-2 gap-2">
-            {SOCIAL_CHOICES.map((c) => (
-              <button key={c.key} className="btn-secondary justify-start" onClick={() => setChoice(c.key)}>{c.label}</button>
-            ))}
-          </div>
-        </div>}
       </div>
     );
   }
@@ -192,7 +164,7 @@ function AddRelationBody({ person, preset, familyOnly, onClose }: { person: Pers
         </div>
       )}
       {!subtypeOptions && (
-        <input className="input" placeholder="Note (optional) — e.g. “from the gym”" value={note} onChange={(e) => setNote(e.target.value)} />
+        <input className="input" placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
       )}
       {otherParent && (
         <label className="flex items-center gap-2 text-sm text-stone-600 dark:text-stone-300">
