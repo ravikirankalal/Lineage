@@ -1,4 +1,4 @@
-import { Brain, Cloud, Download, Eye, GitBranch, Settings, Users } from 'lucide-react';
+import { Cloud, Download, Eye, GitBranch, Settings, Users } from 'lucide-react';
 import { useEffect, type ReactNode } from 'react';
 import { HashRouter, Link, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { BackupConsentSheet, CloudNotice, InviteBanner, SharedSpaceBanner, SpaceSwitcher } from './components/Cloud';
@@ -10,7 +10,6 @@ import { ImportPage } from './pages/ImportPage';
 import { PeoplePage } from './pages/PeoplePage';
 import { PersonEditPage } from './pages/PersonEditPage';
 import { PersonPage } from './pages/PersonPage';
-import { RememberPage } from './pages/RememberPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { SharingPage } from './pages/SharingPage';
 import { TreePage } from './pages/TreePage';
@@ -18,7 +17,6 @@ import { TreePage } from './pages/TreePage';
 const NAV = [
   { to: '/', label: 'People', icon: Users, end: true },
   { to: '/family', label: 'My Family', icon: GitBranch },
-  { to: '/remember', label: 'Remember', icon: Brain },
   { to: '/import', label: 'Import', icon: Download },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
@@ -91,7 +89,6 @@ function Shell() {
           <Route path="/people/:id/edit" element={<EditOnly><PersonEditPage /></EditOnly>} />
           <Route path="/people/:id/tree" element={<TreePage />} />
           <Route path="/family" element={<FamilyPage />} />
-          <Route path="/remember" element={<RememberPage />} />
           <Route path="/import" element={<ImportPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/sharing" element={<SharingPage />} />

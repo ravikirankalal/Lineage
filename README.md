@@ -34,8 +34,8 @@ with a dedicated section for your own family tree and ancestors.
     *Dadi · Grandmother* on tree cards
   - father's line and mother's line, stats (relatives, generations, earliest ancestor)
   - the same views work for anyone ("Family tree" on any profile)
-- **Remember** — flash-card practice (face and clues → recall the name), upcoming birthdays, and
-  a list of people whose profiles need details.
+- **Birthdays & gaps** — upcoming birthdays on the People page, and a *Needs details* filter for
+  people whose profiles are thin.
 - **Sign in with Google (optional)** — sync your people across devices, and share the *family*
   part of your tree with relatives as editors or viewers (Sharing page, invites by email). Friends,
   colleagues and notes about non-family people are never shared. Relatives you share with see a

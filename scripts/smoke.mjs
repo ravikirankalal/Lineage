@@ -73,11 +73,6 @@ async function run(name, viewport) {
   await page.getByText('Smoke Tester').first().waitFor();
   await shot('6-added');
 
-  await page.goto(BASE + '#/remember');
-  await page.getByText('Start practice').click();
-  await page.getByText('Show who it is').click();
-  await shot('7-remember');
-
   await page.goto(BASE + '#/import');
   await shot('8-import');
   await page.goto(BASE + '#/settings');

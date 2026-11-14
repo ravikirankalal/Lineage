@@ -84,7 +84,7 @@
 - [x] Contact Picker API on supported phones (Android Chrome)
 - [x] Duplicate detection by phone number / email / exact name, review screen
 
-### Phase 6 — Remembering ✅
+### Phase 6 — Remembering ✅ (Remember tab removed 2026-11-14; birthdays + Needs details kept on People)
 - [x] "Needs details" list — people with thin profiles
 - [x] Recall practice: flashcards showing face/appearance/context, guess who
 - [x] Upcoming birthdays on the home screen
