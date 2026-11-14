@@ -134,6 +134,10 @@ _Last updated: 2026-11-13_
   line) and a tree for each person who married in and has recorded parents (grandmothers, your spouse, siblings'
   and uncles' spouses), each with its own titled band. Their main card is there; beside the spouse a copy.
   Tested (every person drawn with exactly one main card, unique keys, geometry, titles); screenshot-checked.
+- Everyone draws every person in the family in all three layouts: anyone still missing after the layout (and,
+  in cross, the descendants and married-in trees) gets a small tree of their own below, titled with how they're
+  related. Tested on generated families (each person exactly one main card, valid copies, geometry, unique keys);
+  ~100-170 ms for a 1,000-person random family.
 - No "Brother"/"Sister" when adding someone (owner's request, to keep it simple): a sibling is added as a son
   or daughter of the parents ("Also <other parent>'s son" links both). Existing/imported sibling links still work.
   QA flows 1 and 6 updated to add the brother as a son.
