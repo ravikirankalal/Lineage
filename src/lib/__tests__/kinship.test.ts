@@ -98,3 +98,36 @@ describe('kinship', () => {
     expect(kinship(g2, 'a', 'c')?.label).toBe('Nephew');
   });
 });
+
+describe('spouse of a great-uncle', () => {
+  it('carries the greats prefix', () => {
+    const people = new Map<string, ReturnType<typeof emptyPerson>>();
+    const add = (id: string, gender: Gender) => people.set(id, emptyPerson({ id, firstName: id, gender }));
+    const rels: Relationship[] = [];
+    let n = 0;
+    const rel = (fromId: string, toId: string, type: RelType) => rels.push({ id: String(n++), fromId, toId, type, createdAt: 0 });
+    add('gggf', 'male'); add('ggf', 'male'); add('gggUncle', 'male'); add('gggUncleWife', 'female');
+    add('gf', 'male'); add('ggUncle', 'male'); add('ggUncleWife', 'female'); add('ggAunt', 'female'); add('ggAuntHusband', 'male');
+    add('dad', 'male'); add('uncle', 'male'); add('uncleWife', 'female'); add('me', 'male'); add('x', 'unknown');
+    rel('gggf', 'ggf', 'parent'); rel('gggf', 'gggUncle', 'parent'); rel('gggUncle', 'gggUncleWife', 'spouse');
+    rel('ggf', 'gf', 'parent'); rel('ggf', 'ggUncle', 'parent'); rel('ggf', 'ggAunt', 'parent');
+    rel('ggUncle', 'ggUncleWife', 'spouse'); rel('ggAunt', 'ggAuntHusband', 'spouse');
+    rel('gf', 'dad', 'parent'); rel('gf', 'uncle', 'parent'); rel('uncle', 'uncleWife', 'spouse');
+    rel('dad', 'me', 'parent'); rel('ggUncle', 'x', 'spouse');
+    const G = new FamilyGraph(people, rels);
+    const k = (b: string, a = 'me') => kinship(G, a, b)?.label;
+    expect(k('uncleWife')).toBe('Aunt (by marriage)');
+    expect(k('ggUncle')).toBe('Great-uncle');
+    expect(k('ggUncleWife')).toBe('Great-aunt (by marriage)');
+    expect(k('ggAuntHusband')).toBe('Great-uncle (by marriage)');
+    expect(k('x')).toBe('Great-uncle/aunt (by marriage)');
+    expect(k('gggUncle')).toBe('Great-great-uncle');
+    expect(k('gggUncleWife')).toBe('Great-great-aunt (by marriage)');
+    // From a non-"me" ego: dad sees his grandfather's brother's wife as a great-aunt.
+    expect(k('gggUncleWife', 'dad')).toBe('Great-aunt (by marriage)');
+    expect(k('ggUncleWife', 'dad')).toBe('Aunt (by marriage)');
+    // Reverse direction stays a nephew/niece-style label, not an aunt.
+    expect(k('me', 'ggUncleWife')).not.toMatch(/aunt|uncle/i);
+    expectRelativesMatchKinship(G);
+  });
+});

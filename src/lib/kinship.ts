@@ -245,7 +245,7 @@ function times(n: number) {
 }
 function greats(n: number): string {
   if (n <= 0) return '';
-  if (n <= 2) return 'Great-'.repeat(n);
+  if (n <= 2) return n === 1 ? 'Great-' : 'Great-great-';
   return `${n}× Great-`;
 }
 function lowerFirst(s: string) {
@@ -606,7 +606,8 @@ function affinalLabel(graph: FamilyGraph, a: string, b: string, aAnc: ReturnType
         cat = 'grandparents';
         break;
       case 'uncles':
-        lab = g(gender, W.uncle) + ' (by marriage)';
+        // Match the blood uncle's greats: spouse of a great-uncle is a great-aunt (by marriage).
+        lab = (bl.up > 2 ? greats(bl.up - 2) + g(gender, W.uncle).toLowerCase() : g(gender, W.uncle)) + ' (by marriage)';
         cat = 'uncles';
         break;
       default:
