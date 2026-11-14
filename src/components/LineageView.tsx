@@ -27,7 +27,7 @@ export function LineageView({ ego, egoLabel = 'You' }: { ego: Person; egoLabel?:
   const family = useMemo(() => graph.familyComponent(ego.id), [graph, ego.id]);
   const isValid = useCallback((id: string) => family.has(id), [family]);
   const [params, update] = useTreeParams(ego.id, isValid);
-  const { tab, focus: focusId, level, hl, expanded } = params;
+  const { tab, focus: focusId, level, hl, expanded, orient } = params;
   const [adding, setAdding] = useState<{ person: Person; preset?: RelChoice } | null>(null);
   const [sheet, setSheet] = useState<TreeNode | null>(null);
   const [panTo, setPanTo] = useState<{ id: string; nonce: number } | undefined>(() => (hl ? { id: hl, nonce: 0 } : undefined));
@@ -37,8 +37,8 @@ export function LineageView({ ego, egoLabel = 'You' }: { ego: Person; egoLabel?:
   // ONE batch label search per ego (never kinship() per card).
   const labels = useMemo(() => labelsFor(graph, ego.id), [graph, ego.id]);
   const layout = useMemo(
-    () => layoutFamily(graph, { focusId, level, expanded, ghosts: canEdit }),
-    [graph, focusId, level, expanded, canEdit],
+    () => layoutFamily(graph, { focusId, level, expanded, ghosts: canEdit, orient }),
+    [graph, focusId, level, expanded, canEdit, orient],
   );
   const path = useMemo(() => (hl ? new Set(relationPath(graph, ego.id, hl)) : undefined), [graph, ego.id, hl]);
   const relatives = useMemo(() => (tab === 'relatives' ? relativesOf(graph, ego.id) : undefined), [graph, ego.id, tab]);
@@ -157,6 +157,8 @@ export function LineageView({ ego, egoLabel = 'You' }: { ego: Person; egoLabel?:
           panTo={panTo}
           level={level}
           onLevel={(l) => update({ level: l })}
+          orient={orient}
+          onOrient={(o) => update({ orient: o })}
           candidates={candidates}
           onFind={find}
           onTap={setSheet}

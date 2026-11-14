@@ -44,16 +44,32 @@ interface GroupSpec {
   stepKids?: boolean; // the partner's children, not the block owner's
 }
 
-const STEP = CARD.w + CARD.gapX;
-const HALF = CARD.w / 2;
+/**
+ * Layout geometry. The engine always lays generations out as rows; for `orient: 'right'` it runs with
+ * the card's width and height swapped and the result is transposed (generations become columns).
+ * `w` is the card's size along a row, `h` across it. Set once per layoutFamilyV2 call (synchronous).
+ */
+interface Geo { w: number; h: number; gapX: number; rowH: number }
+const DOWN: Geo = { w: CARD.w, h: CARD.h, gapX: CARD.gapX, rowH: CARD.rowH };
+const RIGHT: Geo = { w: CARD.h, h: CARD.w, gapX: 14, rowH: CARD.w + 36 };
+let geo: Geo = DOWN;
+let STEP = 0;
+let HALF = 0;
+let ROW_GAP = 0;
+function setGeo(g: Geo) {
+  geo = g;
+  STEP = g.w + g.gapX;
+  HALF = g.w / 2;
+  ROW_GAP = g.rowH - g.h;
+}
+setGeo(DOWN);
 const BAR_GAP = 12;
-const ROW_GAP = CARD.rowH - CARD.h;
 const MANY = 99;
 
-const rowTop = (gen: number) => -gen * CARD.rowH;
+const rowTop = (gen: number) => -gen * geo.rowH;
 const kRow = (gen: number) => 2 * gen;
 const kGap = (gen: number) => 2 * gen - 1;
-const gapOf = (k: number) => (k % 2 === 0 ? CARD.gapX : BAR_GAP);
+const gapOf = (k: number) => (k % 2 === 0 ? geo.gapX : BAR_GAP);
 
 function extend(c: Cont, k: number, l: number, r: number) {
   const v = c.get(k);
@@ -218,11 +234,11 @@ class Builder {
       const sub = this.spouseSub(slots[a].id, slots[b].id);
       const kind: TreeEdge['kind'] = sub === 'divorced' || sub === 'separated' ? 'divorced' : 'marriage';
       if (r - l === 1) {
-        shape.edges.push(this.edge(kind, [[xs[l] + HALF, top + CARD.h / 2], [xs[r] - HALF, top + CARD.h / 2]], slots[a].id, slots[b].id));
+        shape.edges.push(this.edge(kind, [[xs[l] + HALF, top + geo.h / 2], [xs[r] - HALF, top + geo.h / 2]], slots[a].id, slots[b].id));
       } else {
         // Not adjacent: route over the cards in between, through the gap above the row.
         const y = top - 10;
-        const x0 = xs[a] + (b > a ? 1 : -1) * (CARD.w / 4);
+        const x0 = xs[a] + (b > a ? 1 : -1) * (geo.w / 4);
         shape.edges.push(this.edge(kind, [[x0, top], [x0, y], [xs[b], y], [xs[b], top]], slots[a].id, slots[b].id));
         extend(shape.cont, kRow(gen) + 1, Math.min(x0, xs[b]), Math.max(x0, xs[b]));
       }
@@ -238,14 +254,14 @@ class Builder {
           const [a, b] = grp.couple;
           if (Math.abs(a - b) === 1) {
             ax = (xs[a] + xs[b]) / 2;
-            sy = top + CARD.h / 2;
+            sy = top + geo.h / 2;
           } else {
             ax = xs[b];
-            sy = top + CARD.h;
+            sy = top + geo.h;
           }
         } else {
           ax = xs[grp.slot!];
-          sy = top + CARD.h;
+          sy = top + geo.h;
         }
         return { grp, ax, sy };
       })
@@ -272,7 +288,7 @@ class Builder {
       for (const [k, [l, r]] of gs.cont) extend(kidsCont, k, l, r);
       absorb(shape, gs);
 
-      const barY = top + CARD.h + ROW_GAP / 2 + (n > 1 ? (gi - (n - 1) / 2) * 7 : 0);
+      const barY = top + geo.h + ROW_GAP / 2 + (n > 1 ? (gi - (n - 1) / 2) * 7 : 0);
       const childTop = rowTop(gen - 1);
       const real = grp.parents.filter((p) => !p.startsWith('~'));
       for (const r of roots) {
@@ -489,20 +505,20 @@ class Builder {
     const piece: Shape = { nodes: [], edges: [], cont: new Map() };
     extend(piece.cont, kRow(gen + 1), off - HALF, off + w + HALF);
     let ax = off;
-    let sy = top + CARD.h;
+    let sy = top + geo.h;
     if (pn.length === 2) {
       const sub = this.spouseSub(parents[0], parents[1]);
       const kind: TreeEdge['kind'] = sub === 'divorced' || sub === 'separated' ? 'divorced' : 'marriage';
-      piece.edges.push(this.edge(kind, [[off + HALF, top + CARD.h / 2], [off + STEP - HALF, top + CARD.h / 2]], parents[0], parents[1]));
+      piece.edges.push(this.edge(kind, [[off + HALF, top + geo.h / 2], [off + STEP - HALF, top + geo.h / 2]], parents[0], parents[1]));
       ax = off + STEP / 2;
-      sy = top + CARD.h / 2;
+      sy = top + geo.h / 2;
     }
     // In-law bars run just under their parents' row so they don't merge with the family's own bars.
-    let barY = top + CARD.h + ROW_GAP / 2 + dir * 4;
+    let barY = top + geo.h + ROW_GAP / 2 + dir * 4;
     if (inlaw) {
       const k = this.inlawBars.get(gen) ?? 0;
       this.inlawBars.set(gen, k + 1);
-      barY = top + CARD.h + 8 + (k % 3) * 6;
+      barY = top + geo.h + 8 + (k % 3) * 6;
     }
     const childTop = rowTop(gen);
     for (const kn of row) {
@@ -562,9 +578,49 @@ class Builder {
   }
 }
 
-/** Contract: `layoutFamily` (src/lib/graph/contract.ts). */
+/**
+ * Contract: `layoutFamily` (src/lib/graph/contract.ts). `orient: 'right'` puts generations in columns
+ * (ancestors left, descendants right, siblings stacked), which suits tall phone screens.
+ */
 export function layoutFamilyV2(graph: FamilyGraph, opts: TreeOptions): TreeLayout {
   if (!graph.person(opts.focusId)) return { nodes: [], edges: [], bounds: { minX: 0, maxX: 0, minY: 0, maxY: 0 } };
+  const right = opts.orient === 'right';
+  setGeo(right ? RIGHT : DOWN);
+  try {
+    const { nodes, edges } = rowLayout(graph, opts);
+    if (right) {
+      // Row space (along, across-top) → screen: x = card centre, y = card top.
+      for (const n of nodes) {
+        const along = n.x;
+        n.x = n.y + CARD.w / 2;
+        n.y = along - CARD.h / 2;
+      }
+      for (const e of edges) for (const p of e.points) [p[0], p[1]] = [p[1], p[0]];
+    }
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (const n of nodes) {
+      minX = Math.min(minX, n.x - CARD.w / 2);
+      maxX = Math.max(maxX, n.x + CARD.w / 2);
+      minY = Math.min(minY, n.y);
+      maxY = Math.max(maxY, n.y + CARD.h);
+    }
+    for (const e of edges) for (const [x, y] of e.points) {
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    }
+    return { nodes, edges, bounds: { minX, maxX, minY, maxY } };
+  } finally {
+    setGeo(DOWN);
+  }
+}
+
+/** The layout in row space: generations as rows, the focus at along-position 0. */
+function rowLayout(graph: FamilyGraph, opts: TreeOptions): { nodes: TreeNode[]; edges: TreeEdge[] } {
   const b = new Builder(graph, opts);
   const { shape: core, principals } = b.core();
   const occ = new Occupancy();
@@ -583,24 +639,7 @@ export function layoutFamilyV2(graph: FamilyGraph, opts: TreeOptions): TreeLayou
   // An expanded card keeps its control so it can be collapsed again.
   for (const n of b.nodes) if (n.expanded && !n.dupOf && !n.expandable) n.expandable = { down: true };
 
-  // Focus at x = 0.
-  const fx = b.byId.get(opts.focusId)?.x ?? 0;
-  shift(all, -fx);
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let minY = Infinity;
-  let maxY = -Infinity;
-  for (const n of b.nodes) {
-    minX = Math.min(minX, n.x - HALF);
-    maxX = Math.max(maxX, n.x + HALF);
-    minY = Math.min(minY, n.y);
-    maxY = Math.max(maxY, n.y + CARD.h);
-  }
-  for (const e of all.edges) for (const [x, y] of e.points) {
-    minX = Math.min(minX, x);
-    maxX = Math.max(maxX, x);
-    minY = Math.min(minY, y);
-    maxY = Math.max(maxY, y);
-  }
-  return { nodes: b.nodes, edges: all.edges, bounds: { minX, maxX, minY, maxY } };
+  // Focus at along-position 0.
+  shift(all, -(b.byId.get(opts.focusId)?.x ?? 0));
+  return { nodes: b.nodes, edges: all.edges };
 }

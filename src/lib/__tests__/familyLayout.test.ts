@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CARD, type TreeLayout, type TreeLevel } from '../graph/contract';
+import { CARD, type TreeLayout, type TreeLevel, type TreeOrient } from '../graph/contract';
 import { FamilyGraph } from '../kinship';
 import { emptyPerson } from '../person';
 import { layoutFamily } from '../tree';
@@ -16,8 +16,8 @@ function family() {
   return { add, rel, graph: () => new FamilyGraph(people, rels) };
 }
 
-const lay = (G: FamilyGraph, focusId: string, level: TreeLevel = 'immediate', expanded: string[] = [], ghosts = false) =>
-  layoutFamily(G, { focusId, level, expanded: new Set(expanded), ghosts });
+const lay = (G: FamilyGraph, focusId: string, level: TreeLevel = 'immediate', expanded: string[] = [], ghosts = false, orient: TreeOrient = 'down') =>
+  layoutFamily(G, { focusId, level, expanded: new Set(expanded), ghosts, orient });
 
 /** Cards never overlap; edges never pass through the inside of a card. */
 function checkGeometry(L: TreeLayout, label: string) {
@@ -152,6 +152,25 @@ describe('layoutFamily', () => {
     expect(at(opened, 'sisHusband')?.expanded).toBe(true);
   });
 
+  it('lays generations out left to right when asked', () => {
+    const G = remarried();
+    const L = lay(G, 'me', 'everyone', [], false, 'right');
+    checkGeometry(L, 'right');
+    const at = (id: string) => L.nodes.find((n) => n.personId === id && !n.dupOf)!;
+    expect(at('dad').x).toBeLessThan(at('me').x); // ancestors on the left
+    expect(at('son').x).toBeGreaterThan(at('me').x); // descendants on the right
+    expect(at('sis').x).toBe(at('me').x); // siblings share a column
+    expect(at('sis').y).toBeLessThan(at('me').y); // older first, stacked downwards
+    // Same people and edges as the top-down layout, with the same keys.
+    const D = lay(G, 'me', 'everyone');
+    expect(L.nodes.map((n) => n.key).sort()).toEqual(D.nodes.map((n) => n.key).sort());
+    expect(L.edges.length).toBe(D.edges.length);
+    // Taller than wide for a family that is wide top-down.
+    const w = (x: TreeLayout) => x.bounds.maxX - x.bounds.minX;
+    const h = (x: TreeLayout) => x.bounds.maxY - x.bounds.minY;
+    expect(h(L) / w(L)).toBeGreaterThan(h(D) / w(D));
+  });
+
   it('expands a card on request', () => {
     const G = remarried();
     const L = lay(G, 'me');
@@ -193,11 +212,14 @@ describe('layoutFamily', () => {
       const G = generatedFamily(140, seed);
       for (const id of G.people.keys()) {
         for (const level of ['immediate', 'extended', 'everyone'] as const) {
-          const L = lay(G, id, level, [], true);
-          checkGeometry(L, `seed ${seed} ${id} ${level}`);
-          const focus = L.nodes.find((n) => n.personId === id && !n.dupOf);
-          expect(focus?.role).toBe('focus');
-          expect(focus?.x).toBe(0);
+          for (const orient of ['down', 'right'] as const) {
+            const L = lay(G, id, level, [], true, orient);
+            checkGeometry(L, `seed ${seed} ${id} ${level} ${orient}`);
+            const focus = L.nodes.find((n) => n.personId === id && !n.dupOf);
+            expect(focus?.role).toBe('focus');
+            if (orient === 'down') expect(focus?.x).toBe(0);
+            else expect(focus!.y + CARD.h / 2).toBe(0);
+          }
         }
       }
     }

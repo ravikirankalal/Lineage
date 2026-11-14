@@ -80,5 +80,9 @@ _Last updated: 2026-11-13_
 - Full-screen button on the tree (top of the zoom controls): covers the page above the phone tabs and below
   sheets, and asks the browser for real full screen where allowed; Esc or the button exits. Checked in the browser
   at 1400x900 and 390x844 (fills the screen, sheets open on top, Esc closes a sheet first, scroll restored).
+- Tree direction: generations top to bottom or left to right (`orient`, URL `dir=`), a toggle beside the level picker;
+  portrait screens open left to right. Same engine run with the card's axes swapped, then transposed. On a 390x600
+  phone box, Fit shows cards larger on average (Immediate 0.59→0.66, Extended 0.51→0.61, Everyone 0.47→0.49 zoom,
+  140-person family, every focus). No-overlap tests run in both directions.
 - Known limits: an ancestor's siblings
   are only drawn on the outer edge of the pedigree (father's father's line, mother's mother's line).
