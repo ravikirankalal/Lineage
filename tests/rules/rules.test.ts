@@ -58,6 +58,16 @@ function invite(email: string, role: string, by = 'alice', byEmail = `${by}@exam
   return { email, role, invitedBy: by, invitedByEmail: byEmail, spaceName: "Alice's family", createdAt: 1 };
 }
 
+
+// People with phone numbers, for editor invites (seeded only where needed, so counts elsewhere hold).
+async function seedPhones() {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore() as unknown as Firestore;
+    await setDoc(doc(db, 'spaces', SPACE, 'people', 'cousin'), rec({ ...person('cousin', 'Cousin'), phones: [{ label: 'mobile', value: '+1 555 0100' }] }, 'family', 'alice'));
+    await setDoc(doc(db, 'spaces', SPACE, 'people', 'gone'), rec({ ...person('gone', 'Gone'), phones: [{ label: 'mobile', value: '+1 555 0101' }] }, 'family', 'alice', { deleted: true }));
+  });
+}
+
 const FUTURE = () => Date.now() + 10 * 60 * 1000; // beyond the 5-minute skew allowance
 
 beforeAll(async () => {
@@ -88,7 +98,7 @@ beforeEach(async () => {
     await setDoc(doc(db, 'spaces', SPACE, 'relationships', 'famrel'), rec(rel('famrel'), 'family', 'alice'));
     await setDoc(doc(db, 'spaces', SPACE, 'relationships', 'privrel'), rec(rel('privrel'), 'private', 'alice'));
     await setDoc(doc(db, 'spaces', SPACE, 'invites', 'ivy@example.com'), invite('ivy@example.com', 'viewer'));
-    await setDoc(doc(db, 'spaces', SPACE, 'invites', 'ed@example.com'), invite('ed@example.com', 'editor'));
+    await setDoc(doc(db, 'spaces', SPACE, 'invites', 'ed@example.com'), { ...invite('ed@example.com', 'editor'), personId: 'cousin' });
     await setDoc(doc(db, 'spaces', SPACE, 'invites', 'uma@example.com'), invite('uma@example.com', 'editor'));
     // Another user's space, to check isolation.
     await setDoc(doc(db, 'spaces', 'sam'), { name: 'Sam', ownerUid: 'sam', members: { sam: 'owner' }, createdAt: 1 });
@@ -187,9 +197,11 @@ describe('owner', () => {
   });
 
   it('manages invites (validated)', async () => {
+    await seedPhones();
     const db = as('owner');
-    await assertSucceeds(setDoc(invRef(db, 'new@example.com'), invite('new@example.com', 'editor')));
+    await assertSucceeds(setDoc(invRef(db, 'new@example.com'), { ...invite('new@example.com', 'editor'), personId: 'cousin' }));
     await assertSucceeds(deleteDoc(invRef(db, 'new@example.com')));
+    await assertSucceeds(setDoc(invRef(db, 'v@example.com'), invite('v@example.com', 'viewer'))); // viewers need no person
     await assertFails(setDoc(invRef(db, 'x@example.com'), invite('x@example.com', 'owner'))); // no owner invites
     await assertFails(setDoc(invRef(db, 'x@example.com'), invite('y@example.com', 'viewer'))); // id mismatch
     await assertFails(setDoc(invRef(db, 'X@example.com'), invite('X@example.com', 'viewer'))); // not lower-case
@@ -197,6 +209,18 @@ describe('owner', () => {
     await assertFails(setDoc(invRef(db, 'x@example.com'), invite('x@example.com', 'viewer', 'alice', 'erin@example.com'))); // invitedByEmail spoof
     const { invitedByEmail: _omit, ...legacy } = invite('x@example.com', 'viewer');
     await assertFails(setDoc(invRef(db, 'x@example.com'), legacy)); // invitedByEmail required
+  });
+
+  it('invites an editor only as a person in the tree with a phone number', async () => {
+    await seedPhones();
+    const db = as('owner');
+    const ed = (personId?: unknown) => ({ ...invite('x@example.com', 'editor'), ...(personId === undefined ? {} : { personId }) });
+    await assertFails(setDoc(invRef(db, 'x@example.com'), ed())); // no person
+    await assertFails(setDoc(invRef(db, 'x@example.com'), ed('fam1'))); // in the tree, but no phone
+    await assertFails(setDoc(invRef(db, 'x@example.com'), ed('nobody'))); // not in the tree
+    await assertFails(setDoc(invRef(db, 'x@example.com'), ed('gone'))); // deleted
+    await assertFails(setDoc(invRef(db, 'x@example.com'), ed(42))); // not an id
+    await assertSucceeds(setDoc(invRef(db, 'x@example.com'), ed('cousin')));
   });
 
   it('changes roles, removes members and renames the space', async () => {
@@ -439,9 +463,14 @@ describe('invitee', () => {
   it('joins as editor when invited as editor (consuming the invite)', async () => {
     const db = as('invitee2');
     const batch = writeBatch(db);
-    batch.update(spaceRef(db), new FieldPath('members', 'ed'), 'editor', new FieldPath('memberInfo', 'ed'), { email: 'ed@example.com' });
+    batch.update(spaceRef(db), new FieldPath('members', 'ed'), 'editor', new FieldPath('memberInfo', 'ed'), { email: 'ed@example.com', personId: 'cousin' });
     batch.delete(invRef(db, 'ed@example.com'));
     await assertSucceeds(batch.commit());
+  });
+
+  it('cannot claim to be a different person in the tree than the invite says', async () => {
+    await assertFails(join(as('invitee2'), 'ed', 'editor', { email: 'ed@example.com', personId: 'fam1' }, 'ed@example.com'));
+    await assertFails(join(as('invitee'), 'ivy', 'viewer', { email: 'ivy@example.com', personId: 'cousin' }));
   });
 
   it('cannot join while keeping the invite (invites are single use)', async () => {

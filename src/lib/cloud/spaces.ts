@@ -63,10 +63,11 @@ export async function listMySpaces(uid: string): Promise<(Space & { role: Role }
   });
 }
 
-export async function invite(spaceId: string, email: string, role: MemberRole): Promise<void> {
+export async function invite(spaceId: string, email: string, role: MemberRole, personId?: string): Promise<void> {
   const addr = normEmail(email);
   if (!/^[^@\s/]+@[^@\s/]+\.[^@\s/]+$/.test(addr)) throw new Error('Enter a valid email address.');
   if (role !== 'editor' && role !== 'viewer') throw new Error('Role must be editor or viewer.');
+  if (role === 'editor' && !personId) throw new Error('Pick who they are in your tree first.');
   const auth = await getFirebaseAuth();
   const uid = auth.currentUser?.uid;
   const inviterEmail = auth.currentUser?.email;
@@ -84,6 +85,7 @@ export async function invite(spaceId: string, email: string, role: MemberRole): 
       invitedByEmail: inviterEmail,
       spaceName: (space.data() as SpaceDoc | undefined)?.name ?? '',
       createdAt: Date.now(),
+      ...(personId ? { personId } : {}),
     };
     await setDoc(doc(db, 'spaces', spaceId, 'invites', addr), data);
   } catch (e) {
@@ -135,9 +137,10 @@ export async function acceptInvite(user: CloudUser, spaceId: string): Promise<vo
   try {
     const inv = await getDoc(inviteRef);
     if (!inv.exists()) throw new Error('This invite no longer exists.');
-    const { role } = inv.data() as InviteDoc;
-    const info: { email: string; name?: string } = { email: normEmail(user.email) };
+    const { role, personId } = inv.data() as InviteDoc;
+    const info: { email: string; name?: string; personId?: string } = { email: normEmail(user.email) };
     if (user.name) info.name = user.name;
+    if (personId) info.personId = personId;
     const batch = writeBatch(db);
     batch.update(doc(db, 'spaces', spaceId), new FieldPath('members', user.uid), role, new FieldPath('memberInfo', user.uid), info);
     batch.delete(inviteRef);
@@ -160,14 +163,16 @@ async function memberEmail(spaceId: string, uid: string): Promise<string | undef
   return email ? normEmail(email) : undefined;
 }
 
-export async function setRole(spaceId: string, uid: string, role: MemberRole): Promise<void> {
+/** `personId`: who they are in the tree; the Sharing page requires one (with a phone) for editors. */
+export async function setRole(spaceId: string, uid: string, role: MemberRole, personId?: string): Promise<void> {
   if (role !== 'editor' && role !== 'viewer') throw new Error('Role must be editor or viewer.');
   const db = await getDb();
   const { doc, writeBatch, FieldPath } = await fs();
   try {
     const email = await memberEmail(spaceId, uid);
     const batch = writeBatch(db);
-    batch.update(doc(db, 'spaces', spaceId), new FieldPath('members', uid), role);
+    if (personId) batch.update(doc(db, 'spaces', spaceId), new FieldPath('members', uid), role, new FieldPath('memberInfo', uid, 'personId'), personId);
+    else batch.update(doc(db, 'spaces', spaceId), new FieldPath('members', uid), role);
     if (email) batch.delete(doc(db, 'spaces', spaceId, 'invites', email));
     await batch.commit();
   } catch (e) {

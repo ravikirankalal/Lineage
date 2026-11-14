@@ -6,6 +6,7 @@ rules_version = '2';
 //   owner  : everything in their space; manages members and invites; deletes the space.
 //   editor : reads the space doc; reads/creates/updates (soft-deletes) scope == 'family' records.
 //   viewer : reads the space doc and scope == 'family' records.
+//   (an editor invite must name a person in the tree who has a phone number; see validInvite)
 //   invitee: (verified email == invite id) reads own invite, joins with exactly the invited role
 //            while deleting the invite in the same batch (single use), or declines (deletes) it.
 //   others : nothing.
@@ -38,9 +39,10 @@ service cloud.firestore {
     function validMemberInfoEntry(e) {
       return e is map
         && e.keys().hasAll(['email'])
-        && e.keys().hasOnly(['email', 'name'])
+        && e.keys().hasOnly(['email', 'name', 'personId'])
         && e.email is string
-        && (!('name' in e) || e.name is string);
+        && (!('name' in e) || e.name is string)
+        && (!('personId' in e) || e.personId is string);
     }
 
     // Shape of a space doc: exactly one owner (== ownerUid), every other member editor/viewer.
@@ -129,7 +131,10 @@ service cloud.firestore {
           && infoDiff.removedKeys().size() == 0
           && (!(request.auth.uid in memberInfoOf(request.resource.data))
               || (validMemberInfoEntry(memberInfoOf(request.resource.data)[request.auth.uid])
-                  && memberInfoOf(request.resource.data)[request.auth.uid].email == myEmail()));
+                  && memberInfoOf(request.resource.data)[request.auth.uid].email == myEmail()
+                  // The person they are in the tree comes from the invite, not from the invitee.
+                  && memberInfoOf(request.resource.data)[request.auth.uid].get('personId', '')
+                      == get(invitePath).data.get('personId', '')));
       }
 
       // ---------- records ----------
@@ -199,9 +204,20 @@ service cloud.firestore {
       }
 
       // ---------- invites ----------
+      // An editor must be someone already in the tree with a phone number on record: the invite
+      // names that person (personId), and the person must exist, not be deleted, and have a phone.
+      function personWithPhone(pid) {
+        let path = /databases/$(database)/documents/spaces/$(spaceId)/people/$(pid);
+        return exists(path)
+          && get(path).data.get('deleted', false) == false
+          && get(path).data.data.get('phones', []) is list
+          && get(path).data.data.get('phones', []).size() > 0;
+      }
       function validInvite(d, emailId) {
         return d.keys().hasAll(['email', 'role', 'invitedBy', 'invitedByEmail', 'spaceName', 'createdAt'])
-          && d.keys().hasOnly(['email', 'role', 'invitedBy', 'invitedByEmail', 'spaceName', 'createdAt'])
+          && d.keys().hasOnly(['email', 'role', 'invitedBy', 'invitedByEmail', 'spaceName', 'createdAt', 'personId'])
+          && (!('personId' in d) || (d.personId is string && personWithPhone(d.personId)))
+          && (d.role != 'editor' || 'personId' in d)
           && d.email == emailId
           && d.email == d.email.lower()
           && d.email.matches('^[^@/ ]+@[^@/ ]+$')

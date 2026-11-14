@@ -215,3 +215,9 @@ Read this before changing code. Append new learnings at the bottom.
 - (2026-11-14) Left-to-right trees: familyLayout runs in row space with a `Geo` (card w/h swapped, `RIGHT`) and
   transposes at the end; `geo`/`STEP`/`HALF`/`ROW_GAP` are module state set per call, reset in `finally`. Node keys
   are the same in both directions, so switching animates (FLIP).
+- (2026-11-14) Only the owner and editors they choose can edit. An editor invite must carry `personId`, a person in
+  the owner's space with a non-empty `phones` list who is not deleted (`personWithPhone` in firestore.rules). The
+  invitee copies it to `memberInfo[uid].personId` on join; the rules require it to equal the invite's. Viewer
+  invites need no person. Promoting a member to editor asks for the person on the Sharing page; that check is
+  client-side only (only the owner can change roles anyway). The Sharing page calls `syncNow()` first, because
+  the rules read the cloud copy of the person, and a phone number added a moment ago may not have synced yet.
