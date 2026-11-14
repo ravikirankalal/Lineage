@@ -11,13 +11,14 @@ import type { FamilyGraph } from '../kinship';
 import type { Person, Relationship } from '../types';
 
 // ---------------------------------------------------------------------------
-// kinship-engineer: src/lib/tree.ts (replaces layoutTree)
+// kinship-engineer: src/lib/tree.ts `layoutFamily` (engine: src/lib/familyLayout.ts)
 
 /** How much of the family to draw around the focus. */
 export type TreeLevel =
   | 'immediate' // parents, siblings, spouses, children, plus ancestors and descendants (today's view, fixed)
   | 'extended' // + aunts/uncles with spouses and cousins, siblings' spouses and children, the spouse's parents and siblings
-  | 'everyone'; // the whole family component (may be wide; the UI offers fit-to-screen)
+  | 'everyone'; // every generation and every block open, plus collaterals along the outer edge of the pedigree.
+  // Relatives of people who married in (a spouse's parents, a sibling-in-law's family) need a re-centre.
 
 export interface TreeOptions {
   focusId: string; // the card the view is centred on
@@ -73,6 +74,7 @@ export interface TreeLayout {
 //   - children hang from their blood parent unit, with step links drawn as 'step' edges;
 //   - sibling order never depends on the focus (birth order, then name);
 //   - Walker / Reingold–Tilford contour packing in both directions;
+//   - pedigree collapse and cousin marriages give `dupOf` stubs (no 'collapse' edges are drawn, so no line crosses a card);
 //   - < 30 ms for 1,000 people.
 
 /** The ids along the shortest family path from a to b (inclusive). Used to highlight "how are we related". */
