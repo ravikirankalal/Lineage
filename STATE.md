@@ -120,7 +120,9 @@ _Last updated: 2026-11-13_
 - Cross layout lineage (owner's rule): above the parents, each side follows the grandfather's line. A grandmother
   (and every wife further up) married into the line: she sits right below her husband with a marriage line and her
   own ancestors aren't drawn. The mother's own ancestors still form the mother's side. Tested at every level.
-  Each ancestor couple sends ONE line to their children, from the middle of their marriage line (tested).
+  Every couple stacked in a column (ancestors, uncles/aunts with spouses, a parent with a step-parent) sends ONE
+  line to their children from the middle of their marriage line; the focus's own parents (on opposite sides) send
+  theirs from their cards. Half-siblings via a step-parent get their own bracket. Tested.
 - Main vs secondary cards (owner's rule): when someone appears twice, the card in their birth family (joined
   to their parents) is the main card; the card beside their spouse is a secondary "Also shown elsewhere" stub that
   can't expand to their ancestors. Cross layout makes spouse cards last; the other layouts re-run with that

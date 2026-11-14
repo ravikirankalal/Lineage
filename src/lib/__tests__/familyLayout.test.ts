@@ -318,6 +318,7 @@ describe('layoutFamily', () => {
     f.rel('dgf', 'dgm', 'spouse'); f.rel('mgf', 'mgm', 'spouse');
     f.rel('uncle', 'uncleWife', 'spouse'); f.rel('uncle', 'cousin', 'parent'); f.rel('uncleWife', 'cousin', 'parent');
     f.rel('mAunt', 'mAuntHusband', 'spouse');
+    f.add('halfBro', 'male', '1990'); f.rel('dad', 'halfBro', 'parent'); f.rel('stepmom', 'halfBro', 'parent');
     const G = f.graph();
     for (const level of ['immediate', 'extended', 'everyone'] as const) checkGeometry(lay(G, 'me', level, [], false, 'cross'), `spouses ${level}`);
     const L = lay(G, 'me', 'extended', [], false, 'cross');
@@ -335,6 +336,19 @@ describe('layoutFamily', () => {
     expect(at('mom').x).toBeGreaterThan(0);
     expect(L.nodes.filter((n) => n.personId === 'mom')).toHaveLength(1);
     expect(at('cousin').y).toBe(at('uncle').y); // cousins still level with their parent
+    // A couple's children hang from the middle of their marriage line, one shared line for both parents.
+    const fromCouple = (a: string, b: string, kid: string) => {
+      const pa = L.edges.find((e) => e.from === a && e.to === kid)?.points;
+      const pb = L.edges.find((e) => e.from === b && e.to === kid)?.points;
+      expect(pa, `${a}→${kid}`).toBeDefined();
+      expect(pb, `${b}→${kid}`).toEqual(pa);
+      expect(pa![0][0], `${a}+${b}→${kid} starts on their column`).toBe(at(a).x);
+      expect(pa![0][1]).toBeGreaterThan(at(a).y + CARD.h);
+      expect(pa![0][1]).toBeLessThan(at(b).y);
+    };
+    fromCouple('uncle', 'uncleWife', 'cousin');
+    fromCouple('dad', 'stepmom', 'halfBro'); // a half-brother from the father and step-mother's line
+    expect(L.edges.find((e) => e.from === 'dad' && e.to === 'me')!.points[0][0]).toBe(at('dad').x + CARD.w / 2); // me: from dad's card
     // Immediate: a step-parent still shows below the parent; uncles and their spouses don't.
     const imm = lay(G, 'me', 'immediate', [], false, 'cross');
     expect(imm.nodes.some((n) => n.personId === 'stepmom')).toBe(true);
