@@ -1,8 +1,8 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
-import { db } from './db';
+import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
+import { db, purgeNonFamilyLinks } from './db';
 import { FamilyGraph } from './kinship';
-import type { Person, Relationship } from './types';
+import { isFamilyType, type Person, type Relationship } from './types';
 
 interface Data {
   loaded: boolean;
@@ -18,6 +18,10 @@ const Ctx = createContext<Data | null>(null);
 export function DataProvider({ children }: { children: ReactNode }) {
   const people = useLiveQuery(() => db.people.toArray(), []);
   const rels = useLiveQuery(() => db.relationships.toArray(), []);
+  // Family only: links from older versions (friend, colleague, …), or pulled from an old device, are
+  // deleted for good as soon as they show up. The tombstones sync the deletion to the cloud.
+  const stray = !!rels?.some((r) => !isFamilyType(r.type));
+  useEffect(() => { if (stray) void purgeNonFamilyLinks().catch(() => { /* retried on the next change */ }); }, [stray, rels]);
   const value = useMemo<Data>(() => {
     const ps = people ?? [];
     const rs = rels ?? [];

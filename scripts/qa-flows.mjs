@@ -56,7 +56,7 @@ async function openProfile(page, fullName) {
   await page.goto(BASE + '#/');
   await page.getByPlaceholder(/Search names/).fill(fullName);
   await page.getByText(fullName, { exact: true }).first().click();
-  await page.getByText('Connections').first().waitFor();
+  await page.getByRole('heading', { name: /^Family\b/ }).first().waitFor();
 }
 async function profileAdd(page, choice, name) {
   await page.getByRole('button', { name: 'Add', exact: true }).click();
@@ -78,7 +78,7 @@ async function main(browser) {
     await page.getByRole('button', { name: 'Male', exact: true }).click();
     check(await page.locator('input[type=checkbox]').first().isChecked(), '[1] "This is me" not pre-ticked from ?me=1');
     await page.getByRole('button', { name: 'Save' }).first().click();
-    await page.getByText('Connections').first().waitFor();
+    await page.getByRole('heading', { name: /^Family\b/ }).first().waitFor();
 
     await page.goto(BASE + '#/family');
     await page.getByRole('button', { name: 'Add father' }).click();
@@ -169,7 +169,7 @@ async function main(browser) {
     await page.getByText('Add phone').click();
     await page.getByPlaceholder('Phone', { exact: true }).fill('98480 12345');
     await page.getByRole('button', { name: 'Save' }).first().click();
-    await page.getByText('Connections').first().waitFor();
+    await page.getByRole('heading', { name: /^Family\b/ }).first().waitFor();
 
     const dir = join(OUT, 'files');
     mkdirSync(dir, { recursive: true });
@@ -314,7 +314,7 @@ async function dark(browser) {
     await profileAdd(page, 'Son', LONG);
     await shot(page, '6b-dark-profile');
     await page.getByText('Venkatasubrahmanya').first().click();
-    await page.getByText('Connections').first().waitFor();
+    await page.getByRole('heading', { name: /^Family\b/ }).first().waitFor();
     const ov = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     check(ov <= 0, `[6] long name causes horizontal page scroll (${ov}px)`);
     await shot(page, '6c-dark-longname-profile');
@@ -347,12 +347,12 @@ async function features(browser) {
     await page.getByText('Add phone').click();
     await page.getByPlaceholder('Phone', { exact: true }).fill('98765 43210');
     await page.getByRole('button', { name: 'Save' }).first().click();
-    await page.getByText('Connections').first().waitFor();
+    await page.getByRole('heading', { name: /^Family\b/ }).first().waitFor();
     await profileAdd(page, 'Daughter', 'Latha Rao');
     await page.goto(BASE + '#/');
     await page.getByPlaceholder(/Search names/).fill('Prakash');
     await page.locator('a', { hasText: 'Prakash' }).filter({ hasText: 'fertiliser' }).first().click();
-    await page.getByText('Connections').first().waitFor();
+    await page.getByRole('heading', { name: /^Family\b/ }).first().waitFor();
     await page.getByRole('button', { name: /Merge with a duplicate/ }).click();
     const dlg = page.getByRole('dialog');
     const sug = dlg.getByRole('button', { name: /Prakash Rao/ });
@@ -479,7 +479,7 @@ async function features(browser) {
     await page.getByText(/Added \d+ new people/).waitFor();
     await page.goto(BASE + '#/settings');
     const after = await relCount();
-    check(Number(after[1]) === famIndi && Number(after[1]) < Number(before[1]), `[9] people after import ${after[0]}`);
+    check(Number(after[1]) === famIndi && Number(after[1]) <= Number(before[1]), `[9] people after import ${after[0]}`);
     await page.goto(BASE + '#/family');
     // _LINEAGE_ME restores "me": no "Who are you?" picker after wipe + re-import.
     await page.getByText(/Earliest ancestor|Who are you\?/).first().waitFor();

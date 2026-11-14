@@ -229,3 +229,9 @@ Read this before changing code. Append new learnings at the bottom.
 - (2026-11-14) Checks, the owner's rule: `npm run verify` on every change; `npm run qa` only for changes to
   import/export, editing, merging, backup or data handling (or before a big release); `npm run test:rules` only
   for sharing and permission changes. See CLAUDE.md.
+- (2026-11-14) Non-family links are deleted for good: `purgeNonFamilyLinks()` (db.ts) runs from DataProvider as
+  soon as any appear (old data, or pulled from an old device), and writes tombstones so the owner's next sync
+  soft-deletes them in Firestore. `validRelationship` still accepts the old types (sync must not choke on them);
+  only `importBackup` filters them out. The people at the other end of those links are kept.
+- (2026-11-14) `scripts/qa-cloud.mjs` relies on the old sample friends (Sandeep, Farhan, …) for its privacy checks.
+  It needs rework (e.g. an unlinked person) before it is run again.

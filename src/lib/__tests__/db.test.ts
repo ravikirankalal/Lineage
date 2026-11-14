@@ -10,6 +10,7 @@ import {
   ensureRelationship,
   exportBackup,
   importBackup,
+  purgeNonFamilyLinks,
   mergePeople,
   openSpaceDb,
   previewMerge,
@@ -184,7 +185,8 @@ describe('importBackup', () => {
         [person('a'), person('b')],
         [
           { id: 'ok', fromId: 'a', toId: 'b', type: 'parent', createdAt: 1 },
-          { id: 'toLocal', fromId: 'local', toId: 'a', type: 'friend', createdAt: 1 },
+          { id: 'toLocal', fromId: 'local', toId: 'a', type: 'sibling', createdAt: 1 },
+          { id: 'oldFriend', fromId: 'a', toId: 'b', type: 'friend', createdAt: 1 }, // family only: not restored
           { id: 'self', fromId: 'a', toId: 'a', type: 'friend', createdAt: 1 },
           { id: 'dangling', fromId: 'a', toId: 'ghost', type: 'friend', createdAt: 1 },
           { fromId: 'a', toId: 'b', type: 'spouse' },
@@ -681,7 +683,7 @@ describe('version 2: updatedAt on relationships and tombstones', () => {
 
   it('exportBackup round-trips relationship updatedAt and old backups without it still import', async () => {
     await importBackup(
-      { app: 'lineage', version: 1, exportedAt: '', people: [person('A'), person('B')], relationships: [{ id: 'old', fromId: 'A', toId: 'B', type: 'friend' }] },
+      { app: 'lineage', version: 1, exportedAt: '', people: [person('A'), person('B')], relationships: [{ id: 'old', fromId: 'A', toId: 'B', type: 'sibling' }] },
       'merge',
     );
     const r = await db.relationships.get('old');
@@ -689,6 +691,19 @@ describe('version 2: updatedAt on relationships and tombstones', () => {
     expect(typeof r!.updatedAt).toBe('number');
     const b = await exportBackup();
     expect(b.relationships[0].updatedAt).toBe(r!.updatedAt);
+  });
+});
+
+describe('purgeNonFamilyLinks', () => {
+  it('deletes non-family links for good, with tombstones so the delete syncs', async () => {
+    await savePerson(person('A'));
+    await savePerson(person('B'));
+    const fam = await addRelationship({ fromId: 'A', toId: 'B', type: 'parent' });
+    const pal = await addRelationship({ fromId: 'A', toId: 'B', type: 'friend' });
+    expect(await purgeNonFamilyLinks()).toBe(1);
+    expect((await db.relationships.toArray()).map((r) => r.id)).toEqual([fam]);
+    expect((await db.tombstones.get(pal))?.table).toBe('relationships');
+    expect(await purgeNonFamilyLinks()).toBe(0);
   });
 });
 
