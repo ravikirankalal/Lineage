@@ -61,10 +61,8 @@ Sign-in is off unless Firebase is configured: copy `.env.example` to `.env.local
 [FIREBASE_SETUP.md](FIREBASE_SETUP.md). With nothing set, the app runs local-only.
 
 On a phone: open the hosted site and choose **Add to Home screen**.
-Live: **https://ravikirankalal.github.io/Lineage/**, deployed from `master` by
-`.github/workflows/deploy.yml` (repo Settings → Pages → Source must be *GitHub Actions*).
-Firebase Hosting: **https://lineage-d575c.web.app**, deployed from `master` by
-`.github/workflows/firebase-deploy.yml` (live once this branch merges).
+Live: **https://lineage-d575c.web.app** (Firebase Hosting), deployed from `master` by
+`.github/workflows/firebase-deploy.yml`. (GitHub Pages hosting was retired on 2026-11-14.)
 
 Want to look around first? Settings → **Try a sample family** (only offered while the app is empty).
 

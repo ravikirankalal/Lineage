@@ -20,13 +20,12 @@ _Last updated: 2026-11-13_
 | Contacts import: vCard, CSV, Contact Picker | ✅ done | `contacts.test.ts` (16: dedupe strength, in-file dedupe, merge rules); `npm run qa` flow 3 (vcf + csv, duplicates matched); picker untested (needs Android Chrome) |
 | Remember: recall practice, birthdays, thin profiles | ✅ done | smoke screenshots |
 | PWA manifest + service worker, dark mode | ✅ done | build; qa flow 6 (dark mode) |
-| GitHub Pages deploy | ✅ live at https://ravikirankalal.github.io/Lineage/ | reported by the main session; serves `master`, so rounds 2–3 appear only after this branch merges. The Pages build now gets the Firebase web config, so sign-in works there too once merged (ravikirankalal.github.io is an authorized domain) |
 | Google sign-in, account card, sign-out (never deletes cloud data) | ✅ done (emulator) | `npm run qa:cloud` (8 flows, Auth + Firestore emulators); not yet exercised against the real project lineage-d575c |
 | Sync: Dexie v2 (relationship updatedAt, tombstones, meta), per-space DBs, `sync.ts` (LWW, scopes, watermarks, resync prune) | ✅ done | `sync.test.ts`, `migration.test.ts`, `db.test.ts` (fake remote); `npm run qa:cloud` (two devices, one account) |
 | Family sharing: `/sharing`, invites (editor/viewer, shows sender), space switcher, read-only mode for viewers | ✅ done (emulator) | `npm run qa:cloud` (invite, join, viewer read-only, friends never shared, member removal → family copy removed) |
 | Authorization (`firestore.rules`: deny-by-default, roles, validated writes, single-use invites) | ✅ done | `npm run test:rules` (43, Firestore emulator); security review: 3 high, 2 medium, 4 low, all fixed |
 | Account isolation (another account's local data is never uploaded) | ✅ done | `npm run qa:cloud`; security review (account-switch race fixed) |
-| Firebase Hosting + `firebase-deploy.yml` | ⏳ configured, not yet live | project lineage-d575c set up by the owner (reported); goes live at https://lineage-d575c.web.app on merge to `master` |
+| Firebase Hosting + `firebase-deploy.yml` | ✅ live at https://lineage-d575c.web.app (the only host; GitHub Pages retired 2026-11-14) | deploy runs verified via GitHub Actions; site checked to serve the current build |
 | Agent fleet (`.claude/agents/`, AGENTS.md), smoke + QA scripts | ✅ done | three fleet rounds, see AGENTS.md → Fleet log |
 
 `npm test` → 284 passing across 9 files (adds `sync.test.ts` and `migration.test.ts`).
@@ -57,7 +56,7 @@ _Last updated: 2026-11-13_
 
 ## Next up (see PLAN.md backlog)
 1. Merge this branch; check the first real Google sign-in, sync and invite on https://lineage-d575c.web.app
-   and on GitHub Pages
+  
 2. Split family notes into shared and private
 3. Server-time stamps instead of client clocks; an invite cap per space
 4. GEDCOM re-import that matches existing people
