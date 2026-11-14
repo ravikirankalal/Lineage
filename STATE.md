@@ -138,6 +138,9 @@ _Last updated: 2026-11-13_
   cousins in your column). Grandmothers' siblings stay in the grandmother's own tree. Everyone in your
   generation's column (siblings, cousins, second cousins) has their spouses right below them. Tested. Tested with positions
   and lines on all four grandparents; geometry tests pass on generated families.
+- Cross layout: each ancestor's brother or sister with children (uncles, aunts, great-uncles, their children…)
+  has a +/- button; their children start collapsed at every level and open on tap ("Show/Hide Name's
+  children"). Collapsed families stay out of Everyone's extra trees too. Tested (unit + browser click).
 - Everyone draws every person in the family in all three layouts: anyone still missing after the layout (and,
   in cross, the descendants and married-in trees) gets a small tree of their own below, titled with how they're
   related. Tested on generated families (each person exactly one main card, valid copies, geometry, unique keys);
