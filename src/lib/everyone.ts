@@ -1,5 +1,5 @@
 import { CARD, type TreeLayout, type TreeNode, type TreeOptions, type TreeRegion } from './graph/contract';
-import type { FamilyGraph } from './kinship';
+import { familyPathTree, kinship, pathInTree, type FamilyGraph } from './kinship';
 import { layoutCross } from './crossLayout';
 import { layoutFamilyV2 } from './familyLayout';
 import { REGION_ROOM, SIDE } from './generationBands';
@@ -15,11 +15,22 @@ const GAP = 80; // between stacked trees, above the next tree's titles
  *   the spouse, a brother's wife, an uncle's wife, …) gets their own cross tree: their parents' sides
  *   and their brothers and sisters. That card is their main card; the one beside their spouse becomes
  *   the "shown elsewhere" copy. Someone with no recorded parents keeps a single card.
- * The new trees are scanned the same way, so the whole family is reached.
+ * - Anyone in the family still not drawn after that (step-families, a parent of unknown gender, …): a
+ *   top-to-bottom tree around the closest one, titled with how they're related.
+ * The new trees are scanned the same way, until every person in the family is drawn.
  */
 export function layoutCrossEveryone(graph: FamilyGraph, opts: TreeOptions): TreeLayout {
-  const main = layoutCross(graph, opts);
+  return completeEveryone(graph, opts, layoutCross(graph, opts));
+}
+
+/**
+ * Everyone, in any layout: the layout's own tree, then trees below it until every person in the family
+ * is drawn. The cross layout adds descendants and married-in families first (above); the other layouts
+ * already draw those, so they only get the last step.
+ */
+export function completeEveryone(graph: FamilyGraph, opts: TreeOptions, main: TreeLayout): TreeLayout {
   if (opts.level !== 'everyone' || !main.nodes.length) return main;
+  const cross = opts.orient === 'cross';
 
   type Part = { layout: TreeLayout; root?: string; family: boolean };
   const parts: Part[] = [{ layout: main, family: false }];
@@ -37,7 +48,46 @@ export function layoutCrossEveryone(graph: FamilyGraph, opts: TreeOptions): Tree
     return p?.nickname || p?.firstName || 'Their';
   };
 
-  for (let i = 0; i < parts.length; i++) {
+  // Everyone in the family, closest first (breadth-first from the focus), for the last step below.
+  const order: string[] = [opts.focusId];
+  const seen = new Set(order);
+  for (let k = 0; k < order.length; k++) {
+    for (const m of graph.familyNeighbors(order[k])) {
+      if (seen.has(m.id) || !graph.person(m.id)) continue;
+      seen.add(m.id);
+      order.push(m.id);
+    }
+  }
+  let labels: ((id: string) => string | undefined) | undefined;
+  const kinLabel = (id: string) => {
+    if (!labels) {
+      const aAnc = graph.ancestors(opts.focusId);
+      const tree = familyPathTree(graph, opts.focusId);
+      labels = (x) => kinship(graph, opts.focusId, x, aAnc, pathInTree(graph, tree, opts.focusId, x) ?? null)?.label;
+    }
+    return labels(id);
+  };
+
+  let i = 0;
+  for (;;) {
+    for (; i < parts.length; i++) scan(i);
+    // Anyone in the family still not drawn (a step-parent's family, a parent of unknown gender, someone
+    // linked only as a brother or sister, …): a top-to-bottom tree around the closest one, which draws
+    // every kind of link. Their tree is scanned like the others. Each round draws at least that person.
+    const x = order.find((id) => !shown.has(id));
+    if (!x) break;
+    const L = layoutFamilyV2(graph, { focusId: x, level: 'everyone', expanded: opts.expanded, up: 1, down: 1, noInLaws: true, orient: opts.orient === 'right' ? 'right' : 'down' });
+    for (const n of L.nodes) if (n.role === 'focus') n.role = 'relative';
+    const kin = kinLabel(x);
+    L.regions = [{ side: 'middle', x0: L.bounds.minX - SIDE, x1: L.bounds.maxX + SIDE, columns: [], label: kin ? `${name(x)} · ${kin}` : `${name(x)}’s family` }];
+    parts.push({ layout: L, root: x, family: true });
+    note(L);
+  }
+  if (parts.length === 1) return main;
+  return stack(parts);
+
+  function scan(i: number) {
+    if (!cross) return;
     const ids = [...new Set(parts[i].layout.nodes.filter((n) => n.personId && !n.dupOf).map((n) => n.personId!))];
     // Descendants first (closest to the tree just drawn), then the families of those who married in.
     for (const id of ids) {
@@ -63,8 +113,6 @@ export function layoutCrossEveryone(graph: FamilyGraph, opts: TreeOptions): Tree
       note(L);
     }
   }
-  if (parts.length === 1) return main;
-  return stack(parts);
 }
 
 /** Stack the trees top to bottom (each extra tree centred under the card it grows from), one set of keys. */

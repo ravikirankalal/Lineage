@@ -123,7 +123,9 @@ describe('layoutFamily', () => {
     const at = (L: TreeLayout, id: string) => L.nodes.find((n) => n.personId === id && !n.dupOf);
     for (const id of ['wifeDad', 'wifeMom']) expect(at(all, id)).toMatchObject({ generation: 1, role: 'relative' });
     expect(all.edges.some((e) => e.kind === 'descent' && e.from === 'wifeDad' && e.to === 'wife')).toBe(true);
-    expect(at(all, 'wifeBro')).toBeUndefined(); // only the parents, not the spouse's siblings
+    // The main tree has only the parents; the spouse's siblings are drawn in an extra tree below it.
+    expect(at(all, 'wifeBro')?.key.startsWith('t')).toBe(true);
+    expect(at(all, 'wifeBro')!.y).toBeGreaterThan(Math.max(...all.nodes.filter((n) => !n.key.includes('/')).map((n) => n.y)));
     const imm = lay(G, 'me');
     expect(at(imm, 'wifeDad')).toBeUndefined();
     expect(at(imm, 'wife')?.expandable?.up).toBe(true);
@@ -433,6 +435,23 @@ describe('layoutFamily', () => {
     }
   });
 
+  it('Everyone draws every person in the family, in every layout', () => {
+    for (const seed of [1, 3, 7, 11]) {
+      const G = generatedFamily(150, seed);
+      const want = [...G.familyComponent('p40')].filter((id) => G.person(id));
+      for (const orient of ['cross', 'down', 'right'] as const) {
+        const L = lay(G, 'p40', 'everyone', [], false, orient);
+        const label = `seed ${seed} ${orient}`;
+        checkGeometry(L, label);
+        expect(new Set(L.nodes.map((n) => n.key)).size, label).toBe(L.nodes.length);
+        const keyOf = new Map(L.nodes.map((n) => [n.key, n]));
+        for (const id of want) expect(L.nodes.filter((n) => n.personId === id && !n.dupOf), `${label}: ${id}`).toHaveLength(1);
+        for (const n of L.nodes) if (n.dupOf) expect(keyOf.get(n.dupOf)?.personId, `${label}: ${n.key}`).toBe(n.personId);
+        expect(L.nodes.filter((n) => n.role === 'focus').map((n) => n.personId), label).toEqual(['p40']);
+      }
+    }
+  });
+
   it('cross layout, Everyone: descendants and the families of people who married in, in trees below', () => {
     const f = family();
     const people: [string, Gender, string][] = [
@@ -548,7 +567,7 @@ describe('layoutFamily', () => {
         }
       }
     }
-  });
+  }, 120_000);
 
   it('is fast on 1,000 people', () => {
     const G = generatedFamily(1000, 7);

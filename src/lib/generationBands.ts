@@ -65,6 +65,33 @@ export function generationBands(layout: TreeLayout, orient: TreeOrient, focusNam
       },
     };
   }
+  // Everyone stacks extra trees below the main one (titled regions): stripes cover the main tree only.
+  const extra = (layout.regions ?? []).filter((r) => r.label && r.y0 !== undefined);
+  if (extra.length) {
+    const cut = Math.min(...extra.map((r) => r.y0!));
+    const mainNodes = layout.nodes.filter((n) => n.y < cut);
+    const mb = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
+    for (const n of mainNodes) {
+      mb.minX = Math.min(mb.minX, n.x - CARD.w / 2);
+      mb.maxX = Math.max(mb.maxX, n.x + CARD.w / 2);
+      mb.minY = Math.min(mb.minY, n.y);
+      mb.maxY = Math.max(mb.maxY, n.y + CARD.h);
+    }
+    const inner = generationBands({ nodes: mainNodes, edges: [], bounds: mb }, orient, focusName);
+    const more = extra.map((r, i): GenBand => ({
+      key: `extra:${i}`, gen: 0, x0: r.x0, x1: r.x1, y0: r.y0!, y1: r.y1!, label: r.label!, vertical: true, region: r.side, columns: r.columns,
+    }));
+    const bands = [...inner.bands, ...more];
+    return {
+      bands,
+      bounds: {
+        minX: Math.min(bounds.minX, ...bands.map((b) => b.x0)),
+        maxX: Math.max(bounds.maxX, ...bands.map((b) => b.x1)),
+        minY: Math.min(bounds.minY, ...bands.map((b) => b.y0)),
+        maxY: Math.max(bounds.maxY, ...bands.map((b) => b.y1)),
+      },
+    };
+  }
   const vertical = orient !== 'down';
   const pos = (n: TreeLayout['nodes'][number]) => Math.round(vertical ? n.x : n.y + CARD.h / 2);
   // Generation per row/column position (the most common one there).

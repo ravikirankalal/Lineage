@@ -155,11 +155,16 @@ Read this before changing code. Append new learnings at the bottom.
 - (2026-11-14) **Cross layout lineage rule** (owner): above the focus's parents only the father's line continues on
   each side; wives married in (grandmothers etc.) sit below their husband, without their own ancestors.
 - (2026-11-14) **Cross Everyone shows everyone** (owner): the main cross tree stays as above, and BELOW it
-  `crossEveryone.ts` stacks more trees: a top-to-bottom descendants tree for anyone drawn whose children aren't,
+  `everyone.ts` stacks more trees: a top-to-bottom descendants tree for anyone drawn whose children aren't,
   and a cross tree for anyone who married in AND has recorded parents (grandmothers, spouse, in-laws). That tree
   holds their main card; the card beside their spouse becomes the "shown elsewhere" copy. Married-in people
   without recorded parents keep ONE card (no copy). Step-families aren't chased (owner didn't ask). Keys are
-  prefixed `t<i>/` per extra tree. Other levels and layouts are unchanged.
+  prefixed `t<i>/` per extra tree. Other levels are unchanged.
+- (2026-11-14) **Everyone = every person in the family** (owner, repeated): `everyone.ts` `completeEveryone` runs
+  for every layout. After the cross-only steps above, while anyone in `familyComponent(focus)` is undrawn, the
+  closest one (BFS) gets a small top-to-bottom tree (up 1, down 1; bigger ones made thousands of copies on
+  random data), titled "Name · relation". Bands: stripes cover the main tree only; extra trees get titled
+  regions. Tested: every person has exactly one main card in all three layouts.
 - (2026-11-14) **No Add Brother/Sister** (owner): siblings are added as the parents' children. Keep reading
   existing explicit sibling edges (kinship infers shared parents), but don't offer creating them in the UI.
 - (2026-11-14) **Main card rule** (owner): a person shown twice has their MAIN card in the birth family (joined to
