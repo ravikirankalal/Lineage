@@ -480,6 +480,34 @@ describe('layoutFamily', () => {
     expect(ext.nodes.some((n) => n.personId === 'dgfBro')).toBe(false);
   });
 
+  it('cross layout: everyone in my generation has their spouse right below them', () => {
+    const f = family();
+    const fam = (a: string, b: string | null, ...cs: string[]) => { if (b) f.rel(a, b, 'spouse'); for (const c of cs) { f.rel(a, c, 'parent'); if (b) f.rel(b, c, 'parent'); } };
+    for (const [id, gd, y] of [['me', 'male', '1980'], ['dad', 'male', '1950'], ['mom', 'female', '1952'], ['gf', 'male', '1920'], ['gm', 'female', '1922'],
+      ['uncle', 'male', '1948'], ['cousin', 'male', '1975'], ['cousinWife', 'female', '1977'], ['cousinEx', 'female', '1974'],
+      ['aunt', 'female', '1955'], ['cousinF', 'female', '1980'], ['cousinFHusband', 'male', '1978'],
+      ['ggf', 'male', '1890'], ['gUncle', 'male', '1918'], ['dadCousin', 'male', '1945'], ['secondCousin', 'female', '1972'], ['scHusband', 'male', '1970']] as const) f.add(id, gd, y);
+    fam('dad', 'mom', 'me'); fam('gf', 'gm', 'dad', 'uncle', 'aunt'); fam('ggf', null, 'gf', 'gUncle');
+    fam('uncle', null, 'cousin'); fam('aunt', null, 'cousinF'); fam('gUncle', null, 'dadCousin'); fam('dadCousin', null, 'secondCousin');
+    f.rel('cousin', 'cousinWife', 'spouse'); f.rel('cousin', 'cousinEx', 'spouse', 'divorced');
+    f.rel('cousinF', 'cousinFHusband', 'spouse'); f.rel('secondCousin', 'scHusband', 'spouse');
+    const G = f.graph();
+    for (const level of ['extended', 'everyone'] as const) {
+      const L = lay(G, 'me', level, [], false, 'cross');
+      checkGeometry(L, `cousin spouses ${level}`);
+      const at = (id: string) => L.nodes.find((n) => n.personId === id && !n.key.includes('/'));
+      const pairs = [['cousin', 'cousinEx'], ['cousinF', 'cousinFHusband'], ...(level === 'everyone' ? [['secondCousin', 'scHusband']] : [])];
+      for (const [a, b] of pairs) {
+        expect(at(b)?.x, `${level}: ${b} in my column`).toBe(0);
+        expect(L.edges.some((e) => (e.kind === 'marriage' || e.kind === 'divorced') && [e.from, e.to].sort().join() === [a, b].sort().join()), `${a}–${b}`).toBe(true);
+      }
+      // The first partner right below, a second one below that; the next person starts after them.
+      const both = [at('cousinWife')!.y, at('cousinEx')!.y].sort((x, y) => x - y);
+      expect(both).toEqual([at('cousin')!.y + 100, at('cousin')!.y + 200]);
+      expect(at('cousinFHusband')!.y).toBe(at('cousinF')!.y + 100);
+    }
+  });
+
   it('Everyone draws every person in the family, in every layout', () => {
     for (const seed of [1, 3, 7, 11]) {
       const G = generatedFamily(150, seed);

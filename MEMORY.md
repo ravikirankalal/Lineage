@@ -164,7 +164,7 @@ Read this before changing code. Append new learnings at the bottom.
   generation outwards adds its siblings' families as row bands ABOVE (brothers) / BELOW (sisters) everything closer
   (father's side first), shared rows across the layout. A band = the person in their column, partners below, kids
   one column further in (first kid level with the parent), recursively down to the focus's column (there:
-  no partners/kids). Line ancestors are centred on their children's group and the row range grows to fit them.
+  partners below them, as for siblings — owner: every spouse of someone in your generation is in that band; no kids). Line ancestors are centred on their children's group and the row range grows to fit them.
   Grandmothers' siblings stay out of the main tree (owner): only the father's line continues, as before.
 - (2026-11-14) **Everyone = every person in the family** (owner, repeated): `everyone.ts` `completeEveryone` runs
   for every layout. After the cross-only steps above, while anyone in `familyComponent(focus)` is undrawn, the
