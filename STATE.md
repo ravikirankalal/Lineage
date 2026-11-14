@@ -84,5 +84,12 @@ _Last updated: 2026-11-13_
   portrait screens open left to right. Same engine run with the card's axes swapped, then transposed. On a 390x600
   phone box, Fit shows cards larger on average (Immediate 0.59→0.66, Extended 0.51→0.61, Everyone 0.47→0.49 zoom,
   140-person family, every focus). No-overlap tests run in both directions.
+- Cross layout (`src/lib/crossLayout.ts`, `orient: 'cross'`, the owner's design; default on portrait phones):
+  father's side left, mother's side right (each step out one generation older, father's parents above mother's),
+  every person's brothers above and sisters below them, the middle split into siblings | children | spouses with
+  children between their parents. Layout button cycles cross → top-down → left-right. Tested: rule positions,
+  levels/expand, and no-overlap / no-line-through-card for every person × level of generated families.
+  Not in the cross view yet: cousins (uncles' families), in-laws' parents, parents' other partners, grandchildren
+  (re-centre or switch layout). Wide families need panning: about 7 card columns at Extended.
 - Known limits: an ancestor's siblings
   are only drawn on the outer edge of the pedigree (father's father's line, mother's mother's line).

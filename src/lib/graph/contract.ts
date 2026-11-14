@@ -29,10 +29,12 @@ export interface TreeOptions {
   down?: number; // generations below the focus (default 3)
   ghosts?: boolean; // "Add father/mother" placeholders above the focus when parents are missing
   /** 'down' (default): generations are rows, ancestors on top. 'right': generations are columns,
-   * ancestors on the left, siblings stacked; fills a tall phone screen better. */
+   * ancestors on the left, siblings stacked; fills a tall phone screen better. 'cross': father's side
+   * left, mother's side right, brothers above, sisters below, spouses and children beside
+   * (src/lib/crossLayout.ts). */
   orient?: TreeOrient;
 }
-export type TreeOrient = 'down' | 'right';
+export type TreeOrient = 'down' | 'right' | 'cross';
 
 /** Card geometry in layout units (px at zoom 1). Sized to stay readable on a phone at about 0.8 zoom. */
 export const CARD = { w: 164, h: 76, gapX: 20, rowH: 128 } as const;

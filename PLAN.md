@@ -148,7 +148,10 @@
 - [ ] Wider tree cards so "Great-grandfather" fits
 - [x] Tree: the spouse's parents (and their ancestors) in Everyone, "+" on the spouse elsewhere
 - [x] Tree: full-screen button
-- [x] Tree: left-to-right direction for tall phone screens (default on portrait)
+- [x] Tree: left-to-right direction for tall phone screens
+- [x] Tree: cross layout (father's side left, mother's right, brothers up, sisters down, children between
+      siblings and spouses), default on portrait phones
+- [ ] Cross layout: cousins, in-laws' parents, parents' other partners, grandchildren; compact cards
 - [ ] Tree: compact cards for left-to-right so more generations fit across a phone
 - [x] Tree: every in-law's parents (siblings'/children's/cousins' spouses, step-parents)
 - [ ] Tree: inner-side great-aunts/uncles; keep in-law families closer to the person they married

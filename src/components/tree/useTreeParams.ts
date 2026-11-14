@@ -42,9 +42,10 @@ export function useTreeParams(egoId: string, isValid: (id: string) => boolean) {
   // Default level is chosen once per visit: Immediate on phones, Extended on larger screens.
   const [defaultLevel] = useState<TreeLevel>(() =>
     typeof window !== 'undefined' && window.matchMedia?.(PHONE_QUERY).matches ? 'immediate' : 'extended');
-  // Default direction: left to right on tall screens (portrait phones), top to bottom otherwise.
+  // Default layout: the cross (father's side left, mother's right, brothers up, sisters down) on tall
+  // screens (portrait phones), top to bottom otherwise.
   const [defaultOrient] = useState<TreeOrient>(() =>
-    typeof window !== 'undefined' && window.innerHeight > window.innerWidth * 1.2 ? 'right' : 'down');
+    typeof window !== 'undefined' && window.innerHeight > window.innerWidth * 1.2 ? 'cross' : 'down');
 
   // Keep the Set identity stable while the list is unchanged, so the layout isn't recomputed
   // (and running animations aren't interrupted) on unrelated URL changes.
@@ -63,7 +64,7 @@ export function useTreeParams(egoId: string, isValid: (id: string) => boolean) {
       level: l && LEVELS.includes(l) ? l : defaultLevel,
       hl: hl && isValid(hl) && hl !== egoId ? hl : undefined,
       expanded,
-      orient: dir === 'right' || dir === 'down' ? dir : defaultOrient,
+      orient: dir === 'right' || dir === 'down' || dir === 'cross' ? dir : defaultOrient,
     };
   }, [sp, egoId, isValid, defaultLevel, defaultOrient, expanded]);
 
