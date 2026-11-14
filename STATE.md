@@ -107,8 +107,8 @@ _Last updated: 2026-11-13_
 - Cross layout without children (owner's request): children and grandchildren are no longer drawn in the cross
   view; the middle is one column (you & siblings, each spouse below). Regions: Father's side | Siblings & spouses |
   Mother's side. Descendants remain in the top-to-bottom and left-to-right layouts.
-- Cross layout parents' lines (owner's report: they looked wrong): both parents now sit level with the focus, and
-  both lines meet one bracket on the LEFT of the siblings' column (the mother's over the top), so they never end
-  near a spouse and never merge with the children's lines on the right. Tested.
+- Cross layout parents' lines: both parents sit level with the focus; the father's line reaches the siblings via
+  a bracket on the LEFT of their column, the mother's via one on the RIGHT, both straight across at the parent's
+  row (cousins sit level with their own parents, so that row is always free). Nothing goes overhead. Tested.
 - Known limits: an ancestor's siblings
   are only drawn on the outer edge of the pedigree (father's father's line, mother's mother's line).

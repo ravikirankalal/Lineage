@@ -264,7 +264,6 @@ class Cross {
     });
     const focusRow = rowsOf[column.indexOf(f)].start;
     const yRow = (r: number) => (r - focusRow) * RP;
-    const blockTop = yRow(0);
 
     // The focus first so it is the primary card if anyone repeats.
     const order = [column.indexOf(f), ...column.map((_, i) => i).filter((i) => column[i] !== f)];
@@ -295,9 +294,9 @@ class Cross {
 
     // ---- parents: father's side to the left, mother's side to the right --------------------
     // Each side: [parent's column] [cousins column, if any] next to the middle; both parents level with
-    // the focus. Both parents' lines meet ONE bracket on the left of the siblings' column, which then
-    // reaches each sibling; the mother's line gets there over the top of the middle. The right side of
-    // the siblings' column is left to their own children's lines.
+    // the focus. The father's line reaches the siblings through a bracket on the LEFT of their column,
+    // the mother's through one on the RIGHT. Both run straight across at the parent's own row: cousins sit
+    // level with their own parents (the parent's brothers and sisters), so that row is always free.
     const ps = this.parents(f);
     const parentTop = fNode.y;
     const dad = ps.find((p) => g.person(p)?.gender === 'male') ?? (ps.length === 2 ? ps[0] : undefined);
@@ -325,18 +324,14 @@ class Cross {
       if (mom) build(mom, 1);
       else if (this.opts.ghosts) this.ghost('mother', xLast + PC, parentTop);
 
-      const xb = xS - W2 - GX * 0.5; // the parents' bracket, left of the siblings
       const yPar = parentTop + H2;
-      const top = Math.min(blockTop, ...sides.flatMap((sd) => sd.cousins.map((n) => n.y))) - GY / 2;
-      for (const { parent, dir, xPar, cousins } of sides) {
-        const xr = xPar - dir * (W2 + GX * 0.3); // gap on the parent's inner side
-        const direct = dir < 0 && !cousins.length;
+      for (const { parent, dir, xPar } of sides) {
+        const xb = xS + dir * (W2 + GX * 0.5); // this parent's bracket beside the siblings
+        const edgeX = xS + dir * W2; // the siblings' card edge on this side
         for (const id of column) {
           if (!this.isParent(parent, id)) continue;
           const yc = sibNodes.get(id)!.y + H2;
-          const pts: [number, number][] = direct
-            ? [[xPar + W2, yPar], [xb, yPar], [xb, yc], [xS - W2, yc]]
-            : [[xPar - dir * W2, yPar], [xr, yPar], [xr, top], [xb, top], [xb, yc], [xS - W2, yc]];
+          const pts: [number, number][] = [[xPar - dir * W2, yPar], [xb, yPar], [xb, yc], [edgeX, yc]];
           this.edges.push(this.edge(this.descentKind(parent, id), pts, parent, id));
         }
       }

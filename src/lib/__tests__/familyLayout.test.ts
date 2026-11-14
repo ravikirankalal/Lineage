@@ -223,15 +223,23 @@ describe('layoutFamily', () => {
     // A short marriage line joins each couple.
     expect(L.edges.some((e) => e.kind === 'marriage' && [e.from, e.to].sort().join() === 'me,wife')).toBe(true);
     expect(L.edges.some((e) => e.kind === 'marriage' && [e.from, e.to].sort().join() === 'bro,broWife')).toBe(true);
-    // Both parents sit level with me; their lines reach me and my siblings on the LEFT of our column only
-    // (the right side is for our children), and never end at a spouse.
+    // Both parents sit level with me; the father's lines reach me and my siblings on the LEFT of our column,
+    // the mother's on the RIGHT; neither ends at a spouse.
     expect(at('dad').y).toBe(0);
     expect(at('mom').y).toBe(0);
-    for (const par of ['dad', 'mom']) {
+    for (const [par, sign] of [['dad', -1], ['mom', 1]] as const) {
       for (const e of L.edges.filter((x) => x.from === par && ['me', 'bro', 'bro2', 'sis', 'sis2'].includes(x.to))) {
         const end = e.points[e.points.length - 1];
-        expect(end[0], `${par}→${e.to}`).toBeLessThan(0);
+        expect(Math.sign(end[0]), `${par}→${e.to}`).toBe(sign);
         expect(end[1]).toBe(at(e.to).y + CARD.h / 2);
+      }
+    }
+    // Both lines run straight across at the parent's row, even past the cousins: nothing goes overhead.
+    for (const lvl of ['immediate', 'extended', 'everyone'] as const) {
+      const M = lay(G, 'me', lvl, [], false, 'cross');
+      for (const par of ['dad', 'mom']) {
+        const e = M.edges.find((x) => x.from === par && x.to === 'me')!;
+        expect(Math.min(...e.points.map((q) => q[1])), `${lvl} ${par}`).toBeGreaterThanOrEqual(0);
       }
     }
     expect(L.edges.some((e) => (e.from === 'dad' || e.from === 'mom') && (e.to === 'wife' || e.to === 'broWife'))).toBe(false);
