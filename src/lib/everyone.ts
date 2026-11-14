@@ -9,8 +9,8 @@ const GAP = 80; // between stacked trees, above the next tree's titles
 /**
  * The cross layout, and in Everyone more trees stacked below it so everyone in the family is drawn
  * (the owner's design):
- * - Descendants: anyone drawn whose children aren't drawn gets a top-to-bottom tree of their
- *   descendants (their own card in it is a "shown elsewhere" copy).
+ * - No children or later generations (the owner's choice): nobody below the focus's generation is drawn,
+ *   nor anyone reached only through them (a son's wife and her family).
  * - People who married in: anyone drawn whose own parents are recorded but not drawn (a grandmother,
  *   the spouse, a brother's wife, an uncle's wife, …) gets their own cross tree: their parents' sides
  *   and their brothers and sisters. That card is their main card; the one beside their spouse becomes
@@ -25,8 +25,8 @@ export function layoutCrossEveryone(graph: FamilyGraph, opts: TreeOptions): Tree
 
 /**
  * Everyone, in any layout: the layout's own tree, then trees below it until every person in the family
- * is drawn. The cross layout adds descendants and married-in families first (above); the other layouts
- * already draw those, so they only get the last step.
+ * is drawn. The cross layout adds married-in families first (above) and leaves out the generations below
+ * the focus; the other layouts already draw in-laws and descendants, so they only get the last step.
  */
 export function completeEveryone(graph: FamilyGraph, opts: TreeOptions, main: TreeLayout): TreeLayout {
   if (opts.level !== 'everyone' || !main.nodes.length) return main;
@@ -42,30 +42,26 @@ export function completeEveryone(graph: FamilyGraph, opts: TreeOptions, main: Tr
   };
   note(main);
   const familyDone = new Set<string>();
-  const descDone = new Set<string>();
   const name = (id: string) => {
     const p = graph.person(id);
     return p?.nickname || p?.firstName || 'Their';
   };
 
-  // Everyone in the family, closest first (breadth-first from the focus), for the last step below.
-  const order: string[] = [opts.focusId];
-  const seen = new Set(order);
-  for (let k = 0; k < order.length; k++) {
-    for (const m of graph.familyNeighbors(order[k])) {
-      if (seen.has(m.id) || !graph.person(m.id)) continue;
-      seen.add(m.id);
-      order.push(m.id);
+  const kinOf = kinFrom(graph, opts.focusId);
+  const kinLabel = (id: string) => kinOf(id)?.label;
+  const order = everyoneIds(graph, opts.focusId, cross, kinOf);
+  const allowed = new Set(order);
+  /** Add an extra tree. Cross: without anyone below the focus's generation (a parent's other children). */
+  const add = (L: TreeLayout, root: string) => {
+    if (cross) {
+      const gone = new Set(L.nodes.filter((n) => n.personId && !allowed.has(n.personId)).map((n) => n.personId!));
+      if (gone.size) {
+        L.nodes = L.nodes.filter((n) => !n.personId || !gone.has(n.personId));
+        L.edges = L.edges.filter((e) => !gone.has(e.from) && !gone.has(e.to));
+      }
     }
-  }
-  let labels: ((id: string) => string | undefined) | undefined;
-  const kinLabel = (id: string) => {
-    if (!labels) {
-      const aAnc = graph.ancestors(opts.focusId);
-      const tree = familyPathTree(graph, opts.focusId);
-      labels = (x) => kinship(graph, opts.focusId, x, aAnc, pathInTree(graph, tree, opts.focusId, x) ?? null)?.label;
-    }
-    return labels(id);
+    parts.push({ layout: L, root, family: true });
+    note(L);
   };
 
   let i = 0;
@@ -76,12 +72,11 @@ export function completeEveryone(graph: FamilyGraph, opts: TreeOptions, main: Tr
     // every kind of link. Their tree is scanned like the others. Each round draws at least that person.
     const x = order.find((id) => !shown.has(id));
     if (!x) break;
-    const L = layoutFamilyV2(graph, { focusId: x, level: 'everyone', expanded: opts.expanded, up: 1, down: 1, noInLaws: true, orient: opts.orient === 'right' ? 'right' : 'down' });
+    const L = layoutFamilyV2(graph, { focusId: x, level: 'everyone', expanded: opts.expanded, up: 1, down: cross ? 0 : 1, noInLaws: true, orient: opts.orient === 'right' ? 'right' : 'down' });
     for (const n of L.nodes) if (n.role === 'focus') n.role = 'relative';
     const kin = kinLabel(x);
     L.regions = [{ side: 'middle', x0: L.bounds.minX - SIDE, x1: L.bounds.maxX + SIDE, columns: [], label: kin ? `${name(x)} · ${kin}` : `${name(x)}’s family` }];
-    parts.push({ layout: L, root: x, family: true });
-    note(L);
+    add(L, x);
   }
   if (parts.length === 1) return main;
   return stack(parts);
@@ -89,16 +84,7 @@ export function completeEveryone(graph: FamilyGraph, opts: TreeOptions, main: Tr
   function scan(i: number) {
     if (!cross) return;
     const ids = [...new Set(parts[i].layout.nodes.filter((n) => n.personId && !n.dupOf).map((n) => n.personId!))];
-    // Descendants first (closest to the tree just drawn), then the families of those who married in.
-    for (const id of ids) {
-      if (descDone.has(id) || !graph.childrenOf(id).some((c) => !shown.has(c.id))) continue;
-      descDone.add(id);
-      const L = layoutFamilyV2(graph, { focusId: id, level: 'everyone', expanded: opts.expanded, up: 0, noSiblings: true, noInLaws: true, orient: 'down' });
-      for (const n of L.nodes) if (n.role === 'focus') n.role = 'relative';
-      L.regions = [{ side: 'middle', x0: L.bounds.minX - SIDE, x1: L.bounds.maxX + SIDE, columns: [], label: `${name(id)}’s descendants` }];
-      parts.push({ layout: L, root: id, family: false });
-      note(L);
-    }
+    // The families of those who married in.
     for (const id of ids) {
       if (familyDone.has(id) || withParents.has(id) || !graph.bloodParents(id).length) continue;
       familyDone.add(id);
@@ -109,8 +95,7 @@ export function completeEveryone(graph: FamilyGraph, opts: TreeOptions, main: Tr
         ...r,
         label: r.side === 'father' ? `${who}’s father’s side` : r.side === 'mother' ? `${who}’s mother’s side` : `${who}’s family`,
       }));
-      parts.push({ layout: L, root: id, family: true });
-      note(L);
+      add(L, id);
     }
   }
 }
@@ -180,4 +165,35 @@ function stack(parts: { layout: TreeLayout; root?: string; family: boolean }[]):
     maxY = Math.max(maxY, y);
   }
   return { nodes, edges, bounds: { minX, maxX, minY, maxY }, regions };
+}
+
+/** Kinship from `ego`'s view, from ONE path search. */
+function kinFrom(graph: FamilyGraph, ego: string) {
+  let get: ((id: string) => ReturnType<typeof kinship>) | undefined;
+  return (id: string) => {
+    if (!get) {
+      const aAnc = graph.ancestors(ego);
+      const tree = familyPathTree(graph, ego);
+      get = (x) => kinship(graph, ego, x, aAnc, pathInTree(graph, tree, ego, x) ?? null);
+    }
+    return get(id);
+  };
+}
+
+/**
+ * Who Everyone draws, closest first (breadth-first from the focus over family links): the whole family,
+ * except in the cross layout nobody below the focus's generation, nor anyone reached only through them.
+ */
+export function everyoneIds(graph: FamilyGraph, focus: string, cross: boolean, kinOf = kinFrom(graph, focus)): string[] {
+  const order: string[] = [focus];
+  const seen = new Set(order);
+  for (let k = 0; k < order.length; k++) {
+    for (const m of graph.familyNeighbors(order[k])) {
+      if (seen.has(m.id) || !graph.person(m.id)) continue;
+      seen.add(m.id);
+      if (cross && (kinOf(m.id)?.generation ?? 0) < 0) continue;
+      order.push(m.id);
+    }
+  }
+  return order;
 }

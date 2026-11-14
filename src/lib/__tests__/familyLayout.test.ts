@@ -5,6 +5,7 @@ import { emptyPerson } from '../person';
 import { layoutFamily } from '../tree';
 import type { Gender, Person, Relationship, RelType } from '../types';
 import { generatedFamily } from './families';
+import { everyoneIds } from '../everyone';
 
 function family() {
   const people = new Map<string, Person>();
@@ -511,9 +512,14 @@ describe('layoutFamily', () => {
   it('Everyone draws every person in the family, in every layout', () => {
     for (const seed of [1, 3, 7, 11]) {
       const G = generatedFamily(150, seed);
-      const want = [...G.familyComponent('p40')].filter((id) => G.person(id));
       for (const orient of ['cross', 'down', 'right'] as const) {
+        // Cross: the whole family except the generations below the focus (no children in that view).
+        const want = orient === 'cross' ? everyoneIds(G, 'p40', true) : [...G.familyComponent('p40')].filter((id) => G.person(id));
         const L = lay(G, 'p40', 'everyone', [], false, orient);
+        if (orient === 'cross') {
+          const ok = new Set(want);
+          for (const n of L.nodes) if (n.personId) expect(ok.has(n.personId), `seed ${seed} cross draws ${n.personId}`).toBe(true);
+        }
         const label = `seed ${seed} ${orient}`;
         checkGeometry(L, label);
         expect(new Set(L.nodes.map((n) => n.key)).size, label).toBe(L.nodes.length);
@@ -525,7 +531,7 @@ describe('layoutFamily', () => {
     }
   });
 
-  it('cross layout, Everyone: descendants and the families of people who married in, in trees below', () => {
+  it('cross layout, Everyone: the families of people who married in, in trees below; no descendants', () => {
     const f = family();
     const people: [string, Gender, string][] = [
       ['me', 'male', '1980'], ['wife', 'female', '1982'], ['wifeDad', 'male', '1950'], ['wifeMom', 'female', '1952'], ['wifeBro', 'male', '1985'],
@@ -554,9 +560,13 @@ describe('layoutFamily', () => {
     checkGeometry(L, 'everyone trees');
     expect(new Set(L.nodes.map((n) => n.key)).size).toBe(L.nodes.length); // keys stay unique
     const ids = new Set(L.nodes.map((n) => n.personId));
-    for (const [id] of people) expect(ids.has(id), id).toBe(true); // everyone is drawn
+    // No children or later generations in the cross view, nor anyone reached only through them.
+    const below = ['son', 'grandkid', 'sonWife', 'niece', 'cousinKid'];
+    for (const id of below) expect(ids.has(id), id).toBe(false);
+    const others = people.map(([id]) => id).filter((id) => !below.includes(id));
+    for (const id of others) expect(ids.has(id), id).toBe(true); // everyone else is drawn
     const mains = (id: string) => L.nodes.filter((n) => n.personId === id && !n.dupOf);
-    for (const [id] of people) expect(mains(id), `${id}: one main card`).toHaveLength(1);
+    for (const id of others) expect(mains(id), `${id}: one main card`).toHaveLength(1);
     const keyOf = new Map(L.nodes.map((n) => [n.key, n]));
     for (const n of L.nodes) if (n.dupOf) expect(keyOf.get(n.dupOf)?.personId, n.key).toBe(n.personId);
     // The wife's main card is in her own family's tree (with her parents), below the main tree; beside me a copy.
@@ -566,11 +576,10 @@ describe('layoutFamily', () => {
     expect(L.edges.some((e) => e.from === 'wifeDad' && e.to === 'wife')).toBe(true);
     expect(L.nodes.some((n) => n.personId === 'wife' && n.dupOf === wifeMain.key)).toBe(true);
     // Someone who married in with no recorded parents keeps a single card (no copy).
-    for (const id of ['uncleWife', 'sonWife']) expect(L.nodes.filter((n) => n.personId === id), id).toHaveLength(1);
-    // (The sister's husband is also the niece's father, so her descendants' tree has a copy of him.)
+    for (const id of ['uncleWife', 'sisHusband']) expect(L.nodes.filter((n) => n.personId === id), id).toHaveLength(1);
     // Titled trees: the main regions plus descendants and married-in families.
     const labels = (L.regions ?? []).map((r) => r.label).filter(Boolean);
-    expect(labels).toContain('me’s descendants');
+    expect(labels.some((l) => l!.includes('descendants'))).toBe(false);
     expect(labels).toContain('wife’s family');
     expect(labels).toContain('dgm’s family');
     expect(L.nodes.filter((n) => n.role === 'focus').map((n) => n.personId)).toEqual(['me']);
