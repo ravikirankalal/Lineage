@@ -129,9 +129,8 @@ _Last updated: 2026-11-13_
   explicit full/untyped sibling link, as kinship already does), e.g. a great-uncle added as "brother of".
   Ancestors too: when only one great-grandparent is recorded as the parent and the other is just their spouse
   (sitting right below), the line still starts from the middle of their marriage line, centred like a couple. Tested.
-- Cross layout, Everyone (owner's request): below the main tree, a descendants tree for each person drawn whose
-  children aren't (e.g. your children and grandchildren, a sister's children, a cousin's children, a great-uncle's
-  line) and a tree for each person who married in and has recorded parents (grandmothers, your spouse, siblings'
+- Cross layout, Everyone (owner's request): no descendants trees (removed by the owner; nobody below your
+  generation is drawn in the cross view, nor anyone reached only through them). Below the main tree, a tree for each person who married in and has recorded parents (grandmothers, your spouse, siblings'
   and uncles' spouses), each with its own titled band. Their main card is there; beside the spouse a copy.
   Tested (every person drawn with exactly one main card, unique keys, geometry, titles); screenshot-checked.
 - Cross layout: every shown ancestor's brothers and sisters bring their descendants into the main tree, one

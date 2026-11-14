@@ -5,7 +5,7 @@ import { emptyPerson } from '../person';
 import { layoutFamily } from '../tree';
 import type { Gender, Person, Relationship, RelType } from '../types';
 
-function graph() {
+function graph(inLaws = false) {
   const people = new Map<string, Person>();
   const rels: Relationship[] = [];
   let n = 0;
@@ -15,6 +15,7 @@ function graph() {
   add('sis', 'female', '1982'); add('wife', 'female', '1981'); add('son', 'male', '2010'); add('gson', 'male', '2035');
   rel('gf', 'dad', 'parent'); rel('dad', 'me', 'parent'); rel('mom', 'me', 'parent'); rel('dad', 'sis', 'parent'); rel('mom', 'sis', 'parent');
   rel('me', 'wife', 'spouse'); rel('me', 'son', 'parent'); rel('wife', 'son', 'parent'); rel('son', 'gson', 'parent');
+  if (inLaws) { add('wifeDad', 'male', '1950'); add('wifeMom', 'female', '1952'); rel('wifeDad', 'wife', 'parent'); rel('wifeMom', 'wife', 'parent'); }
   return new FamilyGraph(people, rels);
 }
 
@@ -71,8 +72,9 @@ describe('generation bands', () => {
   });
 
   it('gives each extra Everyone tree its own titled band, stacked below the main one', () => {
-    const L = layoutFamily(graph(), { focusId: 'me', level: 'everyone', expanded: new Set(), orient: 'cross' });
+    const L = layoutFamily(graph(true), { focusId: 'me', level: 'everyone', expanded: new Set(), orient: 'cross' });
     const { bands } = generationBands(L, 'cross');
+    expect(bands.map((b) => b.label)).toContain('wife’s family');
     expect(bands.slice(0, 3).map((b) => b.label)).toEqual(['Father’s side', 'Your generation', 'Mother’s side']);
     expect(bands.length).toBeGreaterThan(3);
     expect(new Set(bands.map((b) => b.key)).size).toBe(bands.length);

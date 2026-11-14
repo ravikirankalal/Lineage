@@ -155,8 +155,8 @@ Read this before changing code. Append new learnings at the bottom.
 - (2026-11-14) **Cross layout lineage rule** (owner): above the focus's parents only the father's line continues on
   each side; wives married in (grandmothers etc.) sit below their husband, without their own ancestors.
 - (2026-11-14) **Cross Everyone shows everyone** (owner): the main cross tree stays as above, and BELOW it
-  `everyone.ts` stacks more trees: a top-to-bottom descendants tree for anyone drawn whose children aren't,
-  and a cross tree for anyone who married in AND has recorded parents (grandmothers, spouse, in-laws). That tree
+  `everyone.ts` stacks more trees: (descendants trees were REMOVED at the owner's request: the cross view shows
+  nobody below the focus's generation, nor anyone reached only through them) a cross tree for anyone who married in AND has recorded parents (grandmothers, spouse, in-laws). That tree
   holds their main card; the card beside their spouse becomes the "shown elsewhere" copy. Married-in people
   without recorded parents keep ONE card (no copy). Step-families aren't chased (owner didn't ask). Keys are
   prefixed `t<i>/` per extra tree. Other levels are unchanged.
