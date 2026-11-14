@@ -172,6 +172,9 @@ Read this before changing code. Append new learnings at the bottom.
   Line ancestors' children always show. Collapsed people come back as `TreeLayout.hidden`; Everyone's
   catch-all (`everyoneIds` skip) leaves them and anyone reached only through them out. Descendants of the
   focus's generation are NOT handled yet (owner: later).
+- (2026-11-14) Everyone `stack()` primary card: focus first, then the first card with a parent line into it (birth
+  card) in ANY tree, then a married-in tree's root, then the first main card. (A grandmother's birth card can be in
+  her brother's married-in tree, so she gets no tree of her own.)
 - (2026-11-14) **Trees and bands aligned** (owner): `stack()` puts every extra tree's own person at x = 0 (the
   main focus's column), so generation columns line up across trees; every band reaches the same far left/right
   (father's side / only band from the left edge, mother's side / only band to the right edge); in top-to-bottom

@@ -553,6 +553,27 @@ describe('layoutFamily', () => {
     expect(L.edges.some((e) => e.from === 'mgm' && e.to === 'mom')).toBe(true); // still her daughter's line
   });
 
+  it("Everyone: a grandmother's birth card is main even when it is in her brother's family tree", () => {
+    // My mother's mother's brother married my father's sister: his family's tree (with my grandmother as his
+    // sister, under their parents) comes first, so she gets no tree of her own.
+    const f = family();
+    for (const [id, gd, y] of [['me', 'male', '1980'], ['dad', 'male', '1950'], ['mom', 'female', '1952'], ['dgf', 'male', '1920'], ['dgm', 'female', '1922'],
+      ['mgf', 'male', '1918'], ['mgm', 'female', '1924'], ['xf', 'male', '1890'], ['xm', 'female', '1892'], ['mgmBro', 'male', '1926'], ['aunt', 'female', '1955']] as const) f.add(id, gd, y);
+    const kids = (a: string, b: string, ...cs: string[]) => { f.rel(a, b, 'spouse'); for (const c of cs) { f.rel(a, c, 'parent'); f.rel(b, c, 'parent'); } };
+    kids('dad', 'mom', 'me'); kids('dgf', 'dgm', 'dad', 'aunt'); kids('mgf', 'mgm', 'mom'); kids('xf', 'xm', 'mgm', 'mgmBro');
+    f.rel('mgmBro', 'aunt', 'spouse');
+    const L = lay(f.graph(), 'me', 'everyone', [], false, 'cross');
+    checkGeometry(L, 'grandmother in her brother\'s tree');
+    const cards = L.nodes.filter((n) => n.personId === 'mgm');
+    const main = cards.find((n) => !n.dupOf)!;
+    expect(main.key.includes('/'), 'main card in a tree below').toBe(true);
+    expect(L.edges.some((e) => e.from === 'xf' && e.to === 'mgm')).toBe(true);
+    const mgf = L.nodes.find((n) => n.personId === 'mgf' && !n.dupOf)!;
+    const copy = cards.find((n) => n.x === mgf.x && n.y === mgf.y + 100)!;
+    expect(copy.dupOf).toBe(main.key);
+    expect(L.nodes.filter((n) => n.personId === 'me' && !n.dupOf)[0].key.includes('/')).toBe(false); // I stay main in the main tree
+  });
+
   it('Everyone draws every person in the family, in every layout', () => {
     for (const seed of [1, 3, 7, 11]) {
       const G = generatedFamily(150, seed);

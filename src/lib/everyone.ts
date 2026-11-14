@@ -117,6 +117,7 @@ function stack(parts: { layout: TreeLayout; root?: string; family: boolean }[]):
   const regions: (TreeRegion & { part: number })[] = [];
   let bottom = -Infinity;
   const familyRoot = new Map<string, TreeNode>();
+  const birth = new Set<string>(); // keys of cards joined to the person's parents
 
   parts.forEach((part, i) => {
     const L = part.layout;
@@ -132,6 +133,9 @@ function stack(parts: { layout: TreeLayout; root?: string; family: boolean }[]):
       nodes.push(m);
     }
     for (const e of L.edges) edges.push({ ...e, key: pre + e.key, points: e.points.map(([x, y]) => [x + dx, y + dy]) });
+    // Birth cards in this tree: a person's main card here when a line from a parent comes into them.
+    const fromParents = new Set(L.edges.filter((e) => e.kind === 'descent' || e.kind === 'step').map((e) => e.to));
+    for (const n of L.nodes) if (n.personId && !n.dupOf && fromParents.has(n.personId)) birth.add(pre + n.key);
     const y0 = L.bounds.minY + dy - REGION_ROOM;
     const y1 = L.bounds.maxY + dy + SIDE;
     for (const r of L.regions ?? []) {
@@ -140,9 +144,14 @@ function stack(parts: { layout: TreeLayout; root?: string; family: boolean }[]):
     bottom = Math.max(bottom, y1);
   });
 
-  // One main card per person: someone who married in has it in their own family's tree; everyone else
-  // keeps the first main card drawn. Every other card of theirs is a "shown elsewhere" copy.
-  const primary = new Map<string, TreeNode>(familyRoot);
+  // One main card per person, the birth card when there is one (the owner's rule): the first card joined to
+  // the person's parents (in their own family's tree, or wherever their parents are drawn); otherwise the
+  // first main card drawn. Every other card of theirs is a "shown elsewhere" copy.
+  const primary = new Map<string, TreeNode>();
+  const focus = nodes.find((n) => n.role === 'focus' && !n.dupOf); // the focus always stays main in the main tree
+  if (focus?.personId) primary.set(focus.personId, focus);
+  for (const n of nodes) if (n.personId && !n.dupOf && birth.has(n.key) && !primary.has(n.personId)) primary.set(n.personId, n);
+  for (const [id, n] of familyRoot) if (!primary.has(id)) primary.set(id, n);
   for (const n of nodes) if (n.personId && !n.dupOf && !primary.has(n.personId)) primary.set(n.personId, n);
   for (const n of nodes) {
     if (!n.personId) continue;
