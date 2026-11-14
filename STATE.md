@@ -141,6 +141,8 @@ _Last updated: 2026-11-13_
 - Cross layout: each ancestor's brother or sister with children (uncles, aunts, great-uncles, their children…)
   has a +/- button; their children start collapsed at every level and open on tap ("Show/Hide Name's
   children"). Collapsed families stay out of Everyone's extra trees too. Tested (unit + browser click).
+- Cross layout: a grandmother who is also a blood relative (e.g. the other grandfather's sister) has her main
+  card in her birth family; the card below her husband is the copy. Tested.
 - Everyone's stacked trees are aligned: each tree's own person on the main focus's column, every band out to
   the same left and right edges (tested; screenshot-checked).
 - Everyone draws every person in the family in all three layouts: anyone still missing after the layout (and,

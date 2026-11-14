@@ -531,6 +531,28 @@ describe('layoutFamily', () => {
     }
   });
 
+  it('cross layout: a grandmother who is also a blood relative has her main card in her birth family', () => {
+    // My mother's mother is my father's father's sister: drawn beside her brother and below her husband.
+    const f = family();
+    for (const [id, gd, y] of [['me', 'male', '1980'], ['dad', 'male', '1950'], ['mom', 'female', '1952'], ['dgf', 'male', '1920'], ['dgm', 'female', '1922'],
+      ['mgf', 'male', '1918'], ['mgm', 'female', '1924'], ['ggf', 'male', '1890'], ['ggm', 'female', '1892']] as const) f.add(id, gd, y);
+    const kids = (a: string, b: string, ...cs: string[]) => { f.rel(a, b, 'spouse'); for (const c of cs) { f.rel(a, c, 'parent'); f.rel(b, c, 'parent'); } };
+    kids('dad', 'mom', 'me'); kids('dgf', 'dgm', 'dad'); kids('mgf', 'mgm', 'mom'); kids('ggf', 'ggm', 'dgf', 'mgm');
+    const L = lay(f.graph(), 'me', 'everyone', [], false, 'cross');
+    checkGeometry(L, 'related grandmother');
+    const cards = L.nodes.filter((n) => n.personId === 'mgm');
+    expect(cards).toHaveLength(2);
+    const main = cards.find((n) => !n.dupOf)!;
+    const copy = cards.find((n) => n.dupOf)!;
+    const dgf = L.nodes.find((n) => n.personId === 'dgf' && !n.dupOf)!;
+    const mgf = L.nodes.find((n) => n.personId === 'mgf' && !n.dupOf)!;
+    expect(main.x).toBe(dgf.x); // beside her brother, under their parents
+    expect(L.edges.some((e) => e.from === 'ggf' && e.to === 'mgm')).toBe(true);
+    expect([copy.x, copy.y]).toEqual([mgf.x, mgf.y + 100]); // the copy right below her husband
+    expect(copy.dupOf).toBe(main.key);
+    expect(L.edges.some((e) => e.from === 'mgm' && e.to === 'mom')).toBe(true); // still her daughter's line
+  });
+
   it('Everyone draws every person in the family, in every layout', () => {
     for (const seed of [1, 3, 7, 11]) {
       const G = generatedFamily(150, seed);
