@@ -11,6 +11,10 @@ export interface GenBand {
   label: string;
   /** Columns (left-to-right and cross layouts) or rows (top-to-bottom). */
   vertical: boolean;
+  /** Cross layout: a whole region (father's side, siblings & descendants, mother's side) with a title
+   * per card column. `gen` is then 1 / 0 / −1 for the colour only. */
+  region?: 'father' | 'middle' | 'mother';
+  columns?: { x: number; label: string }[];
 }
 
 /** "Parents", "Grandparents", "2× great-grandparents", "Your generation", "Children", … */
@@ -25,6 +29,12 @@ export function generationLabel(gen: number, focusName?: string | null): string 
 }
 
 const LABEL_ROOM = 44; // above the tree, for column labels
+const REGION_ROOM = 64; // above the cross layout: region title + column titles
+const REGION_LABEL: Record<'father' | 'middle' | 'mother', string> = {
+  father: 'Father’s side',
+  middle: 'Siblings & descendants',
+  mother: 'Mother’s side',
+};
 const SIDE = 20;
 
 /**
@@ -36,6 +46,24 @@ const SIDE = 20;
 export function generationBands(layout: TreeLayout, orient: TreeOrient, focusName?: string | null): { bands: GenBand[]; bounds: TreeLayout['bounds'] } {
   const { bounds } = layout;
   if (!layout.nodes.length) return { bands: [], bounds };
+  if (orient === 'cross' && layout.regions?.length) {
+    // Three regions side by side instead of one stripe per generation.
+    const y0 = bounds.minY - REGION_ROOM;
+    const y1 = bounds.maxY + SIDE;
+    const bands = layout.regions.map((r): GenBand => ({
+      key: r.side, gen: r.side === 'father' ? 1 : r.side === 'middle' ? 0 : -1,
+      x0: r.x0, x1: r.x1, y0, y1, label: REGION_LABEL[r.side], vertical: true, region: r.side, columns: r.columns,
+    }));
+    return {
+      bands,
+      bounds: {
+        minX: Math.min(bounds.minX, ...bands.map((b) => b.x0)),
+        maxX: Math.max(bounds.maxX, ...bands.map((b) => b.x1)),
+        minY: y0,
+        maxY: y1,
+      },
+    };
+  }
   const vertical = orient !== 'down';
   const pos = (n: TreeLayout['nodes'][number]) => Math.round(vertical ? n.x : n.y + CARD.h / 2);
   // Generation per row/column position (the most common one there).

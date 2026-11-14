@@ -440,10 +440,28 @@ const BAND_TINT = [
   'bg-emerald-100/40 dark:bg-emerald-900/15',
   'bg-sky-100/45 dark:bg-sky-900/15',
 ];
+const REGION_TINT = {
+  father: 'bg-sky-100/50 dark:bg-sky-900/15',
+  middle: 'bg-stone-200/45 dark:bg-stone-800/45',
+  mother: 'bg-rose-100/45 dark:bg-rose-900/15',
+};
 const GenerationBands = memo(function GenerationBands({ bands }: { bands: GenBand[] }) {
   return (
     <div className="tree-bands pointer-events-none absolute left-0 top-0" aria-hidden>
-      {bands.map((b) => (
+      {bands.map((b) => b.region ? (
+        <div key={b.key} className={`absolute ${REGION_TINT[b.region]}`}
+          style={{ left: b.x0, top: b.y0, width: b.x1 - b.x0, height: b.y1 - b.y0 }}>
+          <span className="absolute left-0 right-0 top-2.5 whitespace-nowrap text-center text-[13px] font-bold uppercase tracking-wide text-stone-600 dark:text-stone-300">
+            {b.label}
+          </span>
+          {b.columns?.map((c) => (
+            <span key={c.x} className="absolute top-8 w-[164px] -translate-x-1/2 overflow-hidden text-ellipsis whitespace-nowrap text-center text-[11px] font-semibold uppercase tracking-wide text-stone-500/90 dark:text-stone-400/80"
+              style={{ left: c.x - b.x0 }}>
+              {c.label}
+            </span>
+          ))}
+        </div>
+      ) : (
         <div key={b.key} className={`absolute ${BAND_TINT[((b.gen % 4) + 4) % 4]}`}
           style={{ left: b.x0, top: b.y0, width: b.x1 - b.x0, height: b.y1 - b.y0 }}>
           <span className={`absolute whitespace-nowrap text-[11px] font-semibold uppercase tracking-wide text-stone-500/90 dark:text-stone-400/80 ${

@@ -1,4 +1,5 @@
-import { CARD, type TreeEdge, type TreeLayout, type TreeNode, type TreeOptions } from './graph/contract';
+import { CARD, type TreeEdge, type TreeLayout, type TreeNode, type TreeOptions, type TreeRegion } from './graph/contract';
+import { generationLabel } from './generationBands';
 import type { FamilyGraph } from './kinship';
 
 /**
@@ -73,6 +74,7 @@ function absorb(into: Block, b: Block) {
 class Cross {
   readonly nodes: TreeNode[] = [];
   readonly edges: TreeEdge[] = [];
+  readonly regions: TreeRegion[] = [];
   private placed = new Map<string, string>();
   private byId = new Map<string, TreeNode>();
   private dupN = 0;
@@ -416,6 +418,31 @@ class Cross {
 
     // An expanded card keeps its control so it can be collapsed again.
     for (const n of this.nodes) if (n.expanded && !n.dupOf && !n.expandable) n.expandable = { down: true };
+
+    // ---- regions for the background: father's side | siblings & descendants | mother's side ----
+    const leftEdge = xS - PC / 2;
+    const rightEdge = xLast + PC / 2;
+    const sideColumns = (keep: (x: number) => boolean) => {
+      const gens = new Map<number, Map<number, number>>();
+      for (const n of this.nodes) {
+        if (!keep(n.x)) continue;
+        const m = gens.get(n.x) ?? new Map<number, number>();
+        m.set(n.generation, (m.get(n.generation) ?? 0) + 1);
+        gens.set(n.x, m);
+      }
+      return [...gens].sort((a, b) => a[0] - b[0]).map(([x, m]) => {
+        const gen = [...m].sort((a, b) => b[1] - a[1])[0][0];
+        return { x, label: gen === 0 ? 'Cousins' : generationLabel(gen) };
+      });
+    };
+    const fatherCols = sideColumns((x) => x < leftEdge);
+    const motherCols = sideColumns((x) => x > rightEdge);
+    const middleCols: { x: number; label: string }[] = [{ x: xS, label: fNode.personId && this.g.person(f)?.isMe ? 'You & siblings' : 'Siblings' }];
+    for (let d = 1; d <= D; d++) middleCols.push({ x: xCol(d), label: generationLabel(-d) });
+    if (anySpouse) middleCols.push({ x: xP, label: 'Spouses' });
+    if (fatherCols.length) this.regions.push({ side: 'father', x0: -Infinity, x1: leftEdge, columns: fatherCols });
+    this.regions.push({ side: 'middle', x0: leftEdge, x1: rightEdge, columns: middleCols });
+    if (motherCols.length) this.regions.push({ side: 'mother', x0: rightEdge, x1: Infinity, columns: motherCols });
   }
 }
 
@@ -442,5 +469,7 @@ export function layoutCross(graph: FamilyGraph, opts: TreeOptions): TreeLayout {
     minY = Math.min(minY, y);
     maxY = Math.max(maxY, y);
   }
-  return { nodes, edges: c.edges, bounds: { minX, maxX, minY, maxY } };
+  // Open-ended regions reach the edge of the tree.
+  const regions = c.regions.map((r) => ({ ...r, x0: Math.max(r.x0, minX - 20), x1: Math.min(r.x1, maxX + 20) }));
+  return { nodes, edges: c.edges, bounds: { minX, maxX, minY, maxY }, regions };
 }
