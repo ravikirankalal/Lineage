@@ -23,7 +23,7 @@ export interface FindCandidate { person: Person; label?: string }
  * It never computes kinship itself: the caller passes labels for the whole tree in `cardInfo`.
  */
 export function FamilyTree({
-  layout, focusId, centreId, centreLabel, cardInfo, path, panTo, level, onLevel, orient, onOrient, candidates, onFind,
+  layout, focusId, centreId, centreLabel, cardInfo, path, pathEdges, panTo, level, onLevel, orient, onOrient, candidates, onFind,
   onTap, onToggle, onAddParent, onRecentre, banner, exportTitle,
 }: {
   layout: TreeLayout;
@@ -34,6 +34,8 @@ export function FamilyTree({
   cardInfo: (n: TreeNode) => CardInfo | undefined;
   /** Person ids on the highlighted "how are we related" path. */
   path?: ReadonlySet<string>;
+  /** Keys of the lines along that path (pathEdgeKeys). */
+  pathEdges?: ReadonlySet<string>;
   /** Animate to this person whenever the nonce changes (Find, Show in tree). */
   panTo?: { id: string; nonce: number };
   level: TreeLevel;
@@ -300,7 +302,7 @@ export function FamilyTree({
     >
       <div ref={world} className="tree-world absolute left-0 top-0 origin-top-left will-change-transform">
         <GenerationBands bands={bands} />
-        <TreeEdges edges={layout.edges} path={path} />
+        <TreeEdges edges={layout.edges} path={path} lit={pathEdges} />
         {nodes.map((n) => {
           if (n.ghost) return onAddParent ? <GhostCard key={n.key} node={n} onAdd={onAddParent} /> : null;
           const info = cardInfo(n);
