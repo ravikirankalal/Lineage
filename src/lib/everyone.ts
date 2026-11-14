@@ -106,13 +106,16 @@ export function completeEveryone(graph: FamilyGraph, opts: TreeOptions, main: Tr
   }
 }
 
-/** Stack the trees top to bottom (each extra tree centred under the card it grows from), one set of keys. */
+/**
+ * Stack the trees top to bottom, one set of keys. Every tree shares the main tree's centre line (its own
+ * focus card at x = 0, like the main focus), and every band reaches the same left and right edges, so the
+ * trees and their bands line up (the owner's request).
+ */
 function stack(parts: { layout: TreeLayout; root?: string; family: boolean }[]): TreeLayout {
   const nodes: TreeNode[] = [];
   const edges: TreeLayout['edges'] = [];
-  const regions: TreeRegion[] = [];
+  const regions: (TreeRegion & { part: number })[] = [];
   let bottom = -Infinity;
-  const anchorX = new Map<string, number>(); // first card of each person, for lining up the next tree
   const familyRoot = new Map<string, TreeNode>();
 
   parts.forEach((part, i) => {
@@ -121,11 +124,10 @@ function stack(parts: { layout: TreeLayout; root?: string; family: boolean }[]):
     const top = L.bounds.minY - (L.regions?.length ? REGION_ROOM : 0);
     const dy = i === 0 ? 0 : bottom + GAP - top;
     const rootNode = part.root ? L.nodes.find((n) => n.personId === part.root && !n.dupOf) : undefined;
-    const dx = i === 0 || !rootNode ? 0 : (anchorX.get(part.root!) ?? 0) - rootNode.x;
+    const dx = i === 0 || !rootNode ? 0 : -rootNode.x;
     for (const n of L.nodes) {
       const m: TreeNode = { ...n, key: pre + n.key, x: n.x + dx, y: n.y + dy };
       if (n.dupOf) m.dupOf = pre + n.dupOf;
-      if (m.personId && !anchorX.has(m.personId)) anchorX.set(m.personId, m.x);
       if (part.family && n === rootNode) familyRoot.set(n.personId!, m);
       nodes.push(m);
     }
@@ -133,7 +135,7 @@ function stack(parts: { layout: TreeLayout; root?: string; family: boolean }[]):
     const y0 = L.bounds.minY + dy - REGION_ROOM;
     const y1 = L.bounds.maxY + dy + SIDE;
     for (const r of L.regions ?? []) {
-      regions.push({ ...r, x0: r.x0 + dx, x1: r.x1 + dx, columns: r.columns.map((c) => ({ ...c, x: c.x + dx })), y0, y1 });
+      regions.push({ ...r, x0: r.x0 + dx, x1: r.x1 + dx, columns: r.columns.map((c) => ({ ...c, x: c.x + dx })), y0, y1, part: i });
     }
     bottom = Math.max(bottom, y1);
   });
@@ -170,7 +172,19 @@ function stack(parts: { layout: TreeLayout; root?: string; family: boolean }[]):
     minY = Math.min(minY, y);
     maxY = Math.max(maxY, y);
   }
-  return { nodes, edges, bounds: { minX, maxX, minY, maxY }, regions };
+  // Every band out to the same edges: the father's side (or a tree's only band) from the far left, the
+  // mother's side (or the only band) to the far right.
+  const left = Math.min(minX - SIDE, ...regions.map((r) => r.x0).filter(Number.isFinite));
+  const right = Math.max(maxX + SIDE, ...regions.map((r) => r.x1).filter(Number.isFinite));
+  const out: TreeRegion[] = regions.map(({ part, ...r }) => {
+    const mine = regions.filter((q) => q.part === part);
+    const hasFather = mine.some((q) => q.side === 'father');
+    const hasMother = mine.some((q) => q.side === 'mother');
+    if (r.side === 'father' || (r.side === 'middle' && !hasFather)) r.x0 = left;
+    if (r.side === 'mother' || (r.side === 'middle' && !hasMother)) r.x1 = right;
+    return r;
+  });
+  return { nodes, edges, bounds: { minX: Math.min(minX, left), maxX: Math.max(maxX, right), minY, maxY }, regions: out };
 }
 
 /** Kinship from `ego`'s view, from ONE path search. */
