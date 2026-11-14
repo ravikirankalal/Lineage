@@ -127,6 +127,8 @@ _Last updated: 2026-11-13_
   parent only), so a family never shows two lines; a child with a different recorded other parent keeps its own.
   Parent lines also reach people linked to the family only as a brother/sister (parents inferred through the
   explicit full/untyped sibling link, as kinship already does), e.g. a great-uncle added as "brother of".
+  Ancestors too: when only one great-grandparent is recorded as the parent and the other is just their spouse
+  (sitting right below), the line still starts from the middle of their marriage line, centred like a couple. Tested.
 - No "Brother"/"Sister" when adding someone (owner's request, to keep it simple): a sibling is added as a son
   or daughter of the parents ("Also <other parent>'s son" links both). Existing/imported sibling links still work.
   QA flows 1 and 6 updated to add the brother as a son.

@@ -399,6 +399,27 @@ describe('layoutFamily', () => {
     }
   });
 
+  it('cross layout: with one great-grandparent recorded, the line still starts from their marriage line', () => {
+    for (const only of ['ggf', 'ggm']) {
+      const f = family();
+      f.add('me', 'male', '1980'); f.add('dad', 'male', '1950'); f.add('mom', 'female', '1952');
+      f.add('gf', 'male', '1920'); f.add('gm', 'female', '1922'); f.add('ggf', 'male', '1890'); f.add('ggm', 'female', '1892');
+      f.add('greatUncle', 'male', '1915');
+      f.rel('dad', 'me', 'parent'); f.rel('mom', 'me', 'parent'); f.rel('gf', 'dad', 'parent'); f.rel('gm', 'dad', 'parent');
+      f.rel(only, 'gf', 'parent'); f.rel(only, 'greatUncle', 'parent'); f.rel('ggf', 'ggm', 'spouse'); // the other is only the spouse
+      const L = lay(f.graph(), 'me', 'everyone', [], false, 'cross');
+      checkGeometry(L, `one recorded ${only}`);
+      const at = (id: string) => L.nodes.find((n) => n.personId === id && !n.dupOf)!;
+      const top = Math.min(at('ggf').y, at('ggm').y);
+      for (const kid of ['gf', 'greatUncle']) {
+        const start = L.edges.find((e) => e.from === only && e.to === kid)!.points[0];
+        expect(start[0], `${only}→${kid}`).toBe(at('ggf').x); // from the marriage line, not a card's side
+        expect(start[1]).toBeGreaterThan(top + CARD.h);
+        expect(start[1]).toBeLessThan(top + 100);
+      }
+    }
+  });
+
   it('cross layout: siblings recorded only as brother/sister still get the parents\' line', () => {
     // The grandfather's brother and my sister are linked by a sibling relationship only, not to the parents.
     const f = family();

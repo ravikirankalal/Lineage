@@ -237,7 +237,12 @@ class Cross {
     const yOf = (id: string) => blk.nodes.find((n) => n.personId === id && n.x === PC)?.y ?? 0;
     const tops = ps.map((q) => yOf(q));
     const groupMid = (Math.min(...group.map((n) => n.y)) + Math.max(...group.map((n) => n.y))) / 2;
-    const pairMid = (Math.min(...tops) + Math.max(...tops)) / 2;
+    // When only one parent is recorded but their spouse sits right below them, the children still hang
+    // from that marriage line (as for cousins), so the pair is centred as a couple.
+    const partnerBelow = (q: string, y: number) => blk.nodes.some((n) => n.x === PC && n.y === y + RP
+      && blk.edges.some((e) => (e.kind === 'marriage' || e.kind === 'divorced') && [e.from, e.to].includes(q) && [e.from, e.to].includes(n.personId ?? '')));
+    const couple = ps.length === 2 ? tops[1] - tops[0] === RP : partnerBelow(line, tops[0]);
+    const pairMid = couple ? tops[0] + RP / 2 : (Math.min(...tops) + Math.max(...tops)) / 2;
     const dy = groupMid - pairMid;
     moveBlock(blk, 0, dy);
     const blocks = [blk];
@@ -248,7 +253,6 @@ class Cross {
     let hi = -Infinity;
     // A couple (wife right below her husband) sends ONE line to their children, from the middle of their
     // marriage line; a parent on their own sends it from their card.
-    const couple = ps.length === 2 && tops[1] - tops[0] === RP;
     const yMid = tops[0] + dy + CARD.h + (RP - CARD.h) / 2;
     ps.forEach((q, i) => {
       const yq = couple ? yMid : tops[i] + dy + H2;
