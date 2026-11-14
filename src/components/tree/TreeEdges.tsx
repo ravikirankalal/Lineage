@@ -21,8 +21,9 @@ const KIND_CLS: Record<TreeEdge['kind'], string> = {
 export const pointsAttr = (pts: [number, number][]) => pts.map(([x, y]) => `${x},${y}`).join(' ');
 
 /** All edges as SVG polylines; edges on the highlighted path are drawn last, thicker, in amber. */
-export const TreeEdges = memo(function TreeEdges({ edges, path }: { edges: TreeEdge[]; path?: ReadonlySet<string> }) {
-  const on = (e: TreeEdge) => !!path && path.has(e.from) && path.has(e.to);
+export const TreeEdges = memo(function TreeEdges({ edges, path, lit }: { edges: TreeEdge[]; path?: ReadonlySet<string>; lit?: ReadonlySet<string> }) {
+  // `lit`: the keys of the lines along the path (pathEdgeKeys); otherwise lines with both ends on the path.
+  const on = (e: TreeEdge) => (lit ? lit.has(e.key) : !!path && path.has(e.from) && path.has(e.to));
   return (
     <svg className="tree-edges pointer-events-none absolute left-0 top-0 overflow-visible" width="1" height="1" aria-hidden>
       <g fill="none" strokeLinejoin="round">

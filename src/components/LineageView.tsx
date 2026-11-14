@@ -7,7 +7,7 @@ import type { TreeNode } from '../lib/graph/contract';
 import { CATEGORY_LABELS, CATEGORY_ORDER, directLine, relativesOf, type KinCategory, type Relative } from '../lib/kinship';
 import { displayName, formatPlace, lifespan, matchesQuery } from '../lib/person';
 import { subgroupRelatives } from '../lib/relativeGroups';
-import { labelsFor, layoutFamily, relationPath } from '../lib/tree';
+import { labelsFor, layoutFamily, pathEdgeKeys, relationPath } from '../lib/tree';
 import type { Person } from '../lib/types';
 import { AddRelationSheet, type RelChoice } from './AddRelationSheet';
 import { Avatar } from './Avatar';
@@ -41,7 +41,9 @@ export function LineageView({ ego, egoLabel = 'You' }: { ego: Person; egoLabel?:
     () => layoutFamily(graph, { focusId, level, expanded, ghosts: canEdit, orient, aspect }),
     [graph, focusId, level, expanded, canEdit, orient, aspect],
   );
-  const path = useMemo(() => (hl ? new Set(relationPath(graph, ego.id, hl)) : undefined), [graph, ego.id, hl]);
+  const pathIds = useMemo(() => (hl ? relationPath(graph, ego.id, hl) : undefined), [graph, ego.id, hl]);
+  const path = useMemo(() => (pathIds ? new Set(pathIds) : undefined), [pathIds]);
+  const pathEdges = useMemo(() => (pathIds ? pathEdgeKeys(layout.edges, pathIds) : undefined), [pathIds, layout]);
   const relatives = useMemo(() => (tab === 'relatives' ? relativesOf(graph, ego.id) : undefined), [graph, ego.id, tab]);
   const relativeCount = Math.max(0, family.size - 1);
 
@@ -155,6 +157,7 @@ export function LineageView({ ego, egoLabel = 'You' }: { ego: Person; egoLabel?:
           centreLabel={isMe ? 'me' : ego.firstName}
           cardInfo={cardInfo}
           path={path}
+          pathEdges={pathEdges}
           panTo={panTo}
           level={level}
           onLevel={(l) => update({ level: l })}

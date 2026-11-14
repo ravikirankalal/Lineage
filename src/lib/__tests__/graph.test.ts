@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { socialGraph } from '../connections';
 import { FamilyGraph, familyPath, kinship } from '../kinship';
 import { emptyPerson } from '../person';
-import { labelsFor, layoutFamily, relationPath } from '../tree';
+import { labelsFor, layoutFamily, pathEdgeKeys, relationPath } from '../tree';
 import type { Gender, Person, Relationship, RelType } from '../types';
 import { generatedFamily } from './families';
 
@@ -89,6 +89,28 @@ describe('labelsFor and relationPath', () => {
     expect(relationPath(G, 'me', 'cousin')).toEqual(['me', ...familyPath(G, 'me', 'cousin')!.steps.map((s) => s.id)]);
     expect(relationPath(G, 'me', 'cousin')).toHaveLength(4);
     expect(relationPath(G, 'cousin', 'me')).toHaveLength(4);
+  });
+
+  it('lights a line for every step of the path, including a step between brothers', () => {
+    const { G } = build();
+    for (const orient of ['cross', 'down', 'right'] as const) {
+      // me → bro is a sibling step: no line of its own, so the parent's lines to both of us light up.
+      const L = layoutFamily(G, { focusId: 'me', level: 'everyone', expanded: new Set(['uncle']), orient });
+      const ids = relationPath(G, 'me', 'bro');
+      expect(ids).toEqual(['me', 'bro']);
+      const lit = L.edges.filter((e) => pathEdgeKeys(L.edges, ids).has(e.key));
+      expect(lit.some((e) => e.to === 'me'), orient).toBe(true);
+      expect(lit.some((e) => e.to === 'bro'), orient).toBe(true);
+      expect(new Set(lit.filter((e) => e.to === 'me' || e.to === 'bro').map((e) => e.from)).size).toBe(1);
+      // Every step of a longer path has a lit line touching both of its people (or their shared parent).
+      const toCousin = relationPath(G, 'me', 'cousin');
+      const keys = pathEdgeKeys(L.edges, toCousin);
+      for (let i = 1; i < toCousin.length; i++) {
+        const [a, b] = [toCousin[i - 1], toCousin[i]];
+        const touches = (id: string) => L.edges.some((e) => keys.has(e.key) && (e.from === id || e.to === id));
+        expect(touches(a) && touches(b), `${orient} ${a}→${b}`).toBe(true);
+      }
+    }
   });
 });
 
