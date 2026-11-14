@@ -78,6 +78,16 @@ describe('generation bands', () => {
     expect(bands.slice(0, 3).map((b) => b.label)).toEqual(['Father’s side', 'Your generation', 'Mother’s side']);
     expect(bands.length).toBeGreaterThan(3);
     expect(new Set(bands.map((b) => b.key)).size).toBe(bands.length);
+    // Aligned: every tree's bands reach the same left and right edges, and each tree's own person sits on
+    // the main tree's centre line.
+    const lefts = new Set(bands.filter((b) => b.region === 'father' || b.x0 === Math.min(...bands.map((q) => q.x0))).map((b) => b.x0));
+    expect(lefts.size).toBe(1);
+    for (const y of new Set(bands.map((b) => b.y0))) {
+      const row = bands.filter((b) => b.y0 === y);
+      expect(Math.min(...row.map((b) => b.x0)), `tree at ${y}`).toBe(Math.min(...bands.map((b) => b.x0)));
+      expect(Math.max(...row.map((b) => b.x1)), `tree at ${y}`).toBe(Math.max(...bands.map((b) => b.x1)));
+    }
+    expect(L.nodes.find((n) => n.personId === 'wife' && !n.dupOf)?.x).toBe(0);
     const mainBottom = Math.max(...bands.slice(0, 3).map((b) => b.y1));
     for (const b of bands.slice(3)) {
       expect(b.y0, b.label).toBeGreaterThan(mainBottom);

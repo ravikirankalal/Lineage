@@ -172,6 +172,10 @@ Read this before changing code. Append new learnings at the bottom.
   Line ancestors' children always show. Collapsed people come back as `TreeLayout.hidden`; Everyone's
   catch-all (`everyoneIds` skip) leaves them and anyone reached only through them out. Descendants of the
   focus's generation are NOT handled yet (owner: later).
+- (2026-11-14) **Trees and bands aligned** (owner): `stack()` puts every extra tree's own person at x = 0 (the
+  main focus's column), so generation columns line up across trees; every band reaches the same far left/right
+  (father's side / only band from the left edge, mother's side / only band to the right edge); in top-to-bottom
+  layouts the main tree's stripes are as wide as the trees below.
 - (2026-11-14) **Everyone = every person in the family** (owner, repeated): `everyone.ts` `completeEveryone` runs
   for every layout. After the cross-only steps above, while anyone in `familyComponent(focus)` is undrawn, the
   closest one (BFS) gets a small top-to-bottom tree (up 1, down 1; bigger ones made thousands of copies on

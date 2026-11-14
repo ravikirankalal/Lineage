@@ -70,10 +70,9 @@ export function generationBands(layout: TreeLayout, orient: TreeOrient, focusNam
   if (extra.length) {
     const cut = Math.min(...extra.map((r) => r.y0!));
     const mainNodes = layout.nodes.filter((n) => n.y < cut);
-    const mb = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
+    // The stripes reach as wide as the trees below, so every band lines up.
+    const mb = { minX: bounds.minX + SIDE, maxX: bounds.maxX - SIDE, minY: Infinity, maxY: -Infinity };
     for (const n of mainNodes) {
-      mb.minX = Math.min(mb.minX, n.x - CARD.w / 2);
-      mb.maxX = Math.max(mb.maxX, n.x + CARD.w / 2);
       mb.minY = Math.min(mb.minY, n.y);
       mb.maxY = Math.max(mb.maxY, n.y + CARD.h);
     }
