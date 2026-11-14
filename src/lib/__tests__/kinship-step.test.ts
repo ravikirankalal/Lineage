@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FamilyGraph, familyPath, kinship, lineageStats, relativesOf } from '../kinship';
-import { layoutTree } from '../tree';
+import { layoutFamily } from '../tree';
 import { emptyPerson } from '../person';
 import type { Gender, Relationship, RelType } from '../types';
 import { expectRelativesMatchKinship } from './families';
@@ -75,7 +75,7 @@ describe('explicit step and half siblings', () => {
       expect(G.siblingsOf('me').map((s) => s.id)).toEqual(['sib']);
       expect(G.siblingsOf('sib').map((s) => s.id)).toEqual(['me']);
       expect(relativesOf(G, 'dad').some((r) => r.person.id === 'sib')).toBe(true);
-      const t = layoutTree(G, 'me');
+      const t = layoutFamily(G, { focusId: 'me', level: 'immediate', expanded: new Set() });
       expect(t.nodes.some((nd) => nd.personId === 'sib' && nd.role === 'sibling')).toBe(true);
     }
   });

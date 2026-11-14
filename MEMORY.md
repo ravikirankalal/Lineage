@@ -144,3 +144,11 @@ Read this before changing code. Append new learnings at the bottom.
 
 - (2026-11-14) **GitHub Pages hosting retired.** `deploy.yml` was deleted, and Firebase Hosting
   (https://lineage-d575c.web.app) is the only host. The older GitHub Pages notes above are historical.
+
+- (2026-11-14) **Tree layout engine** is `src/lib/familyLayout.ts` (`layoutFamilyV2`, re-exported as `layoutFamily`
+  in tree.ts; the old `layoutTree` hourglass is gone). Rows are keyed 2·gen (cards) and 2·gen−1 (the gap below);
+  subtrees pack with per-row hulls, pedigree rows and collaterals slide outwards through an `Occupancy` with holes.
+  Collaterals only on the pedigree's outer edge, otherwise they'd sit between a couple. No 'collapse' edges are
+  emitted (stubs only), so the "no edge through a card" test holds. Desktop opens the tree at Extended,
+  phones at Immediate (useTreeParams).
+- (2026-11-14) The owner asked: **no subagents until they say so.** Do the work directly.

@@ -67,4 +67,12 @@ _Last updated: 2026-11-13_
   (List | Map on person pages), batch labels, great-aunt-by-marriage fix, Remember tab removed.
   Verified by: 329 unit tests, smoke, qa (10 flows), qa:cloud (8/8), and ui-builder screenshot passes on
   the 140-person family at 390x844 touch and 1280x860, light and dark.
-- Pending: the real layout engine. The level picker shows the immediate view for all levels until it lands.
+- Layout engine shipped (`src/lib/familyLayout.ts`, behind `layoutFamily`): family-unit hourglass, a separate
+  child bar per marriage (step-parents and half-siblings drawn correctly), Half/Step badges, focus-independent
+  sibling order, levels Immediate / Extended / Everyone, "+" to expand a card (siblings' families, an outer
+  ancestor's siblings, parents past the top), stubs for cousin marriages / pedigree collapse.
+  Verified by: 337 unit tests (incl. no-overlap and no-edge-through-card checks for every person × level in
+  three generated 140-person families, < 30 ms on 1,000 people; measured ~2 ms), smoke, qa (10 flows),
+  and screenshots of a remarriage family at 1400x900 and 390x844, including expand/collapse in the browser.
+- Known limits: Everyone omits relatives of people who married in (re-centre on them); an ancestor's siblings
+  are only drawn on the outer edge of the pedigree (father's father's line, mother's mother's line).
