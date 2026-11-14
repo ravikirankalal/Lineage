@@ -60,3 +60,11 @@ _Last updated: 2026-11-13_
 2. Split family notes into shared and private
 3. Server-time stamps instead of client clocks; an invite cap per space
 4. GEDCOM re-import that matches existing people
+
+## Phase 11 status (2026-11-14)
+- Shipped: mobile-first tree UI (pinch/pan, Fit, Centre on me, tap-card sheet, Find in tree with path
+  highlight, URL state, FLIP, save image/print, Relatives sub-groups + Show in tree), Connections map
+  (List | Map on person pages), batch labels, great-aunt-by-marriage fix, Remember tab removed.
+  Verified by: 329 unit tests, smoke, qa (10 flows), qa:cloud (8/8), and ui-builder screenshot passes on
+  the 140-person family at 390x844 touch and 1280x860, light and dark.
+- Pending: the real layout engine. The level picker shows the immediate view for all levels until it lands.

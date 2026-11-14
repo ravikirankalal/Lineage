@@ -154,7 +154,7 @@
       half-uncles/half-cousins
 - [x] Faster `planImport`: indexed matching, 5000 contacts in ~30 ms (was ~3 s)
 
-### Phase 11 — Family graph & navigation (mobile first) 🚧
+### Phase 11 — Family graph & navigation (mobile first) — UI shipped, layout engine pending
 Audits (2026-11-14): the kinship-engineer measured the layout, and the qa-tester ran a UX walkthrough
 on a 140-person, 6-generation family at phone and desktop sizes. Key findings:
 - the tree shows only ~10% of the family (no aunts/uncles/cousins, siblings' families or in-laws);
@@ -168,14 +168,17 @@ on a 140-person, 6-generation family at phone and desktop sizes. Key findings:
 - friends have no network view.
 
 Contract: `src/lib/graph/contract.ts`. Workstreams:
-- [ ] **Layout engine** (kinship-engineer, `tree.ts`): family-unit Walker layout, a separate child bar per
+- [ ] **Layout engine** (kinship-engineer, `tree.ts`) — NOT YET. `layoutFamily` is a temporary adapter over the old
+      hourglass (immediate view only; Extended/Everyone, expand, half/step marks and remarriage bars inert). Done so far:
+      `relationPath`, batch `labelsFor`, great-…-aunt/uncle by marriage. Two engine attempts stalled before writing; next try
+      should be split into small milestones (M1 remarriage child bars + no-overlap tests first). Target: family-unit Walker layout, a separate child bar per
       marriage, half/step marking, levels immediate/extended/everyone, expandable cards, pedigree-collapse
       stubs, focus-independent ordering, no overlaps (tested); `relationPath`; batch `labelsFor`; great-…-aunt/uncle
       by marriage labels.
-- [ ] **Social graph** (kinship-engineer, `connections.ts`): `socialGraph()` rings plus friend-of-friend edges.
-- [ ] **Tree UI** (ui-builder, `FamilyTree`/`LineageView`/`FamilyPage`/`TreePage`): pinch-zoom and pan, fit-to-screen,
+- [x] **Social graph** (kinship-engineer, `connections.ts`): `socialGraph()` rings plus friend-of-friend edges.
+- [x] **Tree UI** (ui-builder, `FamilyTree`/`LineageView`/`FamilyPage`/`TreePage`): pinch-zoom and pan, fit-to-screen,
       focus in the URL (Back works), "Find in tree" with the path highlighted, a tap-card sheet (full label,
       centre, profile, expand), a level picker, a compact mobile header so the tree fills the screen with
       "me" visible, FLIP animation on focus change, Relatives "Show in tree" plus sub-groups, and save as image / print.
-- [ ] **Connections map** (ui-builder 2, `PersonPage` + `ConnectionsMap`): a radial view of everyone connected to a person.
+- [x] **Connections map** (ui-builder 2, `PersonPage` + `ConnectionsMap`): a radial view of everyone connected to a person.
 - [ ] Review (code-reviewer) + QA (qa-tester, the 140-person family on a phone) → docs-keeper.
