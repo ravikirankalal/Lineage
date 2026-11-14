@@ -267,7 +267,7 @@ export function FamilyTree({
         const span = lifespan(p);
         const line1 = info.term ? `${info.term} · ${info.label ?? ''}` : info.label;
         return {
-          name: cardName(p), line1: n.dupOf ? 'Also shown above' : line1, line2: n.dupOf ? undefined : span || undefined,
+          name: cardName(p), line1: n.dupOf ? 'Also shown elsewhere' : line1, line2: n.dupOf ? undefined : span || undefined,
           initials: initials(p), photo: p.photo, isFocus: info.isFocus, isMe: info.isMe,
           badge: n.step ? 'Step' : n.half ? 'Half' : undefined, colors: avatarColors(p.id),
         };

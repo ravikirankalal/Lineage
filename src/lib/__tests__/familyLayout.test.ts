@@ -306,6 +306,32 @@ describe('layoutFamily', () => {
     expect(lay(G, 'kid').nodes.some((n) => n.dupOf)).toBe(true); // gf/gm reached through both parents
   });
 
+  it('keeps the main card in the birth family when someone also appears beside a spouse', () => {
+    // My sister married our cousin (my uncle's son): he is drawn under his parents and beside her.
+    const f = family();
+    f.add('gf', 'male', '1920'); f.add('gm', 'female', '1922'); f.add('dad', 'male', '1950'); f.add('mom', 'female', '1952');
+    f.add('uncle', 'male', '1948'); f.add('me', 'male', '1980'); f.add('sis', 'female', '1982'); f.add('cousin', 'male', '1979');
+    f.add('cousinMom', 'female', '1950');
+    for (const c of ['dad', 'uncle']) { f.rel('gf', c, 'parent'); f.rel('gm', c, 'parent'); }
+    for (const c of ['me', 'sis']) { f.rel('dad', c, 'parent'); f.rel('mom', c, 'parent'); }
+    f.rel('uncle', 'cousin', 'parent'); f.rel('cousinMom', 'cousin', 'parent'); f.rel('uncle', 'cousinMom', 'spouse');
+    f.rel('sis', 'cousin', 'spouse'); f.rel('dad', 'mom', 'spouse'); f.rel('gf', 'gm', 'spouse');
+    const G = f.graph();
+    for (const orient of ['down', 'right', 'cross'] as const) {
+      const L = lay(G, 'me', 'everyone', [], false, orient);
+      checkGeometry(L, `birth card ${orient}`);
+      const cards = L.nodes.filter((n) => n.personId === 'cousin');
+      expect(cards, orient).toHaveLength(2);
+      const main = cards.find((n) => !n.dupOf)!;
+      const second = cards.find((n) => n.dupOf)!;
+      expect(main.role, orient).not.toBe('spouse'); // the birth card, joined to his parents
+      expect(second.role, orient).toBe('spouse'); // beside my sister
+      expect(second.dupOf).toBe(main.key);
+      expect(second.expandable, orient).toBeUndefined(); // can't open his ancestors from here
+      expect(L.edges.some((e) => e.from === 'uncle' && e.to === 'cousin'), orient).toBe(true);
+    }
+  });
+
   it('never overlaps on generated families, for every focus and level', () => {
     for (const seed of [1, 2, 3]) {
       const G = generatedFamily(140, seed);

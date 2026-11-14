@@ -282,6 +282,10 @@ class Cross {
     // The focus first so it is the primary card if anyone repeats.
     const order = [column.indexOf(f), ...column.map((_, i) => i).filter((i) => column[i] !== f)];
     const sibNodes = new Map<string, TreeNode>();
+    // Spouse cards are made last: someone who also appears in their own birth family (a cousin who married
+    // a sibling) gets their main card there, with their parents; the card beside the spouse is a secondary
+    // "shown elsewhere" card that can't open their ancestors.
+    const spouseCards: { id: string; y: number }[] = [];
     const fNode = this.node(f, 'focus', 0, xS, yRow(focusRow));
     sibNodes.set(f, fNode);
     for (const i of order) {
@@ -298,11 +302,12 @@ class Cross {
       const xLoop = xS - W2 - 10; // marriage line to a later partner, round the left of the column
       const yS = ys + H2;
       bd.partners.forEach((p, j) => {
-        const pNode = this.node(p, 'spouse', 0, xS, yRow(start + 1 + j));
+        const py = yRow(start + 1 + j);
+        spouseCards.push({ id: p, y: py });
         const sub = g.spousesOf(bd.id).find((e) => e.id === p)?.subtype;
         const kind: TreeEdge['kind'] = sub === 'divorced' || sub === 'separated' ? 'divorced' : 'marriage';
-        if (j === 0) this.edges.push(this.edge(kind, [[xS, ys + CARD.h], [xS, pNode.y]], bd.id, p));
-        else this.edges.push(this.edge(kind, [[xS - W2, yS], [xLoop, yS], [xLoop, pNode.y + H2], [xS - W2, pNode.y + H2]], bd.id, p));
+        if (j === 0) this.edges.push(this.edge(kind, [[xS, ys + CARD.h], [xS, py]], bd.id, p));
+        else this.edges.push(this.edge(kind, [[xS - W2, yS], [xLoop, yS], [xLoop, py + H2], [xS - W2, py + H2]], bd.id, p));
       });
     }
 
@@ -352,6 +357,7 @@ class Cross {
       if (mom) side(mom, 1);
       else if (this.opts.ghosts) this.ghost('mother', xLast + PC, parentTop);
     }
+    for (const sc of spouseCards) this.node(sc.id, 'spouse', 0, xS, sc.y);
 
     // An expanded card keeps its control so it can be collapsed again.
     for (const n of this.nodes) if (n.expanded && !n.dupOf && !n.expandable) n.expandable = { down: true };
