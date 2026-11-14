@@ -147,6 +147,7 @@
       parallel nephew/niece, step/foster)
 - [ ] Wider tree cards so "Great-grandfather" fits
 - [x] Tree: the spouse's parents (and their ancestors) in Everyone, "+" on the spouse elsewhere
+- [x] Tree: full-screen button
 - [x] Tree: every in-law's parents (siblings'/children's/cousins' spouses, step-parents)
 - [ ] Tree: inner-side great-aunts/uncles; keep in-law families closer to the person they married
 - [ ] Move `likelyDuplicates` from `MergeSheet.tsx` to `src/lib` (and test it)
