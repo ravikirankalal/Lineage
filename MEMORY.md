@@ -185,7 +185,9 @@ Read this before changing code. Append new learnings at the bottom.
   existing explicit sibling edges (kinship infers shared parents), but don't offer creating them in the UI.
 - (2026-11-14) **Main card rule** (owner): a person shown twice has their MAIN card in the birth family (joined to
   parents); the card beside a spouse is a secondary stub that can't expand to ancestors. familyLayout enforces it
-  with a second pass (`reserved` partner slots); crossLayout creates spouse cards last.
+  with a second pass (`reserved` partner slots); crossLayout creates spouse cards last. In crossLayout the rule
+  covers every partner card (`partnerNodes`), incl. a wife below her husband on an ancestor line (a grandmother
+  who is also a blood relative, e.g. the other grandfather's sister).
 - (2026-11-14) **Cross layout** is the owner's own design (asked via questions): father's side LEFT, mother's side
   RIGHT, brothers UP, sisters DOWN (applies to every ancestor's siblings too), middle = siblings | children | spouses
   with children between their parents, grandparents further out. Default on portrait phones. Don't change these

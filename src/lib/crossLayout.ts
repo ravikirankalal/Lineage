@@ -65,11 +65,14 @@ class Cross {
     return this.opts.expanded.has(id);
   }
 
-  node(id: string, role: TreeNode['role'], gen: number, x: number, y: number, flags: Partial<TreeNode> = {}): TreeNode {
+  /** Cards drawn beside a partner (a spouse, or a wife below her husband on an ancestor line). */
+  readonly partnerNodes = new Set<TreeNode>();
+
+  node(id: string, role: TreeNode['role'], gen: number, x: number, y: number, flags: Partial<TreeNode> = {}, partner = false): TreeNode {
     let n: TreeNode;
     if (this.placed.has(id)) {
       n = { key: `dup:${id}:${this.dupN++}`, personId: id, dupOf: this.placed.get(id), x, y, generation: gen, role };
-    } else if (role === 'spouse' && this.reserved.has(id)) {
+    } else if (partner && this.reserved.has(id)) {
       n = { key: `dup:${id}:${this.dupN++}`, personId: id, dupOf: '?', x, y, generation: gen, role };
       this.pendingStubs.push(n);
     } else {
@@ -79,6 +82,7 @@ class Cross {
       if (this.exp(id)) n.expanded = true;
     }
     this.nodes.push(n);
+    if (partner) this.partnerNodes.add(n);
     return n;
   }
   ghost(which: 'father' | 'mother', x: number, y: number): TreeNode {
@@ -217,7 +221,7 @@ class Cross {
     const xLoop = x + (dir || -1) * (W2 + 10); // a later partner: round the outer side of the column
     const xOut = x + (dir || -1) * W2;
     partners.forEach((sp, j) => {
-      const pn = this.node(sp, role(sp), gen, x, yRow(row + 1 + j));
+      const pn = this.node(sp, role(sp), gen, x, yRow(row + 1 + j), {}, true);
       const sub = this.g.spousesOf(id).find((e) => e.id === sp)?.subtype;
       const kind: TreeEdge['kind'] = sub === 'divorced' || sub === 'separated' ? 'divorced' : 'marriage';
       this.edges.push(j === 0
@@ -419,7 +423,7 @@ class Cross {
       }
       lines = next;
     }
-    for (const sc of spouseCards) this.node(sc.id, 'spouse', 0, xS, sc.y);
+    for (const sc of spouseCards) this.node(sc.id, 'spouse', 0, xS, sc.y, {}, true);
 
     // Point the reserved spouse stubs at their birth cards.
     for (const n of this.pendingStubs) {
@@ -473,7 +477,9 @@ export function layoutCross(graph: FamilyGraph, opts: TreeOptions): TreeLayout {
   const reserved = new Set<string>();
   for (const [id, ns] of cards) {
     const main = ns.find((n) => !n.dupOf);
-    if (main?.role === 'spouse' && ns.some((n) => n.dupOf && n.role !== 'spouse')) reserved.add(id);
+    // (A grandmother who is also a blood relative drawn in her birth family counts too: her card below her
+    // husband becomes the secondary one.)
+    if (main && c.partnerNodes.has(main) && ns.some((n) => n.dupOf && !c.partnerNodes.has(n))) reserved.add(id);
   }
   if (reserved.size) {
     c = new Cross(graph, opts, reserved);
