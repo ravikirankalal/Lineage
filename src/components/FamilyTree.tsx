@@ -1,4 +1,4 @@
-import { ArrowDownFromLine, ArrowRightFromLine, Crosshair, Download, Maximize, Maximize2, Minimize2, Minus, Plus, Printer, Search, Share2, X } from 'lucide-react';
+import { ArrowDownFromLine, ArrowRightFromLine, Crosshair, Move, Download, Maximize, Maximize2, Minimize2, Minus, Plus, Printer, Search, Share2, X } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { CARD, type TreeLayout, type TreeLevel, type TreeNode, type TreeOrient } from '../lib/graph/contract';
 import { displayName, initials, lifespan, matchesQuery } from '../lib/person';
@@ -426,15 +426,21 @@ function LevelPicker({ level, onLevel }: { level: TreeLevel; onLevel: (l: TreeLe
   );
 }
 
-/** Switch between generations top to bottom and left to right (better on a tall phone screen). */
+/** Cycle the layout: cross (parents' sides left/right, siblings up/down) → top to bottom → left to right. */
+const NEXT_ORIENT: Record<TreeOrient, TreeOrient> = { cross: 'down', down: 'right', right: 'cross' };
+const ORIENT_LABEL: Record<TreeOrient, string> = {
+  cross: "Layout: father's side left, mother's side right",
+  down: 'Layout: generations top to bottom',
+  right: 'Layout: generations left to right',
+};
 function OrientButton({ orient, onOrient }: { orient: TreeOrient; onOrient: (o: TreeOrient) => void }) {
-  const next: TreeOrient = orient === 'right' ? 'down' : 'right';
-  const label = next === 'right' ? 'Show generations left to right' : 'Show generations top to bottom';
+  const next = NEXT_ORIENT[orient];
+  const label = `${ORIENT_LABEL[next]} (now: ${ORIENT_LABEL[orient].replace('Layout: ', '')})`;
   return (
     <button type="button" data-orient={orient}
       className="icon-btn pointer-events-auto bg-white/95 shadow-card ring-1 ring-stone-200 dark:bg-stone-800/95 dark:ring-stone-700"
       aria-label={label} title={label} onClick={() => onOrient(next)}>
-      {next === 'right' ? <ArrowRightFromLine size={18} /> : <ArrowDownFromLine size={18} />}
+      {next === 'right' ? <ArrowRightFromLine size={18} /> : next === 'down' ? <ArrowDownFromLine size={18} /> : <Move size={18} />}
     </button>
   );
 }

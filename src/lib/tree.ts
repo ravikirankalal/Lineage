@@ -1,5 +1,6 @@
 import { familyPathTree, kinship, pathInTree, type FamilyGraph } from './kinship';
 import type { TreeLayout as GraphLayout, TreeOptions } from './graph/contract';
+import { layoutCross } from './crossLayout';
 import { layoutFamilyV2 } from './familyLayout';
 
 // ---------------------------------------------------------------------------
@@ -29,5 +30,5 @@ export function labelsFor(graph: FamilyGraph, egoId: string): Map<string, { labe
 
 /** The family tree layout (contract: src/lib/graph/contract.ts; engine: src/lib/familyLayout.ts). */
 export function layoutFamily(graph: FamilyGraph, opts: TreeOptions): GraphLayout {
-  return layoutFamilyV2(graph, opts);
+  return opts.orient === 'cross' ? layoutCross(graph, opts) : layoutFamilyV2(graph, opts);
 }

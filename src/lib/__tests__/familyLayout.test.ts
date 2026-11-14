@@ -171,6 +171,65 @@ describe('layoutFamily', () => {
     expect(h(L) / w(L)).toBeGreaterThan(h(D) / w(D));
   });
 
+  it('cross layout: father left, mother right, brothers up, sisters down, children between', () => {
+    const f = family();
+    f.add('me', 'male', '1980'); f.add('dad', 'male', '1950'); f.add('mom', 'female', '1952');
+    f.add('bro', 'male', '1975'); f.add('bro2', 'male', '1985'); f.add('sis', 'female', '1978'); f.add('sis2', 'female', '1990');
+    f.add('wife', 'female', '1981'); f.add('son', 'male', '2010'); f.add('dau', 'female', '2012');
+    f.add('broWife', 'female', '1976'); f.add('nephew', 'male', '2001');
+    f.add('dgf', 'male', '1920'); f.add('dgm', 'female', '1922'); f.add('mgf', 'male', '1925'); f.add('mgm', 'female', '1927');
+    f.add('uncle', 'male', '1948'); f.add('aunt', 'female', '1955'); f.add('mUncle', 'male', '1950'); f.add('mAunt', 'female', '1958');
+    for (const c of ['me', 'bro', 'bro2', 'sis', 'sis2']) { f.rel('dad', c, 'parent'); f.rel('mom', c, 'parent'); }
+    for (const c of ['dad', 'uncle', 'aunt']) { f.rel('dgf', c, 'parent'); f.rel('dgm', c, 'parent'); }
+    for (const c of ['mom', 'mUncle', 'mAunt']) { f.rel('mgf', c, 'parent'); f.rel('mgm', c, 'parent'); }
+    f.rel('dad', 'mom', 'spouse'); f.rel('dgf', 'dgm', 'spouse'); f.rel('mgf', 'mgm', 'spouse');
+    f.rel('me', 'wife', 'spouse'); f.rel('me', 'son', 'parent'); f.rel('wife', 'son', 'parent'); f.rel('me', 'dau', 'parent'); f.rel('wife', 'dau', 'parent');
+    f.rel('bro', 'broWife', 'spouse'); f.rel('bro', 'nephew', 'parent'); f.rel('broWife', 'nephew', 'parent');
+    const G = f.graph();
+    for (const level of ['immediate', 'extended', 'everyone'] as const) checkGeometry(lay(G, 'me', level, [], true, 'cross'), `cross ${level}`);
+    const L = lay(G, 'me', 'extended', [], false, 'cross');
+    const at = (id: string) => L.nodes.find((n) => n.personId === id && !n.dupOf)!;
+    const me = at('me');
+    expect([me.x, me.y]).toEqual([0, 0]);
+    // Brothers above (oldest first), sisters below (oldest first), all in my column.
+    for (const id of ['bro', 'bro2', 'sis', 'sis2']) expect(at(id).x, id).toBe(0);
+    expect(at('bro').y).toBeLessThan(at('bro2').y);
+    expect(at('bro2').y).toBeLessThan(0);
+    expect(at('sis').y).toBeGreaterThan(0);
+    expect(at('sis').y).toBeLessThan(at('sis2').y);
+    // Children between me and my wife, each level with the family.
+    expect(at('son').x).toBeGreaterThan(0);
+    expect(at('wife').x).toBeGreaterThan(at('son').x);
+    expect(at('wife').y).toBe(0);
+    expect(at('son').y).toBe(0);
+    expect(at('dau').y).toBeGreaterThan(0);
+    expect(at('dau').y).toBeLessThan(at('sis').y);
+    expect(at('nephew').x).toBe(at('son').x);
+    expect(at('broWife').x).toBe(at('wife').x);
+    expect(at('broWife').y).toBe(at('bro').y);
+    // Father's side left, mother's side right; grandparents one column further out.
+    expect(at('dad').x).toBeLessThan(0);
+    expect(at('mom').x).toBeGreaterThan(at('wife').x);
+    expect(at('dgf').x).toBeLessThan(at('dad').x);
+    expect(at('mgf').x).toBeGreaterThan(at('mom').x);
+    expect(at('dgf').y).toBeLessThan(at('dgm').y);
+    // Each ancestor's brothers above them and sisters below (extended: the parents' siblings).
+    expect(at('uncle').x).toBe(at('dad').x);
+    expect(at('uncle').y).toBeLessThan(at('dad').y);
+    expect(at('aunt').y).toBeGreaterThan(at('dad').y);
+    expect(at('mUncle').y).toBeLessThan(at('mom').y);
+    expect(at('mAunt').y).toBeGreaterThan(at('mom').y);
+    // Every parent-child link is drawn.
+    for (const [a, b] of [['dad', 'me'], ['mom', 'me'], ['me', 'son'], ['wife', 'son'], ['dgf', 'dad'], ['mgm', 'mom']]) {
+      expect(L.edges.some((e) => e.from === a && e.to === b), `${a}→${b}`).toBe(true);
+    }
+    // Immediate: siblings without their families, no uncles.
+    const imm = lay(G, 'me', 'immediate', [], false, 'cross');
+    expect(imm.nodes.some((n) => n.personId === 'broWife' || n.personId === 'uncle')).toBe(false);
+    expect(imm.nodes.find((n) => n.personId === 'bro')?.expandable?.down).toBe(true);
+    expect(lay(G, 'me', 'immediate', ['bro'], false, 'cross').nodes.some((n) => n.personId === 'nephew')).toBe(true);
+  });
+
   it('expands a card on request', () => {
     const G = remarried();
     const L = lay(G, 'me');
@@ -212,13 +271,14 @@ describe('layoutFamily', () => {
       const G = generatedFamily(140, seed);
       for (const id of G.people.keys()) {
         for (const level of ['immediate', 'extended', 'everyone'] as const) {
-          for (const orient of ['down', 'right'] as const) {
+          for (const orient of ['down', 'right', 'cross'] as const) {
             const L = lay(G, id, level, [], true, orient);
             checkGeometry(L, `seed ${seed} ${id} ${level} ${orient}`);
             const focus = L.nodes.find((n) => n.personId === id && !n.dupOf);
             expect(focus?.role).toBe('focus');
             if (orient === 'down') expect(focus?.x).toBe(0);
-            else expect(focus!.y + CARD.h / 2).toBe(0);
+            else if (orient === 'right') expect(focus!.y + CARD.h / 2).toBe(0);
+            else expect([focus!.x, focus!.y]).toEqual([0, 0]);
           }
         }
       }

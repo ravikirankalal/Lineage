@@ -152,6 +152,10 @@ Read this before changing code. Append new learnings at the bottom.
   emitted (stubs only), so the "no edge through a card" test holds. Desktop opens the tree at Extended,
   phones at Immediate (useTreeParams).
 - (2026-11-14) The owner asked: **no subagents until they say so.** Do the work directly.
+- (2026-11-14) **Cross layout** is the owner's own design (asked via questions): father's side LEFT, mother's side
+  RIGHT, brothers UP, sisters DOWN (applies to every ancestor's siblings too), middle = siblings | children | spouses
+  with children between their parents, grandparents further out. Default on portrait phones. Don't change these
+  rules without asking.
 - (2026-11-14) Left-to-right trees: familyLayout runs in row space with a `Geo` (card w/h swapped, `RIGHT`) and
   transposes at the end; `geo`/`STEP`/`HALF`/`ROW_GAP` are module state set per call, reset in `finally`. Node keys
   are the same in both directions, so switching animates (FLIP).
