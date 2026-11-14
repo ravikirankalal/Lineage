@@ -93,5 +93,10 @@ _Last updated: 2026-11-13_
   the parent's line goes over the top. Grandchildren and further: extra columns between the children and the
   spouses, each level with their parent; a spouse's line reaches a child through the gap above the child's rows.
   Not in the cross view yet: uncles'/aunts' spouses, in-laws' parents, parents' other partners, children's spouses. Wide families need panning: about 7 card columns at Extended.
+- Generation bands (`src/lib/generationBands.ts`): soft stripes behind each generation (rows top-to-bottom,
+  columns left-to-right and cross; the cross layout's two sides get a band each), labelled relative to the focus
+  (Parents, Grandparents, Your generation, Children, 2× great-…). Four tints so neighbours always differ; light and
+  dark checked at 390x844 and 1400x900. Fit and print include them. Tests: every card lies in its own generation's
+  band and bands never overlap, in all three layouts.
 - Known limits: an ancestor's siblings
   are only drawn on the outer edge of the pedigree (father's father's line, mother's mother's line).

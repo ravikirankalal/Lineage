@@ -1,6 +1,7 @@
 import { ArrowDownFromLine, ArrowRightFromLine, Crosshair, Move, Download, Maximize, Maximize2, Minimize2, Minus, Plus, Printer, Search, Share2, X } from 'lucide-react';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { CARD, type TreeLayout, type TreeLevel, type TreeNode, type TreeOrient } from '../lib/graph/contract';
+import { generationBands, type GenBand } from '../lib/generationBands';
 import { displayName, initials, lifespan, matchesQuery } from '../lib/person';
 import type { Person } from '../lib/types';
 import { Avatar } from './Avatar';
@@ -65,17 +66,22 @@ export function FamilyTree({
     return m;
   }, [layout]);
 
+  // Generation stripes behind the cards; the view fits them (and their labels) too.
+  const focusInfo = byPerson.get(focusId) ? cardInfo(byPerson.get(focusId)!) : undefined;
+  const focusName = focusInfo && !focusInfo.isMe ? focusInfo.person.firstName : null;
+  const { bands, bounds: viewBounds } = useMemo(() => generationBands(layout, orient, focusName), [layout, orient, focusName]);
+
   // ---- view helpers -------------------------------------------------------------------------
   const topInset = () => (overlay.current ? overlay.current.offsetTop + overlay.current.offsetHeight + 4 : 0);
   const fitView = useCallback((): View => {
     const { w, h } = pz.size();
-    const { minX, maxX, minY, maxY } = layout.bounds;
+    const { minX, maxX, minY, maxY } = viewBounds;
     const top = topInset();
     const bw = maxX - minX;
     const bh = maxY - minY;
     const k = clampZoom(Math.min((w - FIT_PAD * 2 - CONTROLS_W) / bw, (h - top - FIT_PAD * 2) / bh, 1));
     return { k, x: (w - CONTROLS_W) / 2 - (minX + bw / 2) * k, y: top + (h - top) / 2 - (minY + bh / 2) * k };
-  }, [layout, pz]);
+  }, [viewBounds, pz]);
   /** Centre a card in the area below the top bar, at least at zoom `minK` (or exactly `k`). */
   const centreView = useCallback((n: TreeNode, minK = READABLE, exactK?: number): View => {
     const { w, h } = pz.size();
@@ -240,14 +246,14 @@ export function FamilyTree({
 
   // ---- print: a CSS variable holds the fit-to-page transform -------------------------------------
   const printTransform = useMemo(() => {
-    const { minX, maxX, minY, maxY } = layout.bounds;
+    const { minX, maxX, minY, maxY } = viewBounds;
     const bw = maxX - minX + 40;
     const bh = maxY - minY + 40;
     const k = Math.min(PRINT_BOX.w / bw, PRINT_BOX.h / bh, 1);
     const x = (PRINT_BOX.w - (maxX - minX) * k) / 2 - minX * k;
     const y = (PRINT_BOX.h - (maxY - minY) * k) / 2 - minY * k;
     return `translate(${x}px, ${y}px) scale(${k})`;
-  }, [layout]);
+  }, [viewBounds]);
 
   // ---- save as image -----------------------------------------------------------------------------
   const [saving, setSaving] = useState<string | null>(null);
@@ -293,6 +299,7 @@ export function FamilyTree({
       }}
     >
       <div ref={world} className="tree-world absolute left-0 top-0 origin-top-left will-change-transform">
+        <GenerationBands bands={bands} />
         <TreeEdges edges={layout.edges} path={path} />
         {nodes.map((n) => {
           if (n.ghost) return onAddParent ? <GhostCard key={n.key} node={n} onAdd={onAddParent} /> : null;
@@ -425,6 +432,29 @@ function LevelPicker({ level, onLevel }: { level: TreeLevel; onLevel: (l: TreeLe
     </div>
   );
 }
+
+/** Soft stripes per generation (four tints, so neighbouring generations always differ). */
+const BAND_TINT = [
+  'bg-stone-200/45 dark:bg-stone-800/45',
+  'bg-amber-100/45 dark:bg-amber-900/15',
+  'bg-emerald-100/40 dark:bg-emerald-900/15',
+  'bg-sky-100/45 dark:bg-sky-900/15',
+];
+const GenerationBands = memo(function GenerationBands({ bands }: { bands: GenBand[] }) {
+  return (
+    <div className="tree-bands pointer-events-none absolute left-0 top-0" aria-hidden>
+      {bands.map((b) => (
+        <div key={b.key} className={`absolute ${BAND_TINT[((b.gen % 4) + 4) % 4]}`}
+          style={{ left: b.x0, top: b.y0, width: b.x1 - b.x0, height: b.y1 - b.y0 }}>
+          <span className={`absolute whitespace-nowrap text-[11px] font-semibold uppercase tracking-wide text-stone-500/90 dark:text-stone-400/80 ${
+            b.vertical ? 'left-0 right-0 top-3 overflow-hidden text-ellipsis px-2 text-center' : 'left-3 top-1'}`}>
+            {b.label}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+});
 
 /** Cycle the layout: cross (parents' sides left/right, siblings up/down) → top to bottom → left to right. */
 const NEXT_ORIENT: Record<TreeOrient, TreeOrient> = { cross: 'down', down: 'right', right: 'cross' };
