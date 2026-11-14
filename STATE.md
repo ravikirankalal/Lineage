@@ -74,7 +74,8 @@ _Last updated: 2026-11-13_
   Verified by: 337 unit tests (incl. no-overlap and no-edge-through-card checks for every person × level in
   three generated 140-person families, < 30 ms on 1,000 people; measured ~2 ms), smoke, qa (10 flows),
   and screenshots of a remarriage family at 1400x900 and 390x844, including expand/collapse in the browser.
-- Everyone also shows the spouse's parents and their ancestors above the spouse card ("+" on the spouse in other
-  levels shows the parents).
-- Known limits: Everyone omits other in-law families (a sibling's or child's spouse's parents; re-centre on them); an ancestor's siblings
+- Everyone also shows the parents and ancestors of everyone who married in (spouse, siblings'/children's/cousins'
+  spouses, step-parents); in other levels their card has "+" to show the parents. In-law families slide to the
+  nearest free space, so their lines can be long in a dense tree.
+- Known limits: an ancestor's siblings
   are only drawn on the outer edge of the pedigree (father's father's line, mother's mother's line).
