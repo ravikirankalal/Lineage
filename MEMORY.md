@@ -138,3 +138,6 @@ Read this before changing code. Append new learnings at the bottom.
   treating it as a regression.
 - Owner setup for the import: People API enabled, contacts.readonly scope, test users
   (FIREBASE_SETUP.md §10).
+- (2026-11-14) The public Firebase web config is committed in `.env.production`. Builds no longer
+  read VITE_FIREBASE_* repo variables except PROJECT_ID for deploy commands, because a truncated
+  variable (key cut at '-') broke sign-in with auth/api-key-not-valid.
