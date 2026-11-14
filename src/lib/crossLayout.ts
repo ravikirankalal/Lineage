@@ -5,13 +5,15 @@ import type { FamilyGraph } from './kinship';
 /**
  * "Cross" family layout (the owner's design for tall phone screens), centred on the focus:
  *
- *   [father's side] ← [cousins, siblings & spouses] → [mother's side]
+ *   [father's side … parents | cousins] [siblings & spouses] [cousins | parents … mother's side]
  *
  * - Middle: the focus and their siblings in one column, brothers ABOVE the focus and sisters (and
  *   siblings of unknown gender) BELOW, each group oldest first. Each sibling's spouse sits directly below
- *   them in the same column, joined by a short marriage line. Cousins share this column too (the owner's
- *   choice): children of the parents' brothers above, children of the parents' sisters below, each level
- *   with their own parent. Children are not shown in this view (the owner's choice); the other layouts are.
+ *   them in the same column, joined by a short marriage line. Children are not shown in this view (the
+ *   owner's choice); the other layouts are.
+ * - Cousins (the owner's choice): each side has its own cousins column right beside the middle one, with
+ *   every cousin of that side (first, second, …) level with their own parent and their spouse below them.
+ *   Each side keeps its own rows, so the two sides don't take turns.
  * - Left: the father, with his brothers above him and sisters below, each person's spouse directly below
  *   them with a marriage line (a step-parent below the parent); his parents one column further
  *   left (father's father above father's mother), and so on outwards. Right: the same for the mother,
@@ -149,9 +151,16 @@ class Cross {
     return sideOk ? this.partners(id) : [];
   }
 
-  /** x of a card column: generation `gen` on the father's side (dir −1) or the mother's (dir 1). */
+  /**
+   * x of a card column on the father's side (dir −1) or the mother's (dir 1): generation 0 is that side's
+   * cousins column, right beside the focus's column (x = 0); each older generation one column further out.
+   */
   private colX(dir: number, gen: number) {
-    return dir * gen * PC || 0; // never −0
+    return dir * (Math.max(gen, 0) + 1) * PC;
+  }
+  /** x of the gap between generation `gen`'s column and the next one in (where its lines to children run). */
+  private gapIn(dir: number, gen: number) {
+    return (this.colX(dir, gen) + this.colX(dir, gen - 1)) / 2;
   }
 
   private memo = new Map<string, number>();
@@ -209,7 +218,7 @@ class Cross {
       placed.push({ id: k, y: kn.y });
       r += this.bandRows(k, gen - 1);
     }
-    const xb = dir * (gen * PC - PC / 2);
+    const xb = this.gapIn(dir, gen);
     this.childLines(id, n.y, partners, placed, dir, gen, xb, xb, true);
     return n;
   }
@@ -218,8 +227,11 @@ class Cross {
   partnerCards(id: string, partners: string[], gen: number, dir: number, row: number, yRow: (r: number) => number, role: (sp: string) => TreeNode['role']) {
     const x = this.colX(dir, gen);
     const y = yRow(row);
-    const xLoop = x + (dir || -1) * (W2 + 10); // a later partner: round the outer side of the column
-    const xOut = x + (dir || -1) * W2;
+    // A later partner: a loop round the outer side of the column (the inner side for cousins, whose outer
+    // gap carries their parents' lines).
+    const side = gen <= 0 ? -dir : dir;
+    const xLoop = x + side * (W2 + 10);
+    const xOut = x + side * W2;
     partners.forEach((sp, j) => {
       const pn = this.node(sp, role(sp), gen, x, yRow(row + 1 + j), {}, true);
       const sub = this.g.spousesOf(id).find((e) => e.id === sp)?.subtype;
@@ -237,10 +249,9 @@ class Cross {
    * person's own card. Both parents' edges share the path.
    */
   childLines(person: string, personY: number, partners: string[], kids: { id: string; y: number }[], dir: number, gen: number,
-    xbOwn: number, xbCouple: number, joinUnknown = false) {
+    xbOwn: number, xbCouple: number, joinUnknown = false, edgeX = this.colX(dir, gen - 1) + dir * W2 /* the children's column, outer edge */) {
     const xPar = this.colX(dir, gen);
     const xFrom = xPar - dir * W2; // the person's column, inner edge
-    const edgeX = this.colX(dir, gen - 1) + dir * W2; // the children's column, outer edge
     for (const k of kids) {
       if (!this.childOf(person, k.id)) continue;
       let j = partners.findIndex((sp) => this.childOf(sp, k.id));
@@ -298,8 +309,10 @@ class Cross {
     const parentPartners = new Map<string, string[]>();
     if (dad) parentPartners.set(dad, this.columnPartners(dad, dad, false, mom));
     if (mom) parentPartners.set(mom, this.columnPartners(mom, mom, false, dad));
-    let top = 0;
-    let bottom = Math.max(row, focusRow + 1 + Math.max(0, ...[...parentPartners.values()].map((l) => l.length)));
+    // Each side has its own columns, so each keeps its own range of rows (they don't need to share).
+    const coreEnd = Math.max(row, focusRow + 1 + Math.max(0, ...[...parentPartners.values()].map((l) => l.length)));
+    const top = new Map<number, number>([[-1, 0], [1, 0]]);
+    const bottom = new Map<number, number>([[-1, coreEnd], [1, coreEnd]]);
     const yRow = (r: number) => (r - focusRow) * RP;
 
     // The focus first so it is the primary card if anyone repeats.
@@ -341,9 +354,9 @@ class Cross {
     let lines: Line[] = [];
     if (this.up >= 1) {
       if (dad) lines.push({ dir: -1, id: dad, row: focusRow, partners: parentPartners.get(dad)! });
-      else if (this.opts.ghosts) this.ghost('father', xS - PC, fNode.y);
+      else if (this.opts.ghosts) this.ghost('father', this.colX(-1, 1), fNode.y);
       if (mom) lines.push({ dir: 1, id: mom, row: focusRow, partners: parentPartners.get(mom)! });
-      else if (this.opts.ghosts) this.ghost('mother', xS + PC, fNode.y);
+      else if (this.opts.ghosts) this.ghost('mother', this.colX(1, 1), fNode.y);
     }
     for (let gen = 1; lines.length; gen++) {
       // The line ancestors of this generation, with their partners below them.
@@ -356,10 +369,11 @@ class Cross {
         for (const ln of lines) {
           const xb = ln.dir * (W2 + GX * 0.5);
           const xbStep = ln.dir * (W2 + GX * 0.25);
-          this.childLines(ln.id, ln.node!.y, ln.partners, column.map((id) => ({ id, y: sibNodes.get(id)!.y })), ln.dir, 1, xb, xbStep);
+          // Straight across the cousins column (no cousins sit level with the focus and siblings).
+          this.childLines(ln.id, ln.node!.y, ln.partners, column.map((id) => ({ id, y: sibNodes.get(id)!.y })), ln.dir, 1, xb, xbStep, false, ln.dir * W2);
         }
       }
-      // Their brothers' families above everything drawn so far, sisters' below (father's side first).
+      // Their brothers' families above everything drawn so far on that side, sisters' below.
       const above: { ln: Line; id: string }[] = [];
       const below: { ln: Line; id: string }[] = [];
       const infos = new Map<string, { half: boolean; step?: boolean }>();
@@ -375,15 +389,18 @@ class Cross {
         for (const [k, v] of grp.info) infos.set(k, v);
       }
       const flags = (id: string) => ({ half: infos.get(id)?.half || undefined, step: infos.get(id)?.step || undefined });
-      let r = top - above.reduce((sum, a) => sum + this.bandRows(a.id, gen), 0);
-      top = r;
-      for (const a of above) {
-        a.ln.group!.push(this.placeBand(a.id, gen, a.ln.dir, r, yRow, flags(a.id)));
-        r += this.bandRows(a.id, gen);
-      }
-      for (const b of below) {
-        b.ln.group!.push(this.placeBand(b.id, gen, b.ln.dir, bottom, yRow, flags(b.id)));
-        bottom += this.bandRows(b.id, gen);
+      for (const dir of [-1, 1]) {
+        const up = above.filter((a) => a.ln.dir === dir);
+        let r = top.get(dir)! - up.reduce((sum, a) => sum + this.bandRows(a.id, gen), 0);
+        top.set(dir, r);
+        for (const a of up) {
+          a.ln.group!.push(this.placeBand(a.id, gen, dir, r, yRow, flags(a.id)));
+          r += this.bandRows(a.id, gen);
+        }
+        for (const b of below.filter((x) => x.ln.dir === dir)) {
+          b.ln.group!.push(this.placeBand(b.id, gen, dir, bottom.get(dir)!, yRow, flags(b.id)));
+          bottom.set(dir, bottom.get(dir)! + this.bandRows(b.id, gen));
+        }
       }
 
       // The next generation: each line's parents, centred on this generation's group (couple: the middle
@@ -404,11 +421,11 @@ class Cross {
         const mid = (Math.min(...rowsY) + Math.max(...rowsY)) / 2;
         const couple = partners.length > 0;
         const hRow = couple ? mid - 0.5 : mid;
-        top = Math.min(top, hRow);
-        bottom = Math.max(bottom, hRow + 1 + partners.length);
+        top.set(ln.dir, Math.min(top.get(ln.dir)!, hRow));
+        bottom.set(ln.dir, Math.max(bottom.get(ln.dir)!, hRow + 1 + partners.length));
         // ONE line from the couple to their children, from the middle of their marriage line.
         const x1 = this.colX(ln.dir, gen + 1);
-        const xb = ln.dir * (gen * PC + PC / 2);
+        const xb = this.gapIn(ln.dir, gen + 1);
         const yq = couple ? yRow(hRow) + CARD.h + (RP - CARD.h) / 2 : yRow(hRow) + H2;
         const start: [number, number] = couple ? [x1, yq] : [x1 - ln.dir * W2, yq];
         for (const q of pps) {
