@@ -226,3 +226,6 @@ Read this before changing code. Append new learnings at the bottom.
   the types and the backup normaliser, so old databases, backups and synced records still load; their data is kept
   and ignored. `connectionsOf` returns only the 'family' and 'extended' groups. ConnectionsMap and socialGraph were
   deleted.
+- (2026-11-14) Checks, the owner's rule: `npm run verify` on every change; `npm run qa` only for changes to
+  import/export, editing, merging, backup or data handling (or before a big release); `npm run test:rules` only
+  for sharing and permission changes. See CLAUDE.md.
