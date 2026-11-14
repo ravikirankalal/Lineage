@@ -77,5 +77,8 @@ _Last updated: 2026-11-13_
 - Everyone also shows the parents and ancestors of everyone who married in (spouse, siblings'/children's/cousins'
   spouses, step-parents); in other levels their card has "+" to show the parents. In-law families slide to the
   nearest free space, so their lines can be long in a dense tree.
+- Full-screen button on the tree (top of the zoom controls): covers the page above the phone tabs and below
+  sheets, and asks the browser for real full screen where allowed; Esc or the button exits. Checked in the browser
+  at 1400x900 and 390x844 (fills the screen, sheets open on top, Esc closes a sheet first, scroll restored).
 - Known limits: an ancestor's siblings
   are only drawn on the outer edge of the pedigree (father's father's line, mother's mother's line).

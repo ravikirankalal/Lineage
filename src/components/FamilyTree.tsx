@@ -1,4 +1,4 @@
-import { Crosshair, Download, Maximize, Minus, Plus, Printer, Search, Share2, X } from 'lucide-react';
+import { Crosshair, Download, Maximize, Maximize2, Minimize2, Minus, Plus, Printer, Search, Share2, X } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { CARD, type TreeLayout, type TreeLevel, type TreeNode } from '../lib/graph/contract';
 import { displayName, initials, lifespan, matchesQuery } from '../lib/person';
@@ -53,6 +53,7 @@ export function FamilyTree({
   const userMoved = useRef(false);
   const pz = usePanZoom(box, world);
   const height = useFillHeight(box);
+  const [full, toggleFull] = useFullScreen();
 
   const byKey = useMemo(() => new Map(layout.nodes.map((n) => [n.key, n])), [layout]);
   /** Primary card per person (not a collapse stub). */
@@ -151,16 +152,23 @@ export function FamilyTree({
     }
   }, [layout]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Re-fit when the box changes size (rotation, the height settling) until the user moves the tree.
+  // When the box changes size (rotation, the height settling, full screen): re-fit until the user moves
+  // the tree; after that keep the same point in the middle.
   useEffect(() => {
     const el = box.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
-    let last = `${el.clientWidth}x${el.clientHeight}`;
+    let last = { w: el.clientWidth, h: el.clientHeight };
     const ro = new ResizeObserver(() => {
-      const now = `${el.clientWidth}x${el.clientHeight}`;
-      if (now === last) return;
+      const now = { w: el.clientWidth, h: el.clientHeight };
+      if (now.w === last.w && now.h === last.h) return;
+      const dw = now.w - last.w;
+      const dh = now.h - last.h;
       last = now;
       if (!userMoved.current) pz.set(openingView());
+      else {
+        const v = pz.get();
+        pz.set({ ...v, x: v.x + dw / 2, y: v.y + dh / 2 });
+      }
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -271,8 +279,10 @@ export function FamilyTree({
   return (
     <div
       ref={box}
-      className="tree-viewport relative touch-none select-none overflow-hidden rounded-2xl bg-stone-100/70 ring-1 ring-stone-200/70 dark:bg-stone-900/60 dark:ring-stone-800"
-      style={{ height, ['--print-transform' as string]: printTransform }}
+      className={`tree-viewport touch-none select-none overflow-hidden ${full
+        ? 'fixed inset-0 z-[45] bg-stone-100 dark:bg-stone-900'
+        : 'relative rounded-2xl bg-stone-100/70 ring-1 ring-stone-200/70 dark:bg-stone-900/60 dark:ring-stone-800'}`}
+      style={{ height: full ? '100dvh' : height, ['--print-transform' as string]: printTransform }}
       onKeyDown={(e) => {
         if (e.target instanceof HTMLInputElement) return;
         if (e.key === '+' || e.key === '=') pz.zoomBy(1.25, undefined, true);
@@ -292,7 +302,8 @@ export function FamilyTree({
       </div>
 
       {/* Top: Find + level picker + save. */}
-      <div ref={overlay} data-no-pan className="pointer-events-none absolute inset-x-2 top-2 z-10 flex flex-col gap-2 print:hidden">
+      <div ref={overlay} data-no-pan className="pointer-events-none absolute inset-x-2 top-2 z-10 flex flex-col gap-2 print:hidden"
+        style={full ? { top: 'calc(8px + env(safe-area-inset-top))' } : undefined}>
         <div className="flex flex-wrap items-start gap-2">
           <FindInTree candidates={candidates} onFind={onFind} />
           <LevelPicker level={level} onLevel={onLevel} />
@@ -303,7 +314,11 @@ export function FamilyTree({
 
       {/* Bottom-right controls, clear of the centre and of the phone's home indicator. */}
       <div data-no-pan className="absolute z-10 flex flex-col gap-1 rounded-2xl bg-white/90 p-1 shadow-card ring-1 ring-stone-200 backdrop-blur dark:bg-stone-800/90 dark:ring-stone-700 print:hidden"
-        style={{ right: 'calc(10px + env(safe-area-inset-right))', bottom: 10 }}>
+        style={{ right: 'calc(10px + env(safe-area-inset-right))', bottom: full ? 'calc(10px + env(safe-area-inset-bottom))' : 10 }}>
+        <button type="button" className="icon-btn" onClick={toggleFull} aria-pressed={full}
+          aria-label={full ? 'Exit full screen' : 'Full screen'} title={full ? 'Exit full screen (Esc)' : 'Full screen'}>
+          {full ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+        </button>
         <button type="button" className="icon-btn" onClick={() => { userMoved.current = true; pz.zoomBy(1.3, undefined, true); }} aria-label="Zoom in" title="Zoom in"><Plus size={19} /></button>
         <button type="button" className="icon-btn" onClick={() => { userMoved.current = true; pz.zoomBy(1 / 1.3, undefined, true); }} aria-label="Zoom out" title="Zoom out"><Minus size={19} /></button>
         <button type="button" className="icon-btn" onClick={() => { userMoved.current = true; pz.set(fitView(), true); }} aria-label="Fit the whole tree" title="Fit the whole tree"><Maximize size={17} /></button>
@@ -317,6 +332,55 @@ export function FamilyTree({
       )}
     </div>
   );
+}
+
+/**
+ * Full screen for the tree. The box covers the page (above the phone tabs, below sheets, so a tapped
+ * card's sheet still opens), and where the browser allows it the page also goes truly full screen,
+ * hiding the browser's own bars. Esc, the button or leaving browser full screen all exit.
+ */
+function useFullScreen(): [boolean, () => void] {
+  const [full, setFull] = useState(false);
+  const native = useRef(false);
+  const exit = useCallback(() => {
+    setFull(false);
+    if (native.current && document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    native.current = false;
+  }, []);
+  const toggle = useCallback(() => {
+    if (full) return exit();
+    setFull(true);
+    const el = document.documentElement;
+    if (el.requestFullscreen && !document.fullscreenElement) {
+      el.requestFullscreen({ navigationUI: 'hide' }).then(() => { native.current = true; }, () => {});
+    }
+  }, [full, exit]);
+  useEffect(() => {
+    if (!full) return;
+    const onChange = () => {
+      if (native.current && !document.fullscreenElement) {
+        native.current = false;
+        setFull(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !document.querySelector('[role=dialog]')) exit();
+    };
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('fullscreenchange', onChange);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = overflow;
+      document.removeEventListener('fullscreenchange', onChange);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [full, exit]);
+  // Leave full screen if the tree goes away (another tab, another page).
+  useEffect(() => () => {
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+  }, []);
+  return [full, toggle];
 }
 
 /** Tree height: fill the viewport below the box, above the phone's bottom tabs. */
