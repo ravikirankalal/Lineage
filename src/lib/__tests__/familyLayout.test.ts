@@ -171,7 +171,7 @@ describe('layoutFamily', () => {
     expect(h(L) / w(L)).toBeGreaterThan(h(D) / w(D));
   });
 
-  it('cross layout: father left, mother right, brothers up, sisters down, spouses below, children beside', () => {
+  it('cross layout: father left, mother right, brothers up, sisters down, spouses below, no children', () => {
     const f = family();
     f.add('me', 'male', '1980'); f.add('dad', 'male', '1950'); f.add('mom', 'female', '1952');
     f.add('bro', 'male', '1975'); f.add('bro2', 'male', '1985'); f.add('sis', 'female', '1978'); f.add('sis2', 'female', '1990');
@@ -199,22 +199,18 @@ describe('layoutFamily', () => {
     expect(at('bro2').y).toBeLessThan(0);
     expect(at('sis').y).toBeGreaterThan(0);
     expect(at('sis').y).toBeLessThan(at('sis2').y);
-    // Each spouse directly below their partner in the same column; children in the next column, level with the couple.
+    // Each spouse directly below their partner in the same column.
     expect(at('wife').x).toBe(0);
     expect(at('wife').y).toBeGreaterThan(0);
     expect(at('wife').y).toBeLessThan(at('sis').y);
     expect(at('broWife').x).toBe(0);
     expect(at('broWife').y).toBeGreaterThan(at('bro').y);
     expect(at('broWife').y).toBeLessThan(at('bro2').y);
-    expect(at('son').x).toBeGreaterThan(0);
-    expect(at('son').y).toBe(0);
-    expect(at('dau').y).toBeGreaterThan(0);
-    expect(at('dau').y).toBeLessThan(at('sis').y);
-    expect(at('nephew').x).toBe(at('son').x);
-    expect(at('nephew').y).toBe(at('bro').y);
+    // No children or grandchildren in this view (the owner removed them).
+    for (const id of ['son', 'dau', 'nephew', 'grandson']) expect(L.nodes.some((n) => n.personId === id), id).toBe(false);
     // Father's side left, mother's side right; grandparents one column further out.
     expect(at('dad').x).toBeLessThan(0);
-    expect(at('mom').x).toBeGreaterThan(at('grandson').x);
+    expect(at('mom').x).toBeGreaterThan(0);
     expect(at('dgf').x).toBeLessThan(at('dad').x);
     expect(at('mgf').x).toBeGreaterThan(at('mom').x);
     expect(at('dgf').y).toBeLessThan(at('dgm').y);
@@ -240,7 +236,7 @@ describe('layoutFamily', () => {
     }
     expect(L.edges.some((e) => (e.from === 'dad' || e.from === 'mom') && (e.to === 'wife' || e.to === 'broWife'))).toBe(false);
     // Every parent-child link is drawn.
-    for (const [a, b] of [['dad', 'me'], ['mom', 'me'], ['me', 'son'], ['wife', 'son'], ['dgf', 'dad'], ['mgm', 'mom']]) {
+    for (const [a, b] of [['dad', 'me'], ['mom', 'me'], ['dgf', 'dad'], ['mgm', 'mom']]) {
       expect(L.edges.some((e) => e.from === a && e.to === b), `${a}→${b}`).toBe(true);
     }
     // Cousins: in a column between the siblings and the parent, level with their own parent.
@@ -249,22 +245,16 @@ describe('layoutFamily', () => {
     expect(at('cousin').y).toBe(at('uncle').y);
     expect(at('cousin2').y).toBeGreaterThan(at('cousin').y);
     expect(at('cousin2').y).toBeLessThan(at('dad').y); // the uncle's band pushes the father down
-    expect(at('mCousin').x).toBeGreaterThan(at('grandson').x);
+    expect(at('mCousin').x).toBeGreaterThan(0);
     expect(at('mCousin').x).toBeLessThan(at('mom').x);
     expect(at('mCousin').y).toBe(at('mAunt').y);
     expect(L.edges.some((e) => e.from === 'uncle' && e.to === 'cousin')).toBe(true);
-    // Grandchildren: a column between the children and the spouses, level with their parent.
-    expect(at('grandson').x).toBeGreaterThan(at('son').x);
-    expect(at('grandson').x).toBeLessThan(at('mom').x);
-    expect(at('grandson').y).toBe(at('son').y);
-    expect(L.edges.some((e) => e.from === 'son' && e.to === 'grandson')).toBe(true);
-    expect(L.edges.some((e) => e.from === 'wife' && e.to === 'dau')).toBe(true);
     // Immediate: siblings without their families, no uncles.
     const imm = lay(G, 'me', 'immediate', [], false, 'cross');
     expect(imm.nodes.some((n) => n.personId === 'broWife' || n.personId === 'uncle' || n.personId === 'cousin')).toBe(false);
-    expect(imm.nodes.some((n) => n.personId === 'grandson')).toBe(true); // my own descendants always show
+    expect(imm.nodes.some((n) => n.personId === 'wife')).toBe(true); // my own spouse always shows
     expect(imm.nodes.find((n) => n.personId === 'bro')?.expandable?.down).toBe(true);
-    expect(lay(G, 'me', 'immediate', ['bro'], false, 'cross').nodes.some((n) => n.personId === 'nephew')).toBe(true);
+    expect(lay(G, 'me', 'immediate', ['bro'], false, 'cross').nodes.some((n) => n.personId === 'broWife')).toBe(true);
   });
 
   it('expands a card on request', () => {

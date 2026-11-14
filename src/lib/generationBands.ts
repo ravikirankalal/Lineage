@@ -11,7 +11,7 @@ export interface GenBand {
   label: string;
   /** Columns (left-to-right and cross layouts) or rows (top-to-bottom). */
   vertical: boolean;
-  /** Cross layout: a whole region (father's side, siblings & descendants, mother's side) with a title
+  /** Cross layout: a whole region (father's side, siblings & spouses, mother's side) with a title
    * per card column. `gen` is then 1 / 0 / −1 for the colour only. */
   region?: 'father' | 'middle' | 'mother';
   columns?: { x: number; label: string }[];
@@ -32,7 +32,7 @@ const LABEL_ROOM = 44; // above the tree, for column labels
 const REGION_ROOM = 64; // above the cross layout: region title + column titles
 const REGION_LABEL: Record<'father' | 'middle' | 'mother', string> = {
   father: 'Father’s side',
-  middle: 'Siblings & descendants',
+  middle: 'Siblings & spouses',
   mother: 'Mother’s side',
 };
 const SIDE = 20;
