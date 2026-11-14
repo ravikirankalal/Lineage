@@ -306,6 +306,41 @@ describe('layoutFamily', () => {
     expect(lay(G, 'kid').nodes.some((n) => n.dupOf)).toBe(true); // gf/gm reached through both parents
   });
 
+  it('cross layout: every side column has each spouse right below their partner, with a marriage line', () => {
+    const f = family();
+    f.add('me', 'male', '1980'); f.add('dad', 'male', '1950'); f.add('mom', 'female', '1952'); f.add('stepmom', 'female', '1956');
+    f.add('dgf', 'male', '1920'); f.add('dgm', 'female', '1922'); f.add('uncle', 'male', '1948'); f.add('uncleWife', 'female', '1950');
+    f.add('cousin', 'male', '1975'); f.add('mAunt', 'female', '1958'); f.add('mAuntHusband', 'male', '1955');
+    f.add('mgf', 'male', '1925'); f.add('mgm', 'female', '1927');
+    f.rel('dad', 'me', 'parent'); f.rel('mom', 'me', 'parent'); f.rel('dad', 'mom', 'spouse', 'divorced'); f.rel('dad', 'stepmom', 'spouse');
+    for (const c of ['dad', 'uncle']) { f.rel('dgf', c, 'parent'); f.rel('dgm', c, 'parent'); }
+    for (const c of ['mom', 'mAunt']) { f.rel('mgf', c, 'parent'); f.rel('mgm', c, 'parent'); }
+    f.rel('dgf', 'dgm', 'spouse'); f.rel('mgf', 'mgm', 'spouse');
+    f.rel('uncle', 'uncleWife', 'spouse'); f.rel('uncle', 'cousin', 'parent'); f.rel('uncleWife', 'cousin', 'parent');
+    f.rel('mAunt', 'mAuntHusband', 'spouse');
+    const G = f.graph();
+    for (const level of ['immediate', 'extended', 'everyone'] as const) checkGeometry(lay(G, 'me', level, [], false, 'cross'), `spouses ${level}`);
+    const L = lay(G, 'me', 'extended', [], false, 'cross');
+    const at = (id: string) => L.nodes.find((n) => n.personId === id && !n.dupOf)!;
+    const below = (a: string, b: string) => {
+      expect(at(b).x, `${b} under ${a}`).toBe(at(a).x);
+      expect(at(b).y, `${b} under ${a}`).toBe(at(a).y + 100);
+      expect(L.edges.some((e) => (e.kind === 'marriage' || e.kind === 'divorced') && [e.from, e.to].sort().join() === [a, b].sort().join()), `${a}–${b} line`).toBe(true);
+    };
+    below('uncle', 'uncleWife'); // an uncle's wife
+    below('dad', 'stepmom'); // a parent's other partner (step-parent); mom stays on her own side
+    below('mAunt', 'mAuntHusband'); // an aunt's husband
+    below('dgf', 'dgm'); // grandparents, one above the other
+    below('mgf', 'mgm');
+    expect(at('mom').x).toBeGreaterThan(0);
+    expect(L.nodes.filter((n) => n.personId === 'mom')).toHaveLength(1);
+    expect(at('cousin').y).toBe(at('uncle').y); // cousins still level with their parent
+    // Immediate: a step-parent still shows below the parent; uncles and their spouses don't.
+    const imm = lay(G, 'me', 'immediate', [], false, 'cross');
+    expect(imm.nodes.some((n) => n.personId === 'stepmom')).toBe(true);
+    expect(imm.nodes.some((n) => n.personId === 'uncleWife')).toBe(false);
+  });
+
   it('keeps the main card in the birth family when someone also appears beside a spouse', () => {
     // My sister married our cousin (my uncle's son): he is drawn under his parents and beside her.
     const f = family();

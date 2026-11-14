@@ -12,7 +12,8 @@ import type { FamilyGraph } from './kinship';
  *   them in the same column, joined by a short marriage line. Cousins share this column too (the owner's
  *   choice): children of the parents' brothers above, children of the parents' sisters below, each level
  *   with their own parent. Children are not shown in this view (the owner's choice); the other layouts are.
- * - Left: the father, with his brothers above him and sisters below; his parents one column further
+ * - Left: the father, with his brothers above him and sisters below, each person's spouse directly below
+ *   them with a marriage line (a step-parent below the parent); his parents one column further
  *   left (father's father above father's mother), and so on outwards. Right: the same for the mother,
  *   mirrored. So every step outwards is one generation older.
  * - Lines only run through the gaps between columns and rows, so no line crosses a card.
@@ -82,7 +83,10 @@ class Cross {
   private edgeN = 0;
   private up: number;
 
-  constructor(private g: FamilyGraph, private opts: TreeOptions) {
+  /** People whose main card is in their birth family: a spouse slot for them is a secondary stub. */
+  private pendingStubs: TreeNode[] = [];
+
+  constructor(private g: FamilyGraph, private opts: TreeOptions, private reserved: ReadonlySet<string> = new Set()) {
     this.up = opts.up ?? (opts.level === 'everyone' ? MANY : 4);
   }
 
@@ -94,6 +98,9 @@ class Cross {
     let n: TreeNode;
     if (this.placed.has(id)) {
       n = { key: `dup:${id}:${this.dupN++}`, personId: id, dupOf: this.placed.get(id), x, y, generation: gen, role };
+    } else if (role === 'spouse' && this.reserved.has(id)) {
+      n = { key: `dup:${id}:${this.dupN++}`, personId: id, dupOf: '?', x, y, generation: gen, role };
+      this.pendingStubs.push(n);
     } else {
       n = { key: `${role}:${id}`, personId: id, x, y, generation: gen, role, ...flags };
       this.placed.set(id, n.key);
@@ -158,25 +165,57 @@ class Cross {
   }
 
   /**
+   * Who sits below a person in an ancestor column, joined by a marriage line: for the ancestor on the
+   * line, their other partners (not `linePartner`, the other parent of the child we came from); for their
+   * brothers and sisters, every partner (when those siblings are shown).
+   */
+  columnPartners(id: string, p: string, sideOk: boolean, linePartner?: string): string[] {
+    if (id === p) return this.partners(p).filter((x) => x !== linePartner);
+    return sideOk ? this.partners(id) : [];
+  }
+
+  /**
+   * An ancestor's block in outward coordinates: the ancestor's column is column 0 (x = 0), the
+   * ancestor's card top at y = 0, parents in column 1 (father above mother), and so on. Each person in
+   * the column has their spouse directly below them, joined by a short marriage line.
    * `relY` (parents only): where each of the parent's brothers and sisters sits, relative to the parent,
    * so each is level with their children (the cousins) in the middle column.
    */
-  pedigree(p: string, gen: number, relY?: Map<string, number>): Block {
+  pedigree(p: string, gen: number, relY?: Map<string, number>, linePartner?: string): Block {
     const b: Block = { nodes: [], edges: [], cont: new Map() };
     const hasSibs = this.g.siblingsOf(p).some((s) => !this.placed.has(s.id));
     const { ids, info, sideOk } = this.ancestorGroup(p, gen);
-    const at = ids.indexOf(p);
+    const partnersOf = new Map(ids.map((id) => [id, this.columnPartners(id, p, sideOk, linePartner)]));
+    // Rows: each person, then their partners below them.
+    const seqRow = new Map<string, number>();
+    let r = 0;
+    for (const id of ids) {
+      seqRow.set(id, r);
+      r += 1 + partnersOf.get(id)!.length;
+    }
+    const pRow = seqRow.get(p)!;
     const group: TreeNode[] = [];
-    ids.forEach((id, i) => {
+    const cards: TreeNode[] = [];
+    ids.forEach((id) => {
       const s = info.get(id);
-      const y = relY?.get(id) ?? (i - at) * RP;
+      const y = relY?.get(id) ?? (seqRow.get(id)! - pRow) * RP;
       const n = this.node(id, id === p ? 'ancestor' : 'relative', gen, 0, y, id === p ? {} : { half: s?.half || undefined, step: s?.step || undefined });
       group.push(n);
-      b.nodes.push(n);
+      cards.push(n);
+      partnersOf.get(id)!.forEach((sp, j) => {
+        const pn = this.node(sp, 'spouse', gen, 0, y + (1 + j) * RP);
+        cards.push(pn);
+        const sub = this.g.spousesOf(id).find((e) => e.id === sp)?.subtype;
+        const kind: TreeEdge['kind'] = sub === 'divorced' || sub === 'separated' ? 'divorced' : 'marriage';
+        b.edges.push(j === 0
+          ? this.edge(kind, [[0, y + CARD.h], [0, pn.y]], id, sp)
+          : this.edge(kind, [[W2, y + H2], [W2 + 10, y + H2], [W2 + 10, pn.y + H2], [W2, pn.y + H2]], id, sp));
+      });
     });
-    const pn = group[at];
+    b.nodes.push(...cards);
+    const pn = group[ids.indexOf(p)];
     if (!sideOk && hasSibs && !pn.dupOf) pn.expandable = { ...pn.expandable, side: true };
-    extend(b.cont, 0, Math.min(...group.map((n) => n.y)), Math.max(...group.map((n) => n.y)) + CARD.h);
+    extend(b.cont, 0, Math.min(...cards.map((n) => n.y)), Math.max(...cards.map((n) => n.y)) + CARD.h);
     if (pn.dupOf) return b;
 
     const ps = this.parents(p);
@@ -186,8 +225,8 @@ class Cross {
       return b;
     }
     // Parents' blocks, father's packed above mother's, then centred on the sibling column.
-    const blocks = ps.map((q) => {
-      const blk = this.pedigree(q, gen + 1);
+    const blocks = ps.map((q, i) => {
+      const blk = this.pedigree(q, gen + 1, undefined, ps[1 - i]);
       moveBlock(blk, 1, 0);
       return blk;
     });
@@ -207,6 +246,18 @@ class Cross {
     const pairMid = (tops[0] + tops[blocks.length - 1]) / 2;
     const dy = groupMid - pairMid;
     blocks.forEach((blk) => moveBlock(blk, 0, dy));
+
+    // The parents' marriage line: straight down when the mother sits right below the father, otherwise
+    // round the outer side of their column.
+    if (ps.length === 2) {
+      const [y0, y1] = [tops[0] + dy, tops[1] + dy];
+      const sub = this.g.spousesOf(ps[0]).find((e) => e.id === ps[1])?.subtype;
+      const kind: TreeEdge['kind'] = sub === 'divorced' || sub === 'separated' ? 'divorced' : 'marriage';
+      const xo = PC + W2 + 16;
+      b.edges.push(y1 - y0 === RP
+        ? this.edge(kind, [[PC, y0 + CARD.h], [PC, y1]], ps[0], ps[1])
+        : this.edge(kind, [[PC + W2, y0 + H2], [xo, y0 + H2], [xo, y1 + H2], [PC + W2, y1 + H2]], ps[0], ps[1]));
+    }
 
     // Bracket in the gap between column 0 and column 1.
     const xb = PC / 2;
@@ -261,9 +312,10 @@ class Cross {
       const at = grp.ids.indexOf(parent);
       for (const u of part === 'above' ? grp.ids.slice(0, at) : grp.ids.slice(at + 1)) {
         const kids = grp.sideOk ? g.childrenOf(u).map((c) => c.id).sort(byBirth(g)) : [];
+        const spouses = this.columnPartners(u, parent, grp.sideOk).length; // drawn below the uncle or aunt
         uncleRow.set(u, row);
         cousinRows.push({ parent, uncle: u, kids, row });
-        row += Math.max(1, kids.length);
+        row += Math.max(1 + spouses, kids.length);
       }
     };
     addUncles(dad, 'above');
@@ -274,9 +326,12 @@ class Cross {
       row += 1 + bd.partners.length;
       return { start };
     });
+    const focusRow = rowsOf[column.indexOf(f)].start;
+    // Leave room below each parent for their other partners (a step-parent) before the aunts start.
+    const otherPartners = (p?: string, other?: string) => (p ? this.columnPartners(p, p, false, other).length : 0);
+    row = Math.max(row, focusRow + 1 + Math.max(otherPartners(dad, mom), otherPartners(mom, dad)));
     addUncles(dad, 'below');
     addUncles(mom, 'below');
-    const focusRow = rowsOf[column.indexOf(f)].start;
     const yRow = (r: number) => (r - focusRow) * RP;
 
     // The focus first so it is the primary card if anyone repeats.
@@ -320,7 +375,7 @@ class Cross {
       const side = (parent: string, dir: -1 | 1) => {
         const relY = new Map<string, number>([[parent, 0]]);
         for (const [u, r] of uncleRow) relY.set(u, yRow(r) - parentTop);
-        const blk = this.pedigree(parent, 1, relY);
+        const blk = this.pedigree(parent, 1, relY, parent === dad ? mom : dad);
         const xPar = (dir < 0 ? xS : xLast) + dir * PC;
         for (const n of blk.nodes) {
           n.x = xPar + dir * n.x;
@@ -359,6 +414,18 @@ class Cross {
     }
     for (const sc of spouseCards) this.node(sc.id, 'spouse', 0, xS, sc.y);
 
+    // Point the reserved spouse stubs at their birth cards.
+    for (const n of this.pendingStubs) {
+      const key = this.placed.get(n.personId!);
+      if (key) n.dupOf = key;
+      else {
+        delete n.dupOf;
+        n.key = `${n.role}:${n.personId}`;
+        this.placed.set(n.personId!, n.key);
+        this.byId.set(n.personId!, n);
+      }
+    }
+
     // An expanded card keeps its control so it can be collapsed again.
     for (const n of this.nodes) if (n.expanded && !n.dupOf && !n.expandable) n.expandable = { down: true };
 
@@ -390,8 +457,21 @@ class Cross {
 /** Contract: `layoutFamily` with `orient: 'cross'`. */
 export function layoutCross(graph: FamilyGraph, opts: TreeOptions): TreeLayout {
   if (!graph.person(opts.focusId)) return { nodes: [], edges: [], bounds: { minX: 0, maxX: 0, minY: 0, maxY: 0 } };
-  const c = new Cross(graph, opts);
+  let c = new Cross(graph, opts);
   c.build();
+  // Main-card rule: if someone's main card landed beside a spouse while they also appear in their birth
+  // family, lay out again with that spouse slot reserved as a secondary card.
+  const cards = new Map<string, TreeNode[]>();
+  for (const n of c.nodes) if (n.personId) cards.set(n.personId, [...(cards.get(n.personId) ?? []), n]);
+  const reserved = new Set<string>();
+  for (const [id, ns] of cards) {
+    const main = ns.find((n) => !n.dupOf);
+    if (main?.role === 'spouse' && ns.some((n) => n.dupOf && n.role !== 'spouse')) reserved.add(id);
+  }
+  if (reserved.size) {
+    c = new Cross(graph, opts, reserved);
+    c.build();
+  }
   // Nodes made inside pedigree blocks are already in c.nodes (node() records every card once).
   const nodes = [...new Set(c.nodes)];
   let minX = Infinity;
