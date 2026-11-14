@@ -215,7 +215,7 @@ function RelativesList({ relatives, egoId, egoName, onShowInTree }: {
     groups.get(r.kin.category)!.push(r);
   }
   if (!relatives.length) {
-    return <p className="card px-6 py-10 text-center text-sm text-stone-500">No relatives yet.{canEdit && ' Use the tree to add parents, siblings, spouse and children.'}</p>;
+    return <p className="card px-6 py-10 text-center text-sm text-stone-500">No relatives yet.{canEdit && ' Use the tree to add parents, spouse and children.'}</p>;
   }
   const row = (r: Relative) => (
     <div key={r.person.id} className="flex items-center gap-1">

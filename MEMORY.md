@@ -154,6 +154,8 @@ Read this before changing code. Append new learnings at the bottom.
 - (2026-11-14) The owner asked: **no subagents until they say so.** Do the work directly.
 - (2026-11-14) **Cross layout lineage rule** (owner): above the focus's parents only the father's line continues on
   each side; wives married in (grandmothers etc.) sit below their husband, without their own ancestors.
+- (2026-11-14) **No Add Brother/Sister** (owner): siblings are added as the parents' children. Keep reading
+  existing explicit sibling edges (kinship infers shared parents), but don't offer creating them in the UI.
 - (2026-11-14) **Main card rule** (owner): a person shown twice has their MAIN card in the birth family (joined to
   parents); the card beside a spouse is a secondary stub that can't expand to ancestors. familyLayout enforces it
   with a second pass (`reserved` partner slots); crossLayout creates spouse cards last.
