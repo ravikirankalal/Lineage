@@ -279,7 +279,12 @@ describe('layoutFamily', () => {
     for (const id of ['me', 'bro', 'bro2', 'sis', 'sis2', 'wife', 'broWife']) expect(at(id).x, id).toBe(0);
     expect(new Set(L.nodes.filter((n) => n.generation === 0).map((n) => n.x))).toEqual(new Set([-208, 0, 208]));
     const regionCols = (L.regions ?? []).flatMap((r) => r.columns.map((c) => `${r.side}:${c.label}`));
-    expect(regionCols).toEqual(expect.arrayContaining(['father:Cousins', 'mother:Cousins']));
+    // Cousins share the "your generation" band (same colour); the sides start at the parents' columns.
+    expect(regionCols.filter((c) => c === 'middle:Cousins')).toHaveLength(2);
+    expect(regionCols.some((c) => c.startsWith('father:Cousins') || c.startsWith('mother:Cousins'))).toBe(false);
+    const mid = L.regions!.find((r) => r.side === 'middle')!;
+    for (const id of ['cousin', 'mCousin', 'me']) expect(at(id).x > mid.x0 && at(id).x < mid.x1, id).toBe(true);
+    for (const id of ['dad', 'mom']) expect(at(id).x > mid.x0 && at(id).x < mid.x1, id).toBe(false);
     // Immediate: siblings without their families, no uncles.
     const imm = lay(G, 'me', 'immediate', [], false, 'cross');
     expect(imm.nodes.some((n) => n.personId === 'broWife' || n.personId === 'uncle' || n.personId === 'cousin')).toBe(false);
@@ -510,7 +515,7 @@ describe('layoutFamily', () => {
       expect(sAt('dad').x).toBe(-624);
       expect(S.edges.some((e) => e.from === gf + 'BroKid' && e.to === gf + 'BroGk')).toBe(true);
     }
-    expect((S.regions ?? []).flatMap((r) => r.columns.map((c) => c.label))).toContain('Second cousins');
+    expect((S.regions ?? []).flatMap((r) => r.columns.map((c) => `${r.side}:${c.label}`))).toContain('middle:Second cousins');
     expect(L.secondCousins).toBe(true);
     const wide = layoutFamily(G, { focusId: 'me', level: 'everyone', expanded: new Set(open), orient: 'cross', aspect: 3 });
     const tall = layoutFamily(G, { focusId: 'me', level: 'everyone', expanded: new Set(open), orient: 'cross', aspect: 0.5 });

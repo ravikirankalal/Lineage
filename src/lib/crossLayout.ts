@@ -472,8 +472,10 @@ class Cross {
     for (const n of this.nodes) if (n.expanded && !n.dupOf && !n.expandable) n.expandable = { down: true };
 
     // ---- regions for the background: father's side | your generation | mother's side ----
-    const leftEdge = xS - PC / 2;
-    const rightEdge = xS + PC / 2;
+    // Your generation's band (the owner's choice) takes in both sides' cousins columns, second cousins
+    // too: it ends where the parents' columns start. Fixed column positions, so stacked trees line up.
+    const leftEdge = this.colX(-1, 1) + PC / 2;
+    const rightEdge = this.colX(1, 1) - PC / 2;
     const sideColumns = (keep: (x: number) => boolean) => {
       const gens = new Map<number, Map<number, number>>();
       for (const n of this.nodes) {
@@ -490,7 +492,8 @@ class Cross {
     };
     const fatherCols = sideColumns((x) => x < leftEdge);
     const motherCols = sideColumns((x) => x > rightEdge);
-    const middleCols: { x: number; label: string }[] = []; // one column: the region's title says it
+    // Titles for the cousins columns; the focus's own column needs none (the region's title says it).
+    const middleCols = sideColumns((x) => x >= leftEdge && x <= rightEdge && x !== xS);
     if (fatherCols.length) this.regions.push({ side: 'father', x0: -Infinity, x1: leftEdge, columns: fatherCols });
     this.regions.push({ side: 'middle', x0: leftEdge, x1: rightEdge, columns: middleCols });
     if (motherCols.length) this.regions.push({ side: 'mother', x0: rightEdge, x1: Infinity, columns: motherCols });
