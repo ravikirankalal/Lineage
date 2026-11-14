@@ -1,7 +1,7 @@
 import Dexie, { type EntityTable } from 'dexie';
 import { phoneEntryKey } from './contacts';
 import { emptyPerson, formatPlace, fullName, newId, norm } from './person';
-import type { Gender, LabeledValue, MetaRow, Person, Place, RelType, Relationship, TableName, Tombstone } from './types';
+import { isFamilyType, type Gender, type LabeledValue, type MetaRow, type Person, type Place, type RelType, type Relationship, type TableName, type Tombstone } from './types';
 
 export class LineageDB extends Dexie {
   people!: EntityTable<Person, 'id'>;
@@ -209,6 +209,20 @@ export async function deleteRelationship(id: string) {
     if ((await db.relationships.get(id)) === undefined) return;
     await db.relationships.delete(id);
     await addTombstones(db, 'relationships', [id]);
+  });
+}
+
+/**
+ * Lineage is family-only: delete every non-family link (friend, colleague, … from older versions) for
+ * good. Tombstones make the deletion sync to the cloud like any other delete. Returns how many went.
+ */
+export async function purgeNonFamilyLinks(): Promise<number> {
+  return db.transaction('rw', db.relationships, db.tombstones, async () => {
+    const ids = (await db.relationships.filter((r) => !isFamilyType(r.type)).toArray()).map((r) => r.id);
+    if (!ids.length) return 0;
+    await db.relationships.bulkDelete(ids);
+    await addTombstones(db, 'relationships', ids);
+    return ids.length;
   });
 }
 
@@ -547,6 +561,7 @@ export async function exportBackup(): Promise<Backup> {
 }
 
 const GENDERS: Gender[] = ['male', 'female', 'other', 'unknown'];
+// Includes the non-family types of older versions, so sync and old records stay valid; restore drops them.
 const REL_TYPES: RelType[] = [
   'parent', 'spouse', 'sibling',
   'close_friend', 'friend', 'colleague', 'classmate', 'neighbor', 'acquaintance', 'other',
@@ -640,6 +655,7 @@ export async function importBackup(data: unknown, mode: 'merge' | 'replace') {
     const ids = new Set(await db.people.toCollection().primaryKeys());
     const rels = b.relationships
       .filter(validRelationship)
+      .filter((r) => isFamilyType(r.type)) // family only: old non-family links are not restored
       .filter((r) => ids.has(r.fromId) && ids.has(r.toId))
       .map((r) => ({ ...r, createdAt: typeof r.createdAt === 'number' ? r.createdAt : now, updatedAt: now }));
     await db.relationships.bulkPut(rels);
