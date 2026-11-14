@@ -1,6 +1,7 @@
 import { FamilyGraph, relativesOf } from './kinship';
 import { norm } from './person';
 import { SOCIAL_LABELS, isFamilyType, type Person, type Relationship, type SocialType } from './types';
+import type { SocialEdge, SocialGraph, SocialNode } from './graph/contract';
 
 export interface ConnectionItem {
   person: Person;
@@ -134,4 +135,63 @@ export function connectionsOf(id: string, people: Person[], rels: Relationship[]
 
 function byName(a: ConnectionItem, b: ConnectionItem) {
   return a.person.firstName.localeCompare(b.person.firstName);
+}
+
+const RING: Record<string, number> = {
+  family: 1,
+  close_friend: 1,
+  extended: 2,
+  friend: 2,
+  colleague: 2,
+  classmate: 2,
+  acquaintance: 3,
+  neighbor: 3,
+  other: 3,
+  area: 4,
+  city: 4,
+  origin: 4,
+  school: 4,
+  work: 4,
+};
+const FAMILY_GROUPS = new Set(['family', 'extended']);
+const IMPLICIT_GROUPS = new Set(['area', 'city', 'origin', 'school', 'work']);
+
+/**
+ * The centre's connections as rings (1 closest … 4 implicit circles), with edges from the centre to
+ * each node plus every stored relationship between two included people (friend-of-friend, family
+ * among them), so clusters show. Built from `connectionsOf`; friends never enter the FamilyGraph.
+ */
+export function socialGraph(id: string, people: Person[], rels: Relationship[], graph?: FamilyGraph): SocialGraph {
+  const groups = connectionsOf(id, people, rels, graph);
+  const nodes: SocialNode[] = [];
+  const edges: SocialEdge[] = [];
+  if (!people.some((p) => p.id === id)) return { centerId: id, nodes, edges };
+  nodes.push({ id, ring: 0, group: 'self', label: 'You' });
+  const included = new Set<string>([id]);
+  for (const grp of groups) {
+    const ring = RING[grp.key] ?? 3;
+    const implicit = IMPLICIT_GROUPS.has(grp.key);
+    const kind: SocialEdge['kind'] = FAMILY_GROUPS.has(grp.key) ? 'family' : implicit ? 'implicit' : 'social';
+    for (const item of grp.items) {
+      const pid = item.person.id;
+      if (included.has(pid) || pid.startsWith('~')) continue; // closest circle wins
+      included.add(pid);
+      const label = implicit ? `${grp.title} · ${item.label}` : item.detail ? `${item.label} · ${item.detail}` : item.label;
+      nodes.push({ id: pid, ring, group: grp.key, label });
+      edges.push({ a: id, b: pid, kind });
+    }
+  }
+  // Stored relationships among the included people (not involving the centre).
+  const pairs = new Set<string>();
+  for (const r of rels) {
+    if (r.fromId === id || r.toId === id || r.fromId === r.toId) continue;
+    if (!included.has(r.fromId) || !included.has(r.toId)) continue;
+    const [a, b] = r.fromId < r.toId ? [r.fromId, r.toId] : [r.toId, r.fromId];
+    const kind: SocialEdge['kind'] = isFamilyType(r.type) ? 'family' : 'social';
+    const k = a + '|' + b + '|' + kind;
+    if (pairs.has(k)) continue;
+    pairs.add(k);
+    edges.push({ a, b, kind });
+  }
+  return { centerId: id, nodes, edges };
 }

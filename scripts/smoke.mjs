@@ -50,7 +50,7 @@ async function run(name, viewport) {
   await page.goto(BASE + '#/family');
   await page.getByText('Earliest ancestor').waitFor();
   await shot('2-tree');
-  await page.getByRole('button', { name: /Relatives \(/ }).click();
+  await page.getByRole('button', { name: /Relatives \(/ }).click(); await page.getByPlaceholder('Search relatives').waitFor(); await page.waitForFunction(() => document.querySelectorAll('section h3').length > 0);
   const rel = await body();
   for (const label of ['First cousin', 'Father-in-law', 'Aunt (by marriage)', "Father's brother's son"]) check(rel.includes(label), `[${name}] relatives missing "${label}"`);
   check(!rel.includes('Sandeep Kumar'), `[${name}] friend leaked into My Family`);
@@ -72,11 +72,6 @@ async function run(name, viewport) {
   await page.getByText('Add “Smoke Tester”').click();
   await page.getByText('Smoke Tester').first().waitFor();
   await shot('6-added');
-
-  await page.goto(BASE + '#/remember');
-  await page.getByText('Start practice').click();
-  await page.getByText('Show who it is').click();
-  await shot('7-remember');
 
   await page.goto(BASE + '#/import');
   await shot('8-import');

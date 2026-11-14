@@ -1,9 +1,15 @@
-import type { FamilyGraph } from './kinship';
+import { familyPathTree, kinship, pathInTree, type FamilyGraph } from './kinship';
+import {
+  CARD,
+  type TreeEdge as GraphEdge,
+  type TreeLayout as GraphLayout,
+  type TreeNode as GraphNode,
+  type TreeOptions,
+} from './graph/contract';
 
-export const CARD_W = 156;
-export const CARD_H = 64;
-const GAP = 18;
-const ROW = 118;
+const DEF = { w: 156, h: 64, gap: 18, row: 118 };
+export const CARD_W = DEF.w;
+export const CARD_H = DEF.h;
 
 export interface TreeNode {
   key: string;
@@ -44,8 +50,12 @@ function sortParents(g: FamilyGraph, ids: string[]) {
 export function layoutTree(
   g: FamilyGraph,
   focusId: string,
-  opts: { up?: number; down?: number; ghosts?: boolean } = {},
+  opts: { up?: number; down?: number; ghosts?: boolean; card?: { w: number; h: number; gap: number; row: number } } = {},
 ): TreeLayout {
+  const CARD_W = opts.card?.w ?? DEF.w;
+  const CARD_H = opts.card?.h ?? DEF.h;
+  const GAP = opts.card?.gap ?? DEF.gap;
+  const ROW = opts.card?.row ?? DEF.row;
   const maxUp = opts.up ?? 5;
   const maxDown = opts.down ?? 4;
   const nodes: TreeNode[] = [];
@@ -267,4 +277,122 @@ export function layoutTree(
     maxY = Math.max(maxY, n.y + CARD_H);
   }
   return { nodes, paths, marriages, minX, maxX, minY, maxY };
+}
+
+// ---------------------------------------------------------------------------
+// Graph contract (src/lib/graph/contract.ts)
+
+/** The ids along the shortest family path from a to b (inclusive); [] if not family-connected. */
+export function relationPath(graph: FamilyGraph, a: string, b: string): string[] {
+  if (a === b) return graph.person(a) ? [a] : [];
+  const tree = familyPathTree(graph, a, b);
+  const path = pathInTree(graph, tree, a, b);
+  return path ? [a, ...path.steps.map((s) => s.id)] : [];
+}
+
+/** Labels for everyone family-connected to `egoId`, from ONE path search (never per card). */
+export function labelsFor(graph: FamilyGraph, egoId: string): Map<string, { label: string; path: string }> {
+  const out = new Map<string, { label: string; path: string }>();
+  if (!graph.person(egoId)) return out;
+  const aAnc = graph.ancestors(egoId);
+  const tree = familyPathTree(graph, egoId);
+  for (const id of graph.familyComponent(egoId)) {
+    if (id.startsWith('~') || !graph.person(id)) continue;
+    const kin = kinship(graph, egoId, id, aAnc, pathInTree(graph, tree, egoId, id) ?? null);
+    if (kin) out.set(id, { label: kin.label, path: kin.path });
+  }
+  return out;
+}
+
+const ROLE_MAP: Record<TreeNode['role'], GraphNode['role']> = {
+  focus: 'focus',
+  ancestor: 'ancestor',
+  sibling: 'sibling',
+  spouse: 'spouse',
+  descendant: 'descendant',
+  'descendant-spouse': 'spouse',
+  ghost: 'ghost',
+};
+
+/** Split an "M x y V y H x …" SVG path into polylines (one per M). */
+function parsePolylines(d: string): [number, number][][] {
+  const out: [number, number][][] = [];
+  const tok = d.trim().split(/\s+/);
+  let cur: [number, number][] | undefined;
+  let x = 0;
+  let y = 0;
+  for (let i = 0; i < tok.length; i++) {
+    const c = tok[i];
+    if (c === 'M') {
+      x = Number(tok[++i]);
+      y = Number(tok[++i]);
+      cur = [[x, y]];
+      out.push(cur);
+    } else if (c === 'V') {
+      y = Number(tok[++i]);
+      cur?.push([x, y]);
+    } else if (c === 'H') {
+      x = Number(tok[++i]);
+      cur?.push([x, y]);
+    } else if (c === 'L') {
+      x = Number(tok[++i]);
+      y = Number(tok[++i]);
+      cur?.push([x, y]);
+    }
+  }
+  return out.filter((p) => p.length > 1);
+}
+
+/**
+ * TEMPORARY adapter: the contract's `layoutFamily` on top of the old hourglass `layoutTree`,
+ * until the real engine (src/lib/familyLayout.ts) lands.
+ * TODO: honour opts.level and opts.expanded (ignored here; always the 'immediate' view).
+ * Edge from/to are best-effort (nearest card to each polyline end); descent polylines are
+ * split per segment, so a bar segment may name two siblings rather than parent → child.
+ */
+export function layoutFamily(graph: FamilyGraph, opts: TreeOptions): GraphLayout {
+  const card = { w: CARD.w, h: CARD.h, gap: CARD.gapX, row: CARD.rowH };
+  const old = layoutTree(graph, opts.focusId, { up: opts.up ?? 4, down: opts.down ?? 3, ghosts: opts.ghosts, card });
+  const nodes: GraphNode[] = old.nodes.map((n) => {
+    const role = ROLE_MAP[n.role];
+    const id = n.personId ?? '~' + (n.ghost ?? 'ghost');
+    const node: GraphNode = {
+      key: role + ':' + id,
+      x: n.x,
+      y: n.y,
+      generation: Math.round(-n.y / CARD.rowH) || 0,
+      role,
+    };
+    if (n.personId) node.personId = n.personId;
+    if (n.ghost) node.ghost = n.ghost;
+    return node;
+  });
+  // Nearest card (centre of the card box) to a point; ghosts map to ''.
+  const nearest = (p: [number, number]) => {
+    let best = '';
+    let bd = Infinity;
+    for (const n of nodes) {
+      const d = Math.abs(n.x - p[0]) + Math.abs(n.y + CARD.h / 2 - p[1]);
+      if (d < bd) {
+        bd = d;
+        best = n.personId ?? '';
+      }
+    }
+    return best;
+  };
+  const edges: GraphEdge[] = [];
+  const push = (kind: GraphEdge['kind'], d: string) => {
+    for (const points of parsePolylines(d)) {
+      edges.push({
+        key: kind + ':' + edges.length,
+        kind,
+        points,
+        from: nearest(points[0]),
+        to: nearest(points[points.length - 1]),
+      });
+    }
+  };
+  old.marriages.forEach((d) => push('marriage', d));
+  old.paths.forEach((d) => push('descent', d));
+  return { nodes, edges, bounds: { minX: old.minX, maxX: old.maxX, minY: old.minY, maxY: old.maxY } };
 }

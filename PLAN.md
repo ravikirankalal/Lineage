@@ -84,7 +84,7 @@
 - [x] Contact Picker API on supported phones (Android Chrome)
 - [x] Duplicate detection by phone number / email / exact name, review screen
 
-### Phase 6 — Remembering ✅
+### Phase 6 — Remembering ✅ (Remember tab removed 2026-11-14; birthdays + Needs details kept on People)
 - [x] "Needs details" list — people with thin profiles
 - [x] Recall practice: flashcards showing face/appearance/context, guess who
 - [x] Upcoming birthdays on the home screen
@@ -153,3 +153,32 @@
 - [ ] Kinship: transitive step edges / chained half edges, half-sibling's ancestors as blood,
       half-uncles/half-cousins
 - [x] Faster `planImport`: indexed matching, 5000 contacts in ~30 ms (was ~3 s)
+
+### Phase 11 — Family graph & navigation (mobile first) — UI shipped, layout engine pending
+Audits (2026-11-14): the kinship-engineer measured the layout, and the qa-tester ran a UX walkthrough
+on a 140-person, 6-generation family at phone and desktop sizes. Key findings:
+- the tree shows only ~10% of the family (no aunts/uncles/cousins, siblings' families or in-laws);
+- remarriages are drawn wrong (all children under the first spouse; second spouses and half-siblings hidden);
+- cards overlap in families with remarriages;
+- most cards jump when the focus moves;
+- on phones, "me" is off-screen on open, there's no pinch-zoom, and labels are truncated with no way to read them;
+- no search in the tree, no print/share;
+- per-card label searches cost 11× more than the batch;
+- great-aunt-by-marriage is mislabelled;
+- friends have no network view.
+
+Contract: `src/lib/graph/contract.ts`. Workstreams:
+- [ ] **Layout engine** (kinship-engineer, `tree.ts`) — NOT YET. `layoutFamily` is a temporary adapter over the old
+      hourglass (immediate view only; Extended/Everyone, expand, half/step marks and remarriage bars inert). Done so far:
+      `relationPath`, batch `labelsFor`, great-…-aunt/uncle by marriage. Two engine attempts stalled before writing; next try
+      should be split into small milestones (M1 remarriage child bars + no-overlap tests first). Target: family-unit Walker layout, a separate child bar per
+      marriage, half/step marking, levels immediate/extended/everyone, expandable cards, pedigree-collapse
+      stubs, focus-independent ordering, no overlaps (tested); `relationPath`; batch `labelsFor`; great-…-aunt/uncle
+      by marriage labels.
+- [x] **Social graph** (kinship-engineer, `connections.ts`): `socialGraph()` rings plus friend-of-friend edges.
+- [x] **Tree UI** (ui-builder, `FamilyTree`/`LineageView`/`FamilyPage`/`TreePage`): pinch-zoom and pan, fit-to-screen,
+      focus in the URL (Back works), "Find in tree" with the path highlighted, a tap-card sheet (full label,
+      centre, profile, expand), a level picker, a compact mobile header so the tree fills the screen with
+      "me" visible, FLIP animation on focus change, Relatives "Show in tree" plus sub-groups, and save as image / print.
+- [x] **Connections map** (ui-builder 2, `PersonPage` + `ConnectionsMap`): a radial view of everyone connected to a person.
+- [ ] Review (code-reviewer) + QA (qa-tester, the 140-person family on a phone) → docs-keeper.

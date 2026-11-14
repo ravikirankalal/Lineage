@@ -1,11 +1,12 @@
 import {
-  ArrowLeft, Briefcase, Cake, GitBranch, GraduationCap, Home, Mail, MapPin, Merge, MessageCircle, Pencil, Phone, Plus,
+  ArrowLeft, Briefcase, Cake, GitBranch, GraduationCap, Home, List, Mail, MapPin, Merge, MessageCircle, Network, Pencil, Phone, Plus,
   Sparkles, Trash2, Users, X,
 } from 'lucide-react';
-import { useMemo, useState, type ReactNode } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AddRelationSheet } from '../components/AddRelationSheet';
 import { Avatar } from '../components/Avatar';
+import { ConnectionsMap } from '../components/ConnectionsMap';
 import { KinLabel } from '../components/KinLabel';
 import { MergeSheet } from '../components/MergeSheet';
 import { PersonRow } from '../components/PersonRow';
@@ -18,6 +19,17 @@ import { kinship } from '../lib/kinship';
 import { age, displayName, formatPartialDate, formatPlace, missingDetails } from '../lib/person';
 import { SOCIAL_LABELS, isFamilyType, type SocialType } from '../lib/types';
 
+type ConnView = 'list' | 'map';
+const VIEW_KEY = 'lineage:connectionsView';
+function storedView(): ConnView {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'map' ? 'map' : 'list';
+  } catch { return 'list'; }
+}
+function storeView(v: ConnView) {
+  try { localStorage.setItem(VIEW_KEY, v); } catch { /* storage blocked: the choice lasts this visit */ }
+}
+
 export function PersonPage() {
   const { id } = useParams();
   const nav = useNavigate();
@@ -27,6 +39,26 @@ export function PersonPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [merging, setMerging] = useState(false);
   const { canEdit, isShared } = usePermissions();
+  const [params, setParams] = useSearchParams();
+  const urlView = params.get('view');
+  const [savedView, setSavedView] = useState<ConnView>(storedView);
+  const view: ConnView = urlView === 'map' || urlView === 'list' ? urlView : savedView;
+  const setView = (v: ConnView) => {
+    setSavedView(v);
+    storeView(v);
+    setParams((sp) => { sp.set('view', v); return sp; }, { replace: true }); // so Back returns to the same view
+  };
+  const hasFamily = useMemo(() => !!p && rels.some((r) => isFamilyType(r.type) && (r.fromId === p.id || r.toId === p.id)), [p, rels]);
+
+  // Arriving from the map ("Show X's connections", or Back to it): bring the map into view.
+  const connRef = useRef<HTMLDivElement>(null);
+  const pid = p?.id;
+  useEffect(() => {
+    if (!pid || params.get('view') !== 'map') return;
+    // After the app's scroll-to-top on route change (a parent effect, which runs after this one).
+    const raf = requestAnimationFrame(() => { connRef.current?.scrollIntoView({ block: 'start' }); });
+    return () => { cancelAnimationFrame(raf); };
+  }, [pid]);
 
   const groups = useMemo(() => (p ? connectionsOf(p.id, people, rels, graph) : []), [p, people, rels, graph]);
   const toMe = useMemo(() => {
@@ -73,7 +105,9 @@ export function PersonPage() {
         <div className="mt-5 flex gap-2">
           {phone && <a href={`tel:${phone}`} className="btn-secondary"><Phone size={16} /> Call</a>}
           {phone && <a href={`sms:${phone}`} className="btn-secondary"><MessageCircle size={16} /> Text</a>}
-          <Link to={`/people/${p.id}/tree`} className="btn-secondary"><GitBranch size={16} /> Family tree</Link>
+          {hasFamily
+            ? <Link to={`/people/${p.id}/tree`} className="btn-secondary"><GitBranch size={16} /> Family tree</Link>
+            : canEdit && <button type="button" className="btn-ghost text-stone-500 dark:text-stone-400" onClick={() => setAdding(true)}><Plus size={16} /> Add family</button>}
         </div>
       </div>
 
@@ -87,10 +121,22 @@ export function PersonPage() {
       <Details p={p} />
 
       {/* Connections */}
-      <div className="mt-8 flex items-center justify-between">
+      <div ref={connRef} className="mt-8 flex scroll-mt-4 items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Connections {total > 0 && <span className="text-stone-400">· {total}</span>}</h2>
         {canEdit && <button className="btn-primary" onClick={() => setAdding(true)}><Plus size={17} /> Add</button>}
       </div>
+      {groups.length > 0 && (
+        <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl bg-stone-100 p-1 dark:bg-stone-800" role="tablist" aria-label="Show connections as">
+          {([['list', 'List', List], ['map', 'Map', Network]] as const).map(([v, label, Icon]) => (
+            <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)}
+              className={`flex h-11 items-center justify-center gap-2 rounded-lg text-sm font-medium transition ${view === v
+                ? 'bg-white text-stone-900 shadow-sm dark:bg-stone-900 dark:text-stone-100'
+                : 'text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200'}`}>
+              <Icon size={17} /> {label}
+            </button>
+          ))}
+        </div>
+      )}
       {groups.length === 0 && !canEdit ? (
         <p className="card mt-3 px-6 py-8 text-center text-sm text-stone-500">No connections recorded yet.</p>
       ) : groups.length === 0 ? (
@@ -99,6 +145,8 @@ export function PersonPage() {
           <div className="font-medium">No connections yet</div>
           <div className="text-sm text-stone-500">Add family, friends or colleagues — people in the same city, home town or college appear automatically.</div>
         </button>
+      ) : view === 'map' ? (
+        <ConnectionsMap key={p.id} centerId={p.id} />
       ) : (
         <div className="mt-3 space-y-4">
           {groups.map((g) => <Group key={g.key} group={g} personId={p.id} personName={p.firstName} canEdit={canEdit} />)}
