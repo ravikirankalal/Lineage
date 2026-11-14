@@ -100,6 +100,9 @@ _Last updated: 2026-11-13_
   band and bands never overlap (top-to-bottom, left-to-right).
 - Cross layout background (owner's request): three regions instead of generation stripes: Father's side (blue) |
   Siblings & descendants (grey) | Mother's side (pink), each titled, with a title per card column (Grandparents,
-  Parents, Cousins, You & siblings, Children, Grandchildren, Spouses). `TreeLayout.regions` from crossLayout.
+  Parents, Cousins, You & siblings · spouses, Children, Grandchildren). `TreeLayout.regions` from crossLayout.
+- Cross layout spouses (owner's request): each spouse directly below their partner in the siblings' column, joined
+  by a short marriage line; the couple's children (next column) hang from the middle of that line. A later partner
+  sits below the earlier partner's children, joined by a line round the left of the column.
 - Known limits: an ancestor's siblings
   are only drawn on the outer edge of the pedigree (father's father's line, mother's mother's line).

@@ -64,7 +64,7 @@ describe('generation bands', () => {
     // Regions touch without overlapping, and each card column has a title.
     expect(bands[0].x1).toBe(bands[1].x0);
     expect(bands[1].x1).toBe(bands[2].x0);
-    expect(bands[1].columns!.map((c) => c.label)).toEqual(['Siblings', 'Children', 'Grandchildren', 'Spouses']);
+    expect(bands[1].columns!.map((c) => c.label)).toEqual(['Siblings · spouses', 'Children', 'Grandchildren']);
     expect(bands[0].columns!.map((c) => c.label)).toEqual(['Grandparents', 'Parents']);
     expect(bands[2].columns!.map((c) => c.label)).toEqual(['Parents']);
     expect(bounds.minY).toBeLessThan(L.bounds.minY);
