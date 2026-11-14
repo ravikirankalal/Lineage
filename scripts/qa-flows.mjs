@@ -95,7 +95,17 @@ async function main(browser) {
     await page.getByText('Vijay K.').waitFor();
     const tree = await body(page);
     check(/Vijay K\.\s*Brother/.test(tree), '[1] brother card not labelled Brother in tree');
-    // Brother card on the same row as me.
+    // Brother card on the same row as me (measured once the cards stop moving: the tree animates changes).
+    const settled = async () => {
+      let last = '';
+      for (let i = 0; i < 20; i++) {
+        const now = JSON.stringify([await page.getByText('Arun K.').boundingBox(), await page.getByText('Vijay K.').boundingBox()]);
+        if (now === last) return;
+        last = now;
+        await page.waitForTimeout(100);
+      }
+    };
+    await settled();
     const yMe = (await page.getByText('Arun K.').boundingBox()).y;
     const yBro = (await page.getByText('Vijay K.').boundingBox()).y;
     check(Math.abs(yMe - yBro) < 5, `[1] brother not beside me in tree (y ${yMe} vs ${yBro})`);
