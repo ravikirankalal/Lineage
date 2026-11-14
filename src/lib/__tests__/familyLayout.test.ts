@@ -261,21 +261,25 @@ describe('layoutFamily', () => {
     for (const [a, b] of [['dad', 'me'], ['mom', 'me'], ['dgf', 'dad'], ['mgm', 'mom']]) {
       expect(L.edges.some((e) => e.from === a && e.to === b), `${a}→${b}`).toBe(true);
     }
-    // Cousins share my column, level with their own parent: an uncle's children above my brothers, an
-    // aunt's children below my sisters.
-    expect(at('cousin').x).toBe(0);
+    // Cousins get their side's own column right beside mine (father's left, mother's right), level with
+    // their own parent: an uncle's children above, an aunt's children below.
+    expect(at('cousin').x).toBe(-208);
+    expect(at('dad').x).toBe(-416);
     expect(at('cousin').y).toBe(at('uncle').y);
     expect(at('cousin2').y).toBeGreaterThan(at('cousin').y);
     expect(at('cousin2').y).toBeLessThan(at('bro').y);
-    expect(at('mCousin').x).toBe(0);
+    expect(at('mCousin').x).toBe(208);
     expect(at('mCousin').y).toBe(at('mAunt').y);
     expect(at('mCousin').y).toBeGreaterThan(at('sis2').y);
     expect(at('uncle').y).toBeLessThan(at('dad').y);
     expect(at('mAunt').y).toBeGreaterThan(at('mom').y);
     expect(L.edges.some((e) => e.from === 'uncle' && e.to === 'cousin')).toBe(true);
     expect(L.edges.some((e) => e.from === 'mAunt' && e.to === 'mCousin')).toBe(true);
-    // No separate cousins column: everyone of my generation is in my column.
-    expect(new Set(L.nodes.filter((n) => n.generation === 0).map((n) => n.x))).toEqual(new Set([0]));
+    // My column holds only me, my siblings and our spouses; cousins sit in their side's cousins column.
+    for (const id of ['me', 'bro', 'bro2', 'sis', 'sis2', 'wife', 'broWife']) expect(at(id).x, id).toBe(0);
+    expect(new Set(L.nodes.filter((n) => n.generation === 0).map((n) => n.x))).toEqual(new Set([-208, 0, 208]));
+    const regionCols = (L.regions ?? []).flatMap((r) => r.columns.map((c) => `${r.side}:${c.label}`));
+    expect(regionCols).toEqual(expect.arrayContaining(['father:Cousins', 'mother:Cousins']));
     // Immediate: siblings without their families, no uncles.
     const imm = lay(G, 'me', 'immediate', [], false, 'cross');
     expect(imm.nodes.some((n) => n.personId === 'broWife' || n.personId === 'uncle' || n.personId === 'cousin')).toBe(false);
@@ -483,13 +487,13 @@ describe('layoutFamily', () => {
       expect(at('Bro').y).toBeLessThan(main(gf)!.y); // brothers above
       expect(at('Sis').y).toBeGreaterThan(main(gf)!.y); // sisters below
       // His children (the parents' cousins) in the parents' column, the first level with him.
-      expect(at('BroKid').x).toBe(dir * 208);
+      expect(at('BroKid').x).toBe(dir * 416);
       expect(at('BroKid').y).toBe(at('Bro').y);
       expect(at('BroKid2').y).toBeGreaterThan(at('BroKid').y);
       expect(at('BroWife').y).toBe(at('Bro').y + 100); // his wife right below him
-      expect(at('SisKid').x).toBe(dir * 208);
-      // Grandchildren (second cousins) in my column, level with their parent.
-      expect(at('BroGk').x).toBe(0);
+      expect(at('SisKid').x).toBe(dir * 416);
+      // Grandchildren (second cousins) in that side's cousins column, level with their parent.
+      expect(at('BroGk').x).toBe(dir * 208);
       expect(at('BroGk').y).toBe(at('BroKid').y);
       for (const [a, b] of [[gf + 'Bro', gf + 'BroKid'], [gf + 'BroWife', gf + 'BroKid2'], [gf + 'BroKid', gf + 'BroGk'], [gf + 'Sis', gf + 'SisKid']]) {
         expect(L.edges.some((e) => e.from === a && e.to === b), `${a}→${b}`).toBe(true);
@@ -503,7 +507,7 @@ describe('layoutFamily', () => {
     expect(ext.nodes.some((n) => n.personId === 'dgfBro')).toBe(false);
   });
 
-  it('cross layout: everyone in my generation has their spouse right below them', () => {
+  it("cross layout: every cousin has their spouse right below them, in their side's cousins column", () => {
     const f = family();
     const fam = (a: string, b: string | null, ...cs: string[]) => { if (b) f.rel(a, b, 'spouse'); for (const c of cs) { f.rel(a, c, 'parent'); if (b) f.rel(b, c, 'parent'); } };
     for (const [id, gd, y] of [['me', 'male', '1980'], ['dad', 'male', '1950'], ['mom', 'female', '1952'], ['gf', 'male', '1920'], ['gm', 'female', '1922'],
@@ -521,7 +525,8 @@ describe('layoutFamily', () => {
       const at = (id: string) => L.nodes.find((n) => n.personId === id && !n.key.includes('/'));
       const pairs = [['cousin', 'cousinEx'], ['cousinF', 'cousinFHusband'], ...(level === 'everyone' ? [['secondCousin', 'scHusband']] : [])];
       for (const [a, b] of pairs) {
-        expect(at(b)?.x, `${level}: ${b} in my column`).toBe(0);
+        expect(at(b)?.x, `${level}: ${b} in the father's cousins column`).toBe(-208);
+        expect(at(b)?.x).toBe(at(a)!.x);
         expect(L.edges.some((e) => (e.kind === 'marriage' || e.kind === 'divorced') && [e.from, e.to].sort().join() === [a, b].sort().join()), `${a}–${b}`).toBe(true);
       }
       // The first partner right below, a second one below that; the next person starts after them.

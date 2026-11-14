@@ -175,6 +175,10 @@ Read this before changing code. Append new learnings at the bottom.
 - (2026-11-14) Everyone `stack()` primary card: focus first, then the first card with a parent line into it (birth
   card) in ANY tree, then a married-in tree's root, then the first main card. (A grandmother's birth card can be in
   her brother's married-in tree, so she gets no tree of her own.)
+- (2026-11-14) **Cousins columns** (owner): the cross middle column holds only the focus, siblings and their
+  spouses; each side has its own "Cousins" column beside it (x = ±PC) with every cousin of that side (first,
+  second, …) and their spouses; parents at ±2·PC, each older generation one further out (`colX`, `gapIn`).
+  Each side keeps its own row range (`top`/`bottom` per side), so the sides no longer take turns.
 - (2026-11-14) **Trees and bands aligned** (owner): `stack()` puts every extra tree's own person at x = 0 (the
   main focus's column), so generation columns line up across trees; every band reaches the same far left/right
   (father's side / only band from the left edge, mother's side / only band to the right edge); in top-to-bottom
