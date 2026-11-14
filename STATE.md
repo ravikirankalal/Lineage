@@ -104,6 +104,9 @@ _Last updated: 2026-11-13_
 - Cross layout spouses (owner's request): each spouse directly below their partner in the siblings' column, joined
   by a short marriage line; the couple's children (next column) hang from the middle of that line. A later partner
   sits below the earlier partner's children, joined by a line round the left of the column.
+- Cross layout without children (owner's request): children and grandchildren are no longer drawn in the cross
+  view; the middle is one column (you & siblings, each spouse below). Regions: Father's side | Siblings & spouses |
+  Mother's side. Descendants remain in the top-to-bottom and left-to-right layouts.
 - Cross layout parents' lines (owner's report: they looked wrong): both parents now sit level with the focus, and
   both lines meet one bracket on the LEFT of the siblings' column (the mother's over the top), so they never end
   near a spouse and never merge with the children's lines on the right. Tested.

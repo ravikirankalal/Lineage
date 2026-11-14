@@ -154,7 +154,8 @@
 - [x] Cross layout: cousins and grandchildren
 - [x] Tree: generation bands in the background, labelled
 - [ ] Generation band labels that stay visible while panning
-- [ ] Cross layout: uncles'/aunts' spouses, in-laws' parents, parents' other partners, children's spouses; compact cards
+- [x] Cross layout: children removed at the owner's request (descendants stay in the other layouts)
+- [ ] Cross layout: uncles'/aunts' spouses, in-laws' parents, parents' other partners; compact cards
 - [ ] Tree: compact cards for left-to-right so more generations fit across a phone
 - [x] Tree: every in-law's parents (siblings'/children's/cousins' spouses, step-parents)
 - [ ] Tree: inner-side great-aunts/uncles; keep in-law families closer to the person they married
