@@ -141,6 +141,8 @@ _Last updated: 2026-11-13_
 - Cross layout: each ancestor's brother or sister with children (uncles, aunts, great-uncles, their children…)
   has a +/- button; their children start collapsed at every level and open on tap ("Show/Hide Name's
   children"). Collapsed families stay out of Everyone's extra trees too. Tested (unit + browser click).
+- Cross layout: cousins and second cousins share the "your generation" band (same colour) with you and your siblings;
+  the side bands start at the parents' columns. Tested; screenshot-checked.
 - Cross layout: when second (or further) cousins are drawn, they get their own column if that fits the screen's
   shape better (wide screens); on portrait phones they stay with the first cousins. Tested (positions, lines,
   choice by aspect, aligned trees, geometry on generated families with the column on); checked on real data.

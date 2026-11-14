@@ -184,6 +184,9 @@ Read this before changing code. Append new learnings at the bottom.
   whose width/height is closer (log ratio) to `opts.aspect` (LineageView: window w/h in 0.25 steps). The column
   only adds width (second cousins stay level with their parents), so it is chosen on wide screens only. Extra
   Everyone trees use the same choice so the columns line up. An explicit `secondCousinsColumn` wins.
+- (2026-11-14) **Cousins share your generation's band** (owner): the cross 'middle' region spans the cousins (and
+  second cousins) columns of both sides, from `colX(-1,1)+PC/2` to `colX(1,1)-PC/2` (fixed, so stacked trees align),
+  with 'Cousins'/'Second cousins' column titles; the father's/mother's regions start at the parents' columns.
 - (2026-11-14) **Trees and bands aligned** (owner): `stack()` puts every extra tree's own person at x = 0 (the
   main focus's column), so generation columns line up across trees; every band reaches the same far left/right
   (father's side / only band from the left edge, mother's side / only band to the right edge); in top-to-bottom
