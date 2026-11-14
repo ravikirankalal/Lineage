@@ -376,47 +376,52 @@ class Cross {
     }
 
     // ---- parents: father's side to the left, mother's side to the right --------------------
-    // Each side: [parent's column] [cousins column, if any] next to the middle. The parent's line to the
-    // focus's generation runs in the gaps, over the top of the cousins and the middle where needed.
+    // Each side: [parent's column] [cousins column, if any] next to the middle; both parents level with
+    // the focus. Both parents' lines meet ONE bracket on the left of the siblings' column, which then
+    // reaches each sibling; the mother's line gets there over the top of the middle. The right side of
+    // the siblings' column is left to their own children's lines.
     const ps = this.parents(f);
-    const sibYs = column.map((id) => sibNodes.get(id)!.y);
-    const midTop = (Math.min(...sibYs) + Math.max(...sibYs)) / 2; // card top of a card centred on the column
+    const parentTop = fNode.y;
     const dad = ps.find((p) => g.person(p)?.gender === 'male') ?? (ps.length === 2 ? ps[0] : undefined);
     const mom = ps.find((p) => p !== dad);
     if (this.up >= 1) {
-      const side = (parent: string, dir: -1 | 1) => {
+      const sides: { parent: string; dir: -1 | 1; xPar: number; cousins: TreeNode[] }[] = [];
+      const build = (parent: string, dir: -1 | 1) => {
         const blk = this.pedigree(parent, 1);
         const cousins = blk.nodes.filter((n) => n.x < 0);
         const inner = dir < 0 ? xS : xLast; // the middle column this side touches
         const xPar = inner + dir * PC * (cousins.length ? 2 : 1);
         for (const n of blk.nodes) {
           n.x = xPar + dir * n.x;
-          n.y += midTop;
+          n.y += parentTop;
         }
         for (const e of blk.edges) for (const pt of e.points) {
           pt[0] = xPar + dir * pt[0];
-          pt[1] += midTop;
+          pt[1] += parentTop;
         }
         this.edges.push(...blk.edges);
-        const yPar = midTop + H2;
+        sides.push({ parent, dir, xPar, cousins });
+      };
+      if (dad) build(dad, -1);
+      else if (this.opts.ghosts) this.ghost('father', xS - PC, parentTop);
+      if (mom) build(mom, 1);
+      else if (this.opts.ghosts) this.ghost('mother', xLast + PC, parentTop);
+
+      const xb = xS - W2 - GX * 0.5; // the parents' bracket, left of the siblings
+      const yPar = parentTop + H2;
+      const top = Math.min(blockTop, ...sides.flatMap((sd) => sd.cousins.map((n) => n.y))) - GY / 2;
+      for (const { parent, dir, xPar, cousins } of sides) {
         const xr = xPar - dir * (W2 + GX * 0.3); // gap on the parent's inner side
-        const xs = dir < 0 ? xS - W2 - GX * 0.5 : xS + W2 + GX * 0.2; // gap beside the siblings
-        const top = Math.min(blockTop, ...cousins.map((n) => n.y)) - GY / 2;
         const direct = dir < 0 && !cousins.length;
         for (const id of column) {
           if (!this.isParent(parent, id)) continue;
           const yc = sibNodes.get(id)!.y + H2;
-          const edgeX = dir < 0 ? xS - W2 : xS + W2;
           const pts: [number, number][] = direct
-            ? [[xPar + W2, yPar], [xs, yPar], [xs, yc], [edgeX, yc]]
-            : [[xPar - dir * W2, yPar], [xr, yPar], [xr, top], [xs, top], [xs, yc], [edgeX, yc]];
+            ? [[xPar + W2, yPar], [xb, yPar], [xb, yc], [xS - W2, yc]]
+            : [[xPar - dir * W2, yPar], [xr, yPar], [xr, top], [xb, top], [xb, yc], [xS - W2, yc]];
           this.edges.push(this.edge(this.descentKind(parent, id), pts, parent, id));
         }
-      };
-      if (dad) side(dad, -1);
-      else if (this.opts.ghosts) this.ghost('father', xS - PC, midTop);
-      if (mom) side(mom, 1);
-      else if (this.opts.ghosts) this.ghost('mother', xLast + PC, midTop);
+      }
     }
 
     // An expanded card keeps its control so it can be collapsed again.

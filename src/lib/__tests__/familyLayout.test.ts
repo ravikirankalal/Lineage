@@ -227,6 +227,18 @@ describe('layoutFamily', () => {
     // A short marriage line joins each couple.
     expect(L.edges.some((e) => e.kind === 'marriage' && [e.from, e.to].sort().join() === 'me,wife')).toBe(true);
     expect(L.edges.some((e) => e.kind === 'marriage' && [e.from, e.to].sort().join() === 'bro,broWife')).toBe(true);
+    // Both parents sit level with me; their lines reach me and my siblings on the LEFT of our column only
+    // (the right side is for our children), and never end at a spouse.
+    expect(at('dad').y).toBe(0);
+    expect(at('mom').y).toBe(0);
+    for (const par of ['dad', 'mom']) {
+      for (const e of L.edges.filter((x) => x.from === par && ['me', 'bro', 'bro2', 'sis', 'sis2'].includes(x.to))) {
+        const end = e.points[e.points.length - 1];
+        expect(end[0], `${par}→${e.to}`).toBeLessThan(0);
+        expect(end[1]).toBe(at(e.to).y + CARD.h / 2);
+      }
+    }
+    expect(L.edges.some((e) => (e.from === 'dad' || e.from === 'mom') && (e.to === 'wife' || e.to === 'broWife'))).toBe(false);
     // Every parent-child link is drawn.
     for (const [a, b] of [['dad', 'me'], ['mom', 'me'], ['me', 'son'], ['wife', 'son'], ['dgf', 'dad'], ['mgm', 'mom']]) {
       expect(L.edges.some((e) => e.from === a && e.to === b), `${a}→${b}`).toBe(true);
