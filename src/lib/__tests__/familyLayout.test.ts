@@ -247,16 +247,21 @@ describe('layoutFamily', () => {
     for (const [a, b] of [['dad', 'me'], ['mom', 'me'], ['dgf', 'dad'], ['mgm', 'mom']]) {
       expect(L.edges.some((e) => e.from === a && e.to === b), `${a}→${b}`).toBe(true);
     }
-    // Cousins: in a column between the siblings and the parent, level with their own parent.
-    expect(at('cousin').x).toBeGreaterThan(at('dad').x);
-    expect(at('cousin').x).toBeLessThan(0);
+    // Cousins share my column, level with their own parent: an uncle's children above my brothers, an
+    // aunt's children below my sisters.
+    expect(at('cousin').x).toBe(0);
     expect(at('cousin').y).toBe(at('uncle').y);
     expect(at('cousin2').y).toBeGreaterThan(at('cousin').y);
-    expect(at('cousin2').y).toBeLessThan(at('dad').y); // the uncle's band pushes the father down
-    expect(at('mCousin').x).toBeGreaterThan(0);
-    expect(at('mCousin').x).toBeLessThan(at('mom').x);
+    expect(at('cousin2').y).toBeLessThan(at('bro').y);
+    expect(at('mCousin').x).toBe(0);
     expect(at('mCousin').y).toBe(at('mAunt').y);
+    expect(at('mCousin').y).toBeGreaterThan(at('sis2').y);
+    expect(at('uncle').y).toBeLessThan(at('dad').y);
+    expect(at('mAunt').y).toBeGreaterThan(at('mom').y);
     expect(L.edges.some((e) => e.from === 'uncle' && e.to === 'cousin')).toBe(true);
+    expect(L.edges.some((e) => e.from === 'mAunt' && e.to === 'mCousin')).toBe(true);
+    // No separate cousins column: everyone of my generation is in my column.
+    expect(new Set(L.nodes.filter((n) => n.generation === 0).map((n) => n.x))).toEqual(new Set([0]));
     // Immediate: siblings without their families, no uncles.
     const imm = lay(G, 'me', 'immediate', [], false, 'cross');
     expect(imm.nodes.some((n) => n.personId === 'broWife' || n.personId === 'uncle' || n.personId === 'cousin')).toBe(false);

@@ -156,7 +156,8 @@ Read this before changing code. Append new learnings at the bottom.
   RIGHT, brothers UP, sisters DOWN (applies to every ancestor's siblings too), middle = siblings | children | spouses
   with children between their parents, grandparents further out. Default on portrait phones. Don't change these
   rules without asking. (Revised by the owner: spouses now sit directly BELOW their partner in the siblings'
-  column with a marriage line. Later still: NO children/grandchildren in the cross view at all.)
+  column with a marriage line. Later still: NO children/grandchildren in the cross view at all, and cousins
+  share the focus's column, level with their own parent - no separate cousins column.)
 - (2026-11-14) Left-to-right trees: familyLayout runs in row space with a `Geo` (card w/h swapped, `RIGHT`) and
   transposes at the end; `geo`/`STEP`/`HALF`/`ROW_GAP` are module state set per call, reset in `finally`. Node keys
   are the same in both directions, so switching animates (FLIP).

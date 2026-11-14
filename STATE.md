@@ -107,6 +107,9 @@ _Last updated: 2026-11-13_
 - Cross layout without children (owner's request): children and grandchildren are no longer drawn in the cross
   view; the middle is one column (you & siblings, each spouse below). Regions: Father's side | Siblings & spouses |
   Mother's side. Descendants remain in the top-to-bottom and left-to-right layouts.
+- Cross layout cousins (owner's request): no separate cousins column; cousins share the focus's column (children
+  of the parents' brothers at the top, of their sisters at the bottom), each level with their own parent, who sits
+  above/below the father or mother. Middle region titled "Your generation".
 - Cross layout parents' lines: both parents sit level with the focus; the father's line reaches the siblings via
   a bracket on the LEFT of their column, the mother's via one on the RIGHT, both straight across at the parent's
   row (cousins sit level with their own parents, so that row is always free). Nothing goes overhead. Tested.

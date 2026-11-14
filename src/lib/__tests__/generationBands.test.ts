@@ -47,11 +47,11 @@ describe('generation bands', () => {
     });
   }
 
-  it('splits the cross layout into three regions: father\'s side, siblings & descendants, mother\'s side', () => {
+  it('splits the cross layout into three regions: father\'s side, your generation, mother\'s side', () => {
     const L = layoutFamily(graph(), { focusId: 'me', level: 'everyone', expanded: new Set(), orient: 'cross' });
     const { bands, bounds } = generationBands(L, 'cross');
     expect(bands.map((b) => b.region)).toEqual(['father', 'middle', 'mother']);
-    expect(bands.map((b) => b.label)).toEqual(['Father’s side', 'Siblings & spouses', 'Mother’s side']);
+    expect(bands.map((b) => b.label)).toEqual(['Father’s side', 'Your generation', 'Mother’s side']);
     const regionOf = (id: string) => {
       const n = L.nodes.find((x) => x.personId === id)!;
       const hit = bands.filter((b) => n.x >= b.x0 && n.x <= b.x1);
@@ -64,7 +64,7 @@ describe('generation bands', () => {
     // Regions touch without overlapping, and each card column has a title.
     expect(bands[0].x1).toBe(bands[1].x0);
     expect(bands[1].x1).toBe(bands[2].x0);
-    expect(bands[1].columns!.map((c) => c.label)).toEqual(['Siblings · spouses']);
+    expect(bands[1].columns).toEqual([]);
     expect(bands[0].columns!.map((c) => c.label)).toEqual(['Grandparents', 'Parents']);
     expect(bands[2].columns!.map((c) => c.label)).toEqual(['Parents']);
     expect(bounds.minY).toBeLessThan(L.bounds.minY);
