@@ -97,6 +97,9 @@ _Last updated: 2026-11-13_
   columns left-to-right and cross; the cross layout's two sides get a band each), labelled relative to the focus
   (Parents, Grandparents, Your generation, Children, 2× great-…). Four tints so neighbours always differ; light and
   dark checked at 390x844 and 1400x900. Fit and print include them. Tests: every card lies in its own generation's
-  band and bands never overlap, in all three layouts.
+  band and bands never overlap (top-to-bottom, left-to-right).
+- Cross layout background (owner's request): three regions instead of generation stripes: Father's side (blue) |
+  Siblings & descendants (grey) | Mother's side (pink), each titled, with a title per card column (Grandparents,
+  Parents, Cousins, You & siblings, Children, Grandchildren, Spouses). `TreeLayout.regions` from crossLayout.
 - Known limits: an ancestor's siblings
   are only drawn on the outer edge of the pedigree (father's father's line, mother's mother's line).

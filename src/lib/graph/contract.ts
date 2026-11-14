@@ -71,6 +71,15 @@ export interface TreeLayout {
   nodes: TreeNode[];
   edges: TreeEdge[];
   bounds: { minX: number; maxX: number; minY: number; maxY: number };
+  /** Cross layout only: the three side-by-side regions (father's side | siblings & descendants |
+   * mother's side) with a title for each card column, for the background. */
+  regions?: TreeRegion[];
+}
+export interface TreeRegion {
+  side: 'father' | 'middle' | 'mother';
+  x0: number;
+  x1: number;
+  columns: { x: number; label: string }[];
 }
 
 // export function layoutFamily(graph: FamilyGraph, opts: TreeOptions): TreeLayout
