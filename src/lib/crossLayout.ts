@@ -154,12 +154,35 @@ class Cross {
     const hasSibs = this.g.siblingsOf(p).some((s) => !this.placed.has(s.id));
     const { ids, info } = this.siblingColumn(p, sideOk);
     const at = ids.indexOf(p);
+    // Cousins: the children of the parents' brothers and sisters, in a column on the inner side
+    // (outward column −1, next to the focus's generation), each level with their own parent.
+    const cousinsOf = (id: string) =>
+      gen === 1 && sideOk && id !== p ? this.g.childrenOf(id).map((c) => c.id).sort(byBirth(this.g)) : [];
+    const rowsAt: number[] = [];
+    let r = 0;
+    for (const id of ids) {
+      rowsAt.push(r);
+      r += Math.max(1, cousinsOf(id).length);
+    }
     const group: TreeNode[] = [];
     ids.forEach((id, i) => {
       const s = info.get(id);
-      const n = this.node(id, id === p ? 'ancestor' : 'relative', gen, 0, (i - at) * RP, id === p ? {} : { half: s?.half || undefined, step: s?.step || undefined });
+      const n = this.node(id, id === p ? 'ancestor' : 'relative', gen, 0, (rowsAt[i] - rowsAt[at]) * RP, id === p ? {} : { half: s?.half || undefined, step: s?.step || undefined });
       group.push(n);
       b.nodes.push(n);
+    });
+    ids.forEach((id, i) => {
+      const un = group[i];
+      if (un.dupOf) return;
+      const yu = un.y + H2;
+      const xb = -W2 - GX * 0.65;
+      cousinsOf(id).forEach((c, j) => {
+        const cn = this.node(c, 'relative', 0, -PC, un.y + j * RP);
+        b.nodes.push(cn);
+        extend(b.cont, -2, cn.y, cn.y + CARD.h);
+        const yc = cn.y + H2;
+        b.edges.push(this.edge(this.descentKind(id, c), [[-W2, yu], [xb, yu], [xb, yc], [-PC + W2, yc]], id, c));
+      });
     });
     const pn = group[at];
     if (!sideOk && hasSibs && !pn.dupOf) pn.expandable = { ...pn.expandable, side: true };
@@ -221,48 +244,75 @@ class Cross {
     const level = this.opts.level;
     const down = this.opts.down ?? (level === 'everyone' ? MANY : 3);
 
-    // ---- the middle: siblings | children | spouses -------------------------------------------
+    // ---- the middle: siblings | children | grandchildren … | spouses ------------------------
     const { ids: column, info } = this.siblingColumn(f, true);
-    interface Band { id: string; partners: { id: string; kids: string[] }[]; solo: string[]; open: boolean }
+    interface DTree { id: string; kids: DTree[]; rows: number; closed: boolean }
+    const seen = new Set<string>([...column]);
+    /** A descendant at `depth` (1 = child) with their own descendants down to `max` (+1 if expanded). */
+    const tree = (id: string, depth: number, max: number): DTree => {
+      const all = seen.has(id) ? [] : g.childrenOf(id).map((c) => c.id).sort(byBirth(g));
+      seen.add(id);
+      const allow = depth < max || this.exp(id);
+      const kids = allow ? all.map((k) => tree(k, depth + 1, depth < max ? max : depth + 1)) : [];
+      return { id, kids, rows: Math.max(1, kids.reduce((n, k) => n + k.rows, 0)), closed: !allow && all.length > 0 };
+    };
+    const depthOf = (t: DTree): number => 1 + Math.max(0, ...t.kids.map(depthOf));
+    interface Band { id: string; partners: { id: string; kids: DTree[] }[]; solo: DTree[]; open: boolean }
     const bands: Band[] = column.map((id) => {
       const open = id === f ? down >= 1 : level !== 'immediate' || this.exp(id);
       if (!open) return { id, partners: [], solo: [], open };
+      const max = id === f || level === 'everyone' ? down : 1;
       const partners = this.partners(id);
       const kids = g.childrenOf(id).map((c) => c.id).sort(byBirth(g));
       const used = new Set<string>();
-      const ps = partners.map((s) => {
-        const k = kids.filter((c) => !used.has(c) && this.isParent(s, c));
+      const ps = partners.map((sp) => {
+        const k = kids.filter((c) => !used.has(c) && this.isParent(sp, c));
         k.forEach((c) => used.add(c));
-        return { id: s, kids: k };
+        return { id: sp, kids: k.map((c) => tree(c, 1, max)) };
       });
-      return { id, partners: ps, solo: kids.filter((c) => !used.has(c)), open };
+      return { id, partners: ps, solo: kids.filter((c) => !used.has(c)).map((c) => tree(c, 1, max)), open };
     });
-    const anyKids = bands.some((bd) => bd.solo.length || bd.partners.some((p) => p.kids.length));
+    const allTrees = bands.flatMap((bd) => [...bd.partners.flatMap((p) => p.kids), ...bd.solo]);
+    const D = Math.max(0, ...allTrees.map(depthOf)); // descendant columns
     const anySpouse = bands.some((bd) => bd.partners.length);
-    const colKids = anyKids ? 1 : 0;
-    const colSp = anySpouse ? colKids + 1 : colKids;
     const xS = 0;
-    const xC = PC;
-    const xP = colSp * PC;
+    const xCol = (d: number) => d * PC;
+    const xP = (D + 1) * PC;
+    const xLast = anySpouse ? xP : xCol(D); // the right-most middle column
 
     // Rows: each sibling's band, the focus's row at y = 0.
     let row = 0;
     const rowsOf = bands.map((bd) => {
-      const sub = bd.partners.map((p) => Math.max(1, p.kids.length));
-      const solo = bd.solo.length;
-      const n = Math.max(1, sub.reduce((a, b) => a + b, 0) + solo);
+      const sub = bd.partners.map((p) => Math.max(1, p.kids.reduce((n, k) => n + k.rows, 0)));
+      const n = Math.max(1, sub.reduce((a, b) => a + b, 0) + bd.solo.reduce((n, k) => n + k.rows, 0));
       const start = row;
       row += n;
-      return { start, n, sub };
+      return { start, n };
     });
     const focusRow = rowsOf[column.indexOf(f)].start;
     const yRow = (r: number) => (r - focusRow) * RP;
     const blockTop = yRow(0);
 
+    /** Place a descendant tree with its top at row r in column d; returns its card. */
+    const place = (t: DTree, d: number, r: number, role: TreeNode['role']): TreeNode => {
+      const n = this.node(t.id, role, -d, xCol(d), yRow(r));
+      if (t.closed && !n.dupOf) n.expandable = { down: true };
+      let rr = r;
+      const xb = xCol(d) + W2 + GX / 2;
+      for (const k of t.kids) {
+        const kn = place(k, d + 1, rr, role);
+        rr += k.rows;
+        const yp = n.y + H2;
+        const yk = kn.y + H2;
+        this.edges.push(this.edge(this.descentKind(t.id, k.id), [[xCol(d) + W2, yp], [xb, yp], [xb, yk], [xCol(d + 1) - W2, yk]], t.id, k.id));
+      }
+      return n;
+    };
+
     // The focus first so it is the primary card if anyone repeats.
     const order = [column.indexOf(f), ...column.map((_, i) => i).filter((i) => column[i] !== f)];
     const sibNodes = new Map<string, TreeNode>();
-    const fNode = this.node(f, 'focus', 0, xS, yRow(rowsOf[column.indexOf(f)].start));
+    const fNode = this.node(f, 'focus', 0, xS, yRow(focusRow));
     sibNodes.set(f, fNode);
     for (const i of order) {
       const bd = bands[i];
@@ -278,11 +328,13 @@ class Cross {
       const kidRole: TreeNode['role'] = bd.id === f ? 'descendant' : 'relative';
       const xs2 = xS + W2 + GX * 0.65; // this sibling's bracket
       const xp = xP - W2 - GX / 2; // the spouse's bracket
+      const x1R = xCol(1) + W2 + GX * 0.3; // where a spouse's line reaches a child past the grandchildren
       const yS = ys + H2;
       let r = start;
       const allKids: TreeNode[] = [];
-      const addKids = (ids: string[]) => ids.map((c) => {
-        const n = this.node(c, kidRole, -1, xC, yRow(r++));
+      const addKids = (ts: DTree[]) => ts.map((t) => {
+        const n = place(t, 1, r, kidRole);
+        r += t.rows;
         allKids.push(n);
         return n;
       });
@@ -304,58 +356,62 @@ class Cross {
         }
         for (const k of kids) {
           const yk = k.y + H2;
-          this.edges.push(this.edge(this.descentKind(p.id, k.personId!), [[xP - W2, yP], [xp, yP], [xp, yk], [xC + W2, yk]], p.id, k.personId!));
+          const pts: [number, number][] = D <= 1
+            ? [[xP - W2, yP], [xp, yP], [xp, yk], [xCol(1) + W2, yk]]
+            // Grandchildren sit between: go through the gap above the child's rows, then in from the right.
+            : [[xP - W2, yP], [xp, yP], [xp, k.y - GY / 2], [x1R, k.y - GY / 2], [x1R, yk], [xCol(1) + W2, yk]];
+          this.edges.push(this.edge(this.descentKind(p.id, k.personId!), pts, p.id, k.personId!));
         }
       });
       addKids(bd.solo);
       for (const k of allKids) {
         const yk = k.y + H2;
-        this.edges.push(this.edge(this.descentKind(bd.id, k.personId!), [[xS + W2, yS], [xs2, yS], [xs2, yk], [xC - W2, yk]], bd.id, k.personId!));
+        this.edges.push(this.edge(this.descentKind(bd.id, k.personId!), [[xS + W2, yS], [xs2, yS], [xs2, yk], [xCol(1) - W2, yk]], bd.id, k.personId!));
       }
     }
 
     // ---- parents: father's side to the left, mother's side to the right --------------------
+    // Each side: [parent's column] [cousins column, if any] next to the middle. The parent's line to the
+    // focus's generation runs in the gaps, over the top of the cousins and the middle where needed.
     const ps = this.parents(f);
     const sibYs = column.map((id) => sibNodes.get(id)!.y);
     const midTop = (Math.min(...sibYs) + Math.max(...sibYs)) / 2; // card top of a card centred on the column
     const dad = ps.find((p) => g.person(p)?.gender === 'male') ?? (ps.length === 2 ? ps[0] : undefined);
     const mom = ps.find((p) => p !== dad);
-    const xM = xP + PC;
-    const yTop = blockTop - GY / 2;
     if (this.up >= 1) {
-      // Father: column −1, a bracket in the gap to the siblings.
-      if (dad) {
-        const blk = this.pedigree(dad, 1);
-        for (const n of blk.nodes) n.x = -PC - n.x;
-        for (const e of blk.edges) for (const p of e.points) p[0] = -PC - p[0];
-        for (const n of blk.nodes) n.y += midTop;
-        for (const e of blk.edges) for (const p of e.points) p[1] += midTop;
-        this.edges.push(...blk.edges);
-        const yF = midTop + H2;
-        const xb = -PC / 2;
-        for (const id of column) {
-          if (!this.isParent(dad, id)) continue;
-          const yc = sibNodes.get(id)!.y + H2;
-          this.edges.push(this.edge(this.descentKind(dad, id), [[-PC + W2, yF], [xb, yF], [xb, yc], [-W2, yc]], dad, id));
+      const side = (parent: string, dir: -1 | 1) => {
+        const blk = this.pedigree(parent, 1);
+        const cousins = blk.nodes.filter((n) => n.x < 0);
+        const inner = dir < 0 ? xS : xLast; // the middle column this side touches
+        const xPar = inner + dir * PC * (cousins.length ? 2 : 1);
+        for (const n of blk.nodes) {
+          n.x = xPar + dir * n.x;
+          n.y += midTop;
         }
-      } else if (this.opts.ghosts) this.ghost('father', -PC, midTop);
-      // Mother: right of the spouses; her line goes over the top of the middle block.
-      if (mom) {
-        const blk = this.pedigree(mom, 1);
-        for (const n of blk.nodes) n.x = xM + n.x;
-        for (const e of blk.edges) for (const p of e.points) p[0] = xM + p[0];
-        for (const n of blk.nodes) n.y += midTop;
-        for (const e of blk.edges) for (const p of e.points) p[1] += midTop;
-        this.edges.push(...blk.edges);
-        const yM = midTop + H2;
-        const xm = xM - PC / 2;
-        const xs1 = xS + W2 + GX * 0.3;
-        for (const id of column) {
-          if (!this.isParent(mom, id)) continue;
-          const yc = sibNodes.get(id)!.y + H2;
-          this.edges.push(this.edge(this.descentKind(mom, id), [[xM - W2, yM], [xm, yM], [xm, yTop], [xs1, yTop], [xs1, yc], [xS + W2, yc]], mom, id));
+        for (const e of blk.edges) for (const pt of e.points) {
+          pt[0] = xPar + dir * pt[0];
+          pt[1] += midTop;
         }
-      } else if (this.opts.ghosts) this.ghost('mother', xM, midTop);
+        this.edges.push(...blk.edges);
+        const yPar = midTop + H2;
+        const xr = xPar - dir * (W2 + GX * 0.3); // gap on the parent's inner side
+        const xs = dir < 0 ? xS - W2 - GX * 0.5 : xS + W2 + GX * 0.3; // gap beside the siblings
+        const top = Math.min(blockTop, ...cousins.map((n) => n.y)) - GY / 2;
+        const direct = dir < 0 && !cousins.length;
+        for (const id of column) {
+          if (!this.isParent(parent, id)) continue;
+          const yc = sibNodes.get(id)!.y + H2;
+          const edgeX = dir < 0 ? xS - W2 : xS + W2;
+          const pts: [number, number][] = direct
+            ? [[xPar + W2, yPar], [xs, yPar], [xs, yc], [edgeX, yc]]
+            : [[xPar - dir * W2, yPar], [xr, yPar], [xr, top], [xs, top], [xs, yc], [edgeX, yc]];
+          this.edges.push(this.edge(this.descentKind(parent, id), pts, parent, id));
+        }
+      };
+      if (dad) side(dad, -1);
+      else if (this.opts.ghosts) this.ghost('father', xS - PC, midTop);
+      if (mom) side(mom, 1);
+      else if (this.opts.ghosts) this.ghost('mother', xLast + PC, midTop);
     }
 
     // An expanded card keeps its control so it can be collapsed again.

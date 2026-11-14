@@ -89,7 +89,9 @@ _Last updated: 2026-11-13_
   every person's brothers above and sisters below them, the middle split into siblings | children | spouses with
   children between their parents. Layout button cycles cross → top-down → left-right. Tested: rule positions,
   levels/expand, and no-overlap / no-line-through-card for every person × level of generated families.
-  Not in the cross view yet: cousins (uncles' families), in-laws' parents, parents' other partners, grandchildren
-  (re-centre or switch layout). Wide families need panning: about 7 card columns at Extended.
+  Cousins (Extended+): a column between the siblings and each parent, every cousin level with their own parent;
+  the parent's line goes over the top. Grandchildren and further: extra columns between the children and the
+  spouses, each level with their parent; a spouse's line reaches a child through the gap above the child's rows.
+  Not in the cross view yet: uncles'/aunts' spouses, in-laws' parents, parents' other partners, children's spouses. Wide families need panning: about 7 card columns at Extended.
 - Known limits: an ancestor's siblings
   are only drawn on the outer edge of the pedigree (father's father's line, mother's mother's line).
