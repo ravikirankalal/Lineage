@@ -242,13 +242,18 @@ class Cross {
     const xb = PC / 2;
     let lo = Infinity;
     let hi = -Infinity;
+    // A couple (wife right below her husband) sends ONE line to their children, from the middle of their
+    // marriage line; a parent on their own sends it from their card.
+    const couple = ps.length === 2 && tops[1] - tops[0] === RP;
+    const yMid = tops[0] + dy + CARD.h + (RP - CARD.h) / 2;
     ps.forEach((q, i) => {
-      const yq = tops[i] + dy + H2;
+      const yq = couple ? yMid : tops[i] + dy + H2;
+      const start: [number, number] = couple ? [PC, yq] : [PC - W2, yq];
       for (const c of group) {
         const cid = c.personId!;
         if (!this.isParent(q, cid)) continue;
         const yc = c.y + H2;
-        b.edges.push(this.edge(this.descentKind(q, cid), [[PC - W2, yq], [xb, yq], [xb, yc], [W2, yc]], q, cid));
+        b.edges.push(this.edge(this.descentKind(q, cid), [[start[0], start[1]], [xb, yq], [xb, yc], [W2, yc]], q, cid));
         lo = Math.min(lo, yq, yc);
         hi = Math.max(hi, yq, yc);
       }
