@@ -113,5 +113,9 @@ _Last updated: 2026-11-13_
 - Cross layout parents' lines: both parents sit level with the focus; the father's line reaches the siblings via
   a bracket on the LEFT of their column, the mother's via one on the RIGHT, both straight across at the parent's
   row (cousins sit level with their own parents, so that row is always free). Nothing goes overhead. Tested.
+- Main vs secondary cards (owner's rule): when someone appears twice, the card in their birth family (joined
+  to their parents) is the main card; the card beside their spouse is a secondary "Also shown elsewhere" stub that
+  can't expand to their ancestors. Cross layout makes spouse cards last; the other layouts re-run with that
+  partner slot reserved when needed. Tested in all three layouts (a cousin married to a sister).
 - Known limits: an ancestor's siblings
   are only drawn on the outer edge of the pedigree (father's father's line, mother's mother's line).

@@ -33,7 +33,8 @@ export const TreeCard = memo(function TreeCard({ node, info, onTap, onToggle }: 
   const dim = info.mark === 'dim' ? 'opacity-40' : '';
 
   if (node.dupOf) {
-    // Pedigree collapse: this person is drawn elsewhere. A light stub that jumps to the main card.
+    // A secondary card (pedigree collapse, or beside a spouse when the main card is in the birth family):
+    // a light stub that jumps to the main card.
     return (
       <div data-key={node.key} className={`tree-node absolute ${dim}`} style={style}>
         <button type="button" onClick={() => onTap(node)}
@@ -42,7 +43,7 @@ export const TreeCard = memo(function TreeCard({ node, info, onTap, onToggle }: 
           <Avatar person={p} size={30} />
           <div className="min-w-0 flex-1 leading-tight">
             <div className="truncate text-[13px] font-semibold text-stone-700 dark:text-stone-200">{cardName(p)}</div>
-            <div className="flex items-center gap-1 text-[11px] text-stone-500 dark:text-stone-400"><CornerUpRight size={12} /> Also shown above</div>
+            <div className="flex items-center gap-1 text-[11px] text-stone-500 dark:text-stone-400"><CornerUpRight size={12} /> Also shown elsewhere</div>
           </div>
         </button>
       </div>

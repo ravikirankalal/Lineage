@@ -157,7 +157,15 @@ class Builder {
   readonly minGen: number;
   readonly sibling = new Map<string, { half: boolean; step?: boolean }>();
 
-  constructor(readonly g: FamilyGraph, readonly opts: TreeOptions) {
+  /**
+   * People whose main card belongs in their birth family: when they also turn up in a partner slot
+   * (beside a spouse), that card is a secondary stub, even if it is laid out first.
+   */
+  private readonly reserved: ReadonlySet<string>;
+  private readonly pendingStubs: TreeNode[] = [];
+
+  constructor(readonly g: FamilyGraph, readonly opts: TreeOptions, reserved: ReadonlySet<string> = new Set()) {
+    this.reserved = reserved;
     const all = opts.level === 'everyone';
     this.up = opts.up ?? (all ? MANY : 4);
     this.minGen = -(opts.down ?? (all ? MANY : 3));
@@ -169,6 +177,24 @@ class Builder {
   }
   isExpanded(id: string) {
     return this.opts.expanded.has(id);
+  }
+  /** Drawn (or to be drawn) as a main card somewhere else, so a partner slot shows only a stub. */
+  elsewhere(id: string) {
+    return this.placed.has(id) || this.reserved.has(id);
+  }
+  /** Point stubs made for reserved people at their main card, once it exists. */
+  resolveStubs() {
+    for (const n of this.pendingStubs) {
+      const key = this.placed.get(n.personId!);
+      if (key) n.dupOf = key;
+      else {
+        // The birth card never came (shouldn't happen): make this the main card after all.
+        delete n.dupOf;
+        n.key = `${n.role}:${n.personId}`;
+        this.placed.set(n.personId!, n.key);
+        this.byId.set(n.personId!, n);
+      }
+    }
   }
 
   edge(kind: TreeEdge['kind'], points: [number, number][], from: string, to: string): TreeEdge {
@@ -182,6 +208,9 @@ class Builder {
       n = { key: 'ghost:' + slot.ghost, ghost: slot.ghost, x, y: rowTop(gen), generation: gen, role: 'ghost' };
     } else if (this.placed.has(slot.id)) {
       n = { key: `dup:${slot.id}:${this.dupN++}`, personId: slot.id, dupOf: this.placed.get(slot.id), x, y: rowTop(gen), generation: gen, role: slot.role };
+    } else if (slot.role === 'spouse' && this.reserved.has(slot.id)) {
+      n = { key: `dup:${slot.id}:${this.dupN++}`, personId: slot.id, dupOf: '?', x, y: rowTop(gen), generation: gen, role: slot.role };
+      this.pendingStubs.push(n);
     } else {
       n = { key: `${slot.role}:${slot.id}`, personId: slot.id, x, y: rowTop(gen), generation: gen, role: slot.role };
       this.placed.set(slot.id, n.key);
@@ -345,12 +374,12 @@ class Builder {
     // A partner's children with someone else (the owner's step-children), when the partner is drawn here.
     const mine = new Set(kids);
     for (const s of partners) {
-      if (this.placed.has(s)) continue;
+      if (this.elsewhere(s)) continue;
       const theirs = this.g.childrenOf(s).map((c) => c.id).filter((c) => !mine.has(c)).sort(byBirth(this.g));
       if (theirs.length) specs.push({ slot: idx(s), parents: [s], kids: theirs, stepKids: true });
     }
     // Partners already drawn elsewhere become stubs in assemble(); don't open their step-children then.
-    const stubPartners = new Set(partners.filter((s) => this.placed.has(s)));
+    const stubPartners = new Set(partners.filter((s) => this.elsewhere(s)));
     return this.assemble(gen, slots, origin, couples, specs.filter((s) => !(s.stepKids && stubPartners.has(s.parents[0]))), (id, kg, grp) =>
       this.block(id, kg, b - 1, kidRole, kidRole, grp.stepKids || !isBlood(this.g.parentsOf(id).find((e) => e.id === p)?.subtype) && !grp.couple ? { step: true } : {}));
   }
@@ -619,9 +648,24 @@ export function layoutFamilyV2(graph: FamilyGraph, opts: TreeOptions): TreeLayou
   }
 }
 
-/** The layout in row space: generations as rows, the focus at along-position 0. */
+/**
+ * The layout in row space. If someone's main card landed in a partner slot while they also appear in
+ * their birth family, lay out again with that partner slot reserved as a stub (the birth card is main).
+ */
 function rowLayout(graph: FamilyGraph, opts: TreeOptions): { nodes: TreeNode[]; edges: TreeEdge[] } {
-  const b = new Builder(graph, opts);
+  const first = rowPass(graph, opts, new Set());
+  const reserved = new Set<string>();
+  const cards = new Map<string, TreeNode[]>();
+  for (const n of first.nodes) if (n.personId) cards.set(n.personId, [...(cards.get(n.personId) ?? []), n]);
+  for (const [id, ns] of cards) {
+    const main = ns.find((n) => !n.dupOf);
+    if (main?.role === 'spouse' && ns.some((n) => n.dupOf && n.role !== 'spouse')) reserved.add(id);
+  }
+  return reserved.size ? rowPass(graph, opts, reserved) : first;
+}
+
+function rowPass(graph: FamilyGraph, opts: TreeOptions, reserved: ReadonlySet<string>): { nodes: TreeNode[]; edges: TreeEdge[] } {
+  const b = new Builder(graph, opts, reserved);
   const { shape: core, principals } = b.core();
   const occ = new Occupancy();
   occ.add(core.cont);
@@ -634,6 +678,7 @@ function rowLayout(graph: FamilyGraph, opts: TreeOptions): { nodes: TreeNode[]; 
     b.ancestry(occ, all, principals[0], 1, graph.person(principals[0])?.gender === 'female' ? 'R' : 'L', true);
   }
 
+  b.resolveStubs();
   b.inLaws(occ, all);
 
   // An expanded card keeps its control so it can be collapsed again.
