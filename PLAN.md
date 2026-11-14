@@ -151,7 +151,8 @@
 - [x] Tree: left-to-right direction for tall phone screens
 - [x] Tree: cross layout (father's side left, mother's right, brothers up, sisters down, children between
       siblings and spouses), default on portrait phones
-- [ ] Cross layout: cousins, in-laws' parents, parents' other partners, grandchildren; compact cards
+- [x] Cross layout: cousins and grandchildren
+- [ ] Cross layout: uncles'/aunts' spouses, in-laws' parents, parents' other partners, children's spouses; compact cards
 - [ ] Tree: compact cards for left-to-right so more generations fit across a phone
 - [x] Tree: every in-law's parents (siblings'/children's/cousins' spouses, step-parents)
 - [ ] Tree: inner-side great-aunts/uncles; keep in-law families closer to the person they married

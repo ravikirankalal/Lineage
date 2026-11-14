@@ -179,11 +179,13 @@ describe('layoutFamily', () => {
     f.add('broWife', 'female', '1976'); f.add('nephew', 'male', '2001');
     f.add('dgf', 'male', '1920'); f.add('dgm', 'female', '1922'); f.add('mgf', 'male', '1925'); f.add('mgm', 'female', '1927');
     f.add('uncle', 'male', '1948'); f.add('aunt', 'female', '1955'); f.add('mUncle', 'male', '1950'); f.add('mAunt', 'female', '1958');
+    f.add('cousin', 'male', '1979'); f.add('cousin2', 'female', '1983'); f.add('mCousin', 'female', '1984'); f.add('grandson', 'male', '2035');
     for (const c of ['me', 'bro', 'bro2', 'sis', 'sis2']) { f.rel('dad', c, 'parent'); f.rel('mom', c, 'parent'); }
     for (const c of ['dad', 'uncle', 'aunt']) { f.rel('dgf', c, 'parent'); f.rel('dgm', c, 'parent'); }
     for (const c of ['mom', 'mUncle', 'mAunt']) { f.rel('mgf', c, 'parent'); f.rel('mgm', c, 'parent'); }
     f.rel('dad', 'mom', 'spouse'); f.rel('dgf', 'dgm', 'spouse'); f.rel('mgf', 'mgm', 'spouse');
     f.rel('me', 'wife', 'spouse'); f.rel('me', 'son', 'parent'); f.rel('wife', 'son', 'parent'); f.rel('me', 'dau', 'parent'); f.rel('wife', 'dau', 'parent');
+    f.rel('uncle', 'cousin', 'parent'); f.rel('uncle', 'cousin2', 'parent'); f.rel('mAunt', 'mCousin', 'parent'); f.rel('son', 'grandson', 'parent');
     f.rel('bro', 'broWife', 'spouse'); f.rel('bro', 'nephew', 'parent'); f.rel('broWife', 'nephew', 'parent');
     const G = f.graph();
     for (const level of ['immediate', 'extended', 'everyone'] as const) checkGeometry(lay(G, 'me', level, [], true, 'cross'), `cross ${level}`);
@@ -226,9 +228,26 @@ describe('layoutFamily', () => {
     for (const [a, b] of [['dad', 'me'], ['mom', 'me'], ['me', 'son'], ['wife', 'son'], ['dgf', 'dad'], ['mgm', 'mom']]) {
       expect(L.edges.some((e) => e.from === a && e.to === b), `${a}→${b}`).toBe(true);
     }
+    // Cousins: in a column between the siblings and the parent, level with their own parent.
+    expect(at('cousin').x).toBeGreaterThan(at('dad').x);
+    expect(at('cousin').x).toBeLessThan(0);
+    expect(at('cousin').y).toBe(at('uncle').y);
+    expect(at('cousin2').y).toBeGreaterThan(at('cousin').y);
+    expect(at('cousin2').y).toBeLessThan(at('dad').y); // the uncle's band pushes the father down
+    expect(at('mCousin').x).toBeGreaterThan(at('wife').x);
+    expect(at('mCousin').x).toBeLessThan(at('mom').x);
+    expect(at('mCousin').y).toBe(at('mAunt').y);
+    expect(L.edges.some((e) => e.from === 'uncle' && e.to === 'cousin')).toBe(true);
+    // Grandchildren: a column between the children and the spouses, level with their parent.
+    expect(at('grandson').x).toBeGreaterThan(at('son').x);
+    expect(at('grandson').x).toBeLessThan(at('wife').x);
+    expect(at('grandson').y).toBe(at('son').y);
+    expect(L.edges.some((e) => e.from === 'son' && e.to === 'grandson')).toBe(true);
+    expect(L.edges.some((e) => e.from === 'wife' && e.to === 'dau')).toBe(true);
     // Immediate: siblings without their families, no uncles.
     const imm = lay(G, 'me', 'immediate', [], false, 'cross');
-    expect(imm.nodes.some((n) => n.personId === 'broWife' || n.personId === 'uncle')).toBe(false);
+    expect(imm.nodes.some((n) => n.personId === 'broWife' || n.personId === 'uncle' || n.personId === 'cousin')).toBe(false);
+    expect(imm.nodes.some((n) => n.personId === 'grandson')).toBe(true); // my own descendants always show
     expect(imm.nodes.find((n) => n.personId === 'bro')?.expandable?.down).toBe(true);
     expect(lay(G, 'me', 'immediate', ['bro'], false, 'cross').nodes.some((n) => n.personId === 'nephew')).toBe(true);
   });
