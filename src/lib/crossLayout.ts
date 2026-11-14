@@ -5,12 +5,13 @@ import type { FamilyGraph } from './kinship';
 /**
  * "Cross" family layout (the owner's design for tall phone screens), centred on the focus:
  *
- *   [father's side] ← [siblings & spouses] → [mother's side]
+ *   [father's side] ← [cousins, siblings & spouses] → [mother's side]
  *
  * - Middle: the focus and their siblings in one column, brothers ABOVE the focus and sisters (and
  *   siblings of unknown gender) BELOW, each group oldest first. Each sibling's spouse sits directly below
- *   them in the same column, joined by a short marriage line. Children are not shown in this view (the
- *   owner's choice); the other layouts show them.
+ *   them in the same column, joined by a short marriage line. Cousins share this column too (the owner's
+ *   choice): children of the parents' brothers above, children of the parents' sisters below, each level
+ *   with their own parent. Children are not shown in this view (the owner's choice); the other layouts are.
  * - Left: the father, with his brothers above him and sisters below; his parents one column further
  *   left (father's father above father's mother), and so on outwards. Right: the same for the mother,
  *   mirrored. So every step outwards is one generation older.
@@ -150,45 +151,32 @@ class Cross {
    * An ancestor's block in outward coordinates: the ancestor's column is column 0 (x = 0), the
    * ancestor's card top at y = 0, parents in column 1 (father above mother), and so on.
    */
-  pedigree(p: string, gen: number): Block {
-    const b: Block = { nodes: [], edges: [], cont: new Map() };
+  /** An ancestor with their brothers (above) and sisters (below), when the level shows them. */
+  ancestorGroup(p: string, gen: number) {
     const sideOk = this.opts.level === 'everyone' || (this.opts.level === 'extended' && gen === 1) || this.exp(p);
+    return { sideOk, ...this.siblingColumn(p, sideOk) };
+  }
+
+  /**
+   * `relY` (parents only): where each of the parent's brothers and sisters sits, relative to the parent,
+   * so each is level with their children (the cousins) in the middle column.
+   */
+  pedigree(p: string, gen: number, relY?: Map<string, number>): Block {
+    const b: Block = { nodes: [], edges: [], cont: new Map() };
     const hasSibs = this.g.siblingsOf(p).some((s) => !this.placed.has(s.id));
-    const { ids, info } = this.siblingColumn(p, sideOk);
+    const { ids, info, sideOk } = this.ancestorGroup(p, gen);
     const at = ids.indexOf(p);
-    // Cousins: the children of the parents' brothers and sisters, in a column on the inner side
-    // (outward column −1, next to the focus's generation), each level with their own parent.
-    const cousinsOf = (id: string) =>
-      gen === 1 && sideOk && id !== p ? this.g.childrenOf(id).map((c) => c.id).sort(byBirth(this.g)) : [];
-    const rowsAt: number[] = [];
-    let r = 0;
-    for (const id of ids) {
-      rowsAt.push(r);
-      r += Math.max(1, cousinsOf(id).length);
-    }
     const group: TreeNode[] = [];
     ids.forEach((id, i) => {
       const s = info.get(id);
-      const n = this.node(id, id === p ? 'ancestor' : 'relative', gen, 0, (rowsAt[i] - rowsAt[at]) * RP, id === p ? {} : { half: s?.half || undefined, step: s?.step || undefined });
+      const y = relY?.get(id) ?? (i - at) * RP;
+      const n = this.node(id, id === p ? 'ancestor' : 'relative', gen, 0, y, id === p ? {} : { half: s?.half || undefined, step: s?.step || undefined });
       group.push(n);
       b.nodes.push(n);
     });
-    ids.forEach((id, i) => {
-      const un = group[i];
-      if (un.dupOf) return;
-      const yu = un.y + H2;
-      const xb = -W2 - GX * 0.65;
-      cousinsOf(id).forEach((c, j) => {
-        const cn = this.node(c, 'relative', 0, -PC, un.y + j * RP);
-        b.nodes.push(cn);
-        extend(b.cont, -2, cn.y, cn.y + CARD.h);
-        const yc = cn.y + H2;
-        b.edges.push(this.edge(this.descentKind(id, c), [[-W2, yu], [xb, yu], [xb, yc], [-PC + W2, yc]], id, c));
-      });
-    });
     const pn = group[at];
     if (!sideOk && hasSibs && !pn.dupOf) pn.expandable = { ...pn.expandable, side: true };
-    extend(b.cont, 0, group[0].y, group[group.length - 1].y + CARD.h);
+    extend(b.cont, 0, Math.min(...group.map((n) => n.y)), Math.max(...group.map((n) => n.y)) + CARD.h);
     if (pn.dupOf) return b;
 
     const ps = this.parents(p);
@@ -215,7 +203,7 @@ class Cross {
       tops[1] = Math.max(off ?? RP, RP);
       moveBlock(blocks[1], 0, tops[1]);
     }
-    const groupMid = (group[0].y + group[group.length - 1].y) / 2;
+    const groupMid = (Math.min(...group.map((n) => n.y)) + Math.max(...group.map((n) => n.y))) / 2;
     const pairMid = (tops[0] + tops[blocks.length - 1]) / 2;
     const dy = groupMid - pairMid;
     blocks.forEach((blk) => moveBlock(blk, 0, dy));
@@ -245,7 +233,11 @@ class Cross {
     const f = this.opts.focusId;
     const level = this.opts.level;
 
-    // ---- the middle: siblings and their spouses (no children in this view) --------------------
+    // ---- the middle column: cousins, siblings and spouses (no children in this view) -----------
+    // From the top: children of the father's brothers, children of the mother's brothers, then the focus's
+    // brothers, the focus, sisters (each spouse below their partner), then children of the father's
+    // sisters and of the mother's sisters. Each parent's brothers sit above them and sisters below, level
+    // with their own children here, so every line runs straight across.
     const { ids: column, info } = this.siblingColumn(f, true);
     interface Band { id: string; partners: string[]; open: boolean }
     const bands: Band[] = column.map((id) => {
@@ -254,14 +246,36 @@ class Cross {
     });
     const xS = 0;
     const xLast = xS; // the middle is one column
+    const ps = this.up >= 1 ? this.parents(f) : [];
+    const dad = ps.find((p) => g.person(p)?.gender === 'male') ?? (ps.length === 2 ? ps[0] : undefined);
+    const mom = ps.find((p) => p !== dad);
+    const groups = new Map<string, ReturnType<Cross['ancestorGroup']>>();
+    for (const p of [dad, mom]) if (p) groups.set(p, this.ancestorGroup(p, 1));
 
-    // Rows: each sibling, then their spouses directly below them.
     let row = 0;
+    const uncleRow = new Map<string, number>();
+    const cousinRows: { parent: string; uncle: string; kids: string[]; row: number }[] = [];
+    const addUncles = (parent: string | undefined, part: 'above' | 'below') => {
+      const grp = parent ? groups.get(parent) : undefined;
+      if (!parent || !grp) return;
+      const at = grp.ids.indexOf(parent);
+      for (const u of part === 'above' ? grp.ids.slice(0, at) : grp.ids.slice(at + 1)) {
+        const kids = grp.sideOk ? g.childrenOf(u).map((c) => c.id).sort(byBirth(g)) : [];
+        uncleRow.set(u, row);
+        cousinRows.push({ parent, uncle: u, kids, row });
+        row += Math.max(1, kids.length);
+      }
+    };
+    addUncles(dad, 'above');
+    addUncles(mom, 'above');
+    // Each sibling, then their spouses directly below them.
     const rowsOf = bands.map((bd) => {
       const start = row;
       row += 1 + bd.partners.length;
       return { start };
     });
+    addUncles(dad, 'below');
+    addUncles(mom, 'below');
     const focusRow = rowsOf[column.indexOf(f)].start;
     const yRow = (r: number) => (r - focusRow) * RP;
 
@@ -293,21 +307,16 @@ class Cross {
     }
 
     // ---- parents: father's side to the left, mother's side to the right --------------------
-    // Each side: [parent's column] [cousins column, if any] next to the middle; both parents level with
-    // the focus. The father's line reaches the siblings through a bracket on the LEFT of their column,
-    // the mother's through one on the RIGHT. Both run straight across at the parent's own row: cousins sit
-    // level with their own parents (the parent's brothers and sisters), so that row is always free.
-    const ps = this.parents(f);
+    // Both parents sit level with the focus, each parent's brothers and sisters level with their
+    // children in the middle column. Every line from that side reaches the middle through a bracket on
+    // its own side of the column (father's left, mother's right), straight across.
     const parentTop = fNode.y;
-    const dad = ps.find((p) => g.person(p)?.gender === 'male') ?? (ps.length === 2 ? ps[0] : undefined);
-    const mom = ps.find((p) => p !== dad);
     if (this.up >= 1) {
-      const sides: { parent: string; dir: -1 | 1; xPar: number; cousins: TreeNode[] }[] = [];
-      const build = (parent: string, dir: -1 | 1) => {
-        const blk = this.pedigree(parent, 1);
-        const cousins = blk.nodes.filter((n) => n.x < 0);
-        const inner = dir < 0 ? xS : xLast; // the middle column this side touches
-        const xPar = inner + dir * PC * (cousins.length ? 2 : 1);
+      const side = (parent: string, dir: -1 | 1) => {
+        const relY = new Map<string, number>([[parent, 0]]);
+        for (const [u, r] of uncleRow) relY.set(u, yRow(r) - parentTop);
+        const blk = this.pedigree(parent, 1, relY);
+        const xPar = (dir < 0 ? xS : xLast) + dir * PC;
         for (const n of blk.nodes) {
           n.x = xPar + dir * n.x;
           n.y += parentTop;
@@ -317,30 +326,37 @@ class Cross {
           pt[1] += parentTop;
         }
         this.edges.push(...blk.edges);
-        sides.push({ parent, dir, xPar, cousins });
-      };
-      if (dad) build(dad, -1);
-      else if (this.opts.ghosts) this.ghost('father', xS - PC, parentTop);
-      if (mom) build(mom, 1);
-      else if (this.opts.ghosts) this.ghost('mother', xLast + PC, parentTop);
-
-      const yPar = parentTop + H2;
-      for (const { parent, dir, xPar } of sides) {
-        const xb = xS + dir * (W2 + GX * 0.5); // this parent's bracket beside the siblings
-        const edgeX = xS + dir * W2; // the siblings' card edge on this side
+        const xb = xS + dir * (W2 + GX * 0.5); // this side's bracket beside the middle column
+        const edgeX = xS + dir * W2; // the middle cards' edge on this side
+        const xFrom = xPar - dir * W2; // the parent column's inner edge
+        // The parent to the focus and siblings.
+        const yPar = parentTop + H2;
         for (const id of column) {
           if (!this.isParent(parent, id)) continue;
           const yc = sibNodes.get(id)!.y + H2;
-          const pts: [number, number][] = [[xPar - dir * W2, yPar], [xb, yPar], [xb, yc], [edgeX, yc]];
-          this.edges.push(this.edge(this.descentKind(parent, id), pts, parent, id));
+          this.edges.push(this.edge(this.descentKind(parent, id), [[xFrom, yPar], [xb, yPar], [xb, yc], [edgeX, yc]], parent, id));
         }
-      }
+        // Each brother or sister of the parent to their children, the cousins.
+        for (const cr of cousinRows) {
+          if (cr.parent !== parent) continue;
+          const yu = yRow(cr.row) + H2;
+          cr.kids.forEach((c, j) => {
+            const cn = this.node(c, 'relative', 0, xS, yRow(cr.row + j));
+            const yc = cn.y + H2;
+            this.edges.push(this.edge(this.descentKind(cr.uncle, c), [[xFrom, yu], [xb, yu], [xb, yc], [edgeX, yc]], cr.uncle, c));
+          });
+        }
+      };
+      if (dad) side(dad, -1);
+      else if (this.opts.ghosts) this.ghost('father', xS - PC, parentTop);
+      if (mom) side(mom, 1);
+      else if (this.opts.ghosts) this.ghost('mother', xLast + PC, parentTop);
     }
 
     // An expanded card keeps its control so it can be collapsed again.
     for (const n of this.nodes) if (n.expanded && !n.dupOf && !n.expandable) n.expandable = { down: true };
 
-    // ---- regions for the background: father's side | siblings & spouses | mother's side ----
+    // ---- regions for the background: father's side | your generation | mother's side ----
     const leftEdge = xS - PC / 2;
     const rightEdge = xLast + PC / 2;
     const sideColumns = (keep: (x: number) => boolean) => {
@@ -358,9 +374,7 @@ class Cross {
     };
     const fatherCols = sideColumns((x) => x < leftEdge);
     const motherCols = sideColumns((x) => x > rightEdge);
-    const anySpouse = bands.some((bd) => bd.partners.length);
-    const sibLabel = this.g.person(f)?.isMe ? 'You & siblings' : 'Siblings';
-    const middleCols: { x: number; label: string }[] = [{ x: xS, label: anySpouse ? `${sibLabel} · spouses` : sibLabel }];
+    const middleCols: { x: number; label: string }[] = []; // one column: the region's title says it
     if (fatherCols.length) this.regions.push({ side: 'father', x0: -Infinity, x1: leftEdge, columns: fatherCols });
     this.regions.push({ side: 'middle', x0: leftEdge, x1: rightEdge, columns: middleCols });
     if (motherCols.length) this.regions.push({ side: 'mother', x0: rightEdge, x1: Infinity, columns: motherCols });
