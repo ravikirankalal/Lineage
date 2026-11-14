@@ -373,22 +373,42 @@ class Cross {
         const xb = xS + dir * (W2 + GX * 0.5); // this side's bracket beside the middle column
         const edgeX = xS + dir * W2; // the middle cards' edge on this side
         const xFrom = xPar - dir * W2; // the parent column's inner edge
-        // The parent to the focus and siblings.
-        const yPar = parentTop + H2;
-        for (const id of column) {
-          if (!this.isParent(parent, id)) continue;
-          const yc = sibNodes.get(id)!.y + H2;
-          this.edges.push(this.edge(this.descentKind(parent, id), [[xFrom, yPar], [xb, yPar], [xb, yc], [edgeX, yc]], parent, id));
-        }
+        /**
+         * Lines from a person in the parent column to their children in the middle column. Children of the
+         * partner sitting directly below (the first one) hang from the middle of that marriage line, the
+         * same as ancestor couples; children of a later partner from that partner's card; children with no
+         * partner shown from the person's own card. Both parents' edges share the path.
+         */
+        const childLines = (person: string, personY: number, partners: string[], kids: { id: string; y: number }[], xbOwn: number, xbCouple: number) => {
+          for (const k of kids) {
+            if (!this.isParent(person, k.id)) continue;
+            const j = partners.findIndex((sp) => this.isParent(sp, k.id));
+            let start: [number, number];
+            let xbk = xbOwn;
+            if (j === 0) {
+              start = [xPar, personY + CARD.h + (RP - CARD.h) / 2];
+              xbk = xbCouple;
+            } else if (j > 0) {
+              start = [xFrom, personY + (1 + j) * RP + H2];
+              xbk = xbCouple;
+            } else start = [xFrom, personY + H2];
+            const yc = k.y + H2;
+            const pts: [number, number][] = [start, [xbk, start[1]], [xbk, yc], [edgeX, yc]];
+            for (const par of j >= 0 ? [person, partners[j]] : [person]) {
+              this.edges.push(this.edge(this.descentKind(par, k.id), pts.map((q) => [q[0], q[1]]), par, k.id));
+            }
+          }
+        };
+        const xbStep = xS + dir * (W2 + GX * 0.25); // a parent with a step-parent: its own bracket, nearer the column
+        // The parent to the focus and siblings (half-siblings via a step-parent from that couple's line).
+        const parentPartners = this.columnPartners(parent, parent, false, parent === dad ? mom : dad);
+        childLines(parent, parentTop, parentPartners, column.map((id) => ({ id, y: sibNodes.get(id)!.y })), xb, xbStep);
         // Each brother or sister of the parent to their children, the cousins.
+        const grp = groups.get(parent)!;
         for (const cr of cousinRows) {
           if (cr.parent !== parent) continue;
-          const yu = yRow(cr.row) + H2;
-          cr.kids.forEach((c, j) => {
-            const cn = this.node(c, 'relative', 0, xS, yRow(cr.row + j));
-            const yc = cn.y + H2;
-            this.edges.push(this.edge(this.descentKind(cr.uncle, c), [[xFrom, yu], [xb, yu], [xb, yc], [edgeX, yc]], cr.uncle, c));
-          });
+          const kids = cr.kids.map((c, j) => ({ id: c, y: this.node(c, 'relative', 0, xS, yRow(cr.row + j)).y }));
+          childLines(cr.uncle, yRow(cr.row), this.columnPartners(cr.uncle, parent, grp.sideOk), kids, xb, xb);
         }
       };
       if (dad) side(dad, -1);
