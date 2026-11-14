@@ -18,7 +18,7 @@ import { PersonSheet } from './tree/PersonSheet';
 import type { CardInfo } from './tree/TreeCard';
 import { useTreeParams, type LineageTab } from './tree/useTreeParams';
 
-/** Tree + relatives list + direct lines for any person. Family only — friends never appear. */
+/** Tree + relatives list + direct lines for any person. Family only. */
 export function LineageView({ ego, egoLabel = 'You' }: { ego: Person; egoLabel?: string }) {
   const { graph, byId, me } = useData();
   const nav = useNavigate();
@@ -197,7 +197,7 @@ export function LineageView({ ego, egoLabel = 'You' }: { ego: Person; egoLabel?:
         />
       )}
       {canEdit && adding && (
-        <AddRelationSheet person={adding.person} preset={adding.preset} familyOnly open onClose={() => setAdding(null)} />
+        <AddRelationSheet person={adding.person} preset={adding.preset} open onClose={() => setAdding(null)} />
       )}
     </div>
   );

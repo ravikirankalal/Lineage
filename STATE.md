@@ -18,6 +18,7 @@ _Last updated: 2026-11-13_
 | My Family: tree, relatives, lines, stats | ✅ done | smoke screenshots; `npm run qa` "friend never appears in My Family" |
 | Lineage for any person (`/people/:id/tree`) | ✅ done | manual |
 | Editors must be in the tree with a phone (Sharing page person picker; `invite`/`setRole` take `personId`; rules `personWithPhone`) | ✅ done | `tests/rules/rules.test.ts` (45 on the emulator: editor invite needs an existing, undeleted person with a phone; viewers need none; invitee can't claim another person); `sharing.test.ts` (3); `npm run verify`, `npm run qa`. Sharing UI not screenshotted (needs Google sign-in) |
+| Family only: no friends/colleagues/circles (add sheet family choices only; profile shows Immediate/Extended family; no Map view, no "Friends & others" filter, no "How you know them"; sample family has no friends) | ✅ done | 361 unit tests (`graph.test.ts` "family only": old non-family links and shared places ignored); `npm run smoke` passed (checks profile and add sheet have no non-family sections). `npm run qa` not run (owner's lighter rule) |
 | Contacts import: vCard, CSV, Contact Picker | ✅ done | `contacts.test.ts` (16: dedupe strength, in-file dedupe, merge rules); `npm run qa` flow 3 (vcf + csv, duplicates matched); picker untested (needs Android Chrome) |
 | Remember section | 🗑️ removed 2026-11-14 at the owner's request (birthdays strip and *Needs details* filter remain on People) | — |
 | PWA manifest + service worker, dark mode | ✅ done | build; qa flow 6 (dark mode) |

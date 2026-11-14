@@ -37,7 +37,7 @@ export function FamilyPage() {
           <p className="text-sm text-stone-500">
             {isShared && me
               ? `Labels show how each person is related to ${me.firstName}.`
-              : 'Your ancestors, descendants and every relative — family only, no friends.'}
+              : 'Your ancestors, descendants and every relative.'}
           </p>
           )}
         </div>

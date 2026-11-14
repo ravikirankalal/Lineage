@@ -53,21 +53,23 @@ async function run(name, viewport) {
   await page.getByRole('button', { name: /Relatives \(/ }).click(); await page.getByPlaceholder('Search relatives').waitFor(); await page.waitForFunction(() => document.querySelectorAll('section h3').length > 0);
   const rel = await body();
   for (const label of ['First cousin', 'Father-in-law', 'Aunt (by marriage)', "Father's brother's son"]) check(rel.includes(label), `[${name}] relatives missing "${label}"`);
-  check(!rel.includes('Sandeep Kumar'), `[${name}] friend leaked into My Family`);
   await shot('3-relatives');
   await page.getByRole('button', { name: /Lines/ }).click();
   await shot('4-lines');
 
   await page.goto(BASE);
   await page.getByText('Ravi Rao').first().click();
-  await page.getByText('Connections').first().waitFor();
+  await page.getByText('Immediate family').first().waitFor();
   const prof = await body();
-  for (const g of ['IMMEDIATE FAMILY', 'CLOSE FRIENDS', 'STUDIED AT THE SAME PLACE']) check(prof.toUpperCase().includes(g), `[${name}] profile missing group ${g}`);
+  for (const g of ['IMMEDIATE FAMILY', 'EXTENDED FAMILY']) check(prof.toUpperCase().includes(g), `[${name}] profile missing group ${g}`);
+  for (const g of ['FRIENDS', 'COLLEAGUES', 'SAME CITY', 'STUDIED AT THE SAME PLACE', 'CONNECTIONS']) check(!prof.toUpperCase().includes(g), `[${name}] profile still shows ${g}`);
   await shot('5-profile');
 
-  // Add a social connection through the sheet.
+  // Add a relative through the sheet (family choices only).
   await page.getByRole('button', { name: 'Add', exact: true }).click();
-  await page.getByRole('button', { name: 'Classmate' }).click();
+  const sheet = await body();
+  for (const w of ['Friend', 'Colleague', 'Classmate', 'Neighbour', 'Acquaintance', 'Social']) check(!sheet.includes(w), `[${name}] add sheet offers "${w}"`);
+  await page.getByRole('button', { name: 'Son', exact: true }).click();
   await page.getByPlaceholder('Search people or type a new name').fill('Smoke Tester');
   await page.getByText('Add “Smoke Tester”').click();
   await page.getByText('Smoke Tester').first().waitFor();

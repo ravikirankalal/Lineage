@@ -61,7 +61,7 @@ export function SettingsPage() {
             <h2 className="font-semibold">Private by design</h2>
             <p className="mt-1 text-sm text-stone-500">
               {cloud.isShared && cloud.activeSpace
-                ? `You’re viewing ${cloud.activeSpace.name}: ${people.length} people and ${rels.length} relationships. Only family is shared — never friends or private notes.`
+                ? `You’re viewing ${cloud.activeSpace.name}: ${people.length} people and ${rels.length} relationships. Only the family tree is shared — never private notes.`
                 : signedIn
                   ? `Saved on this device and backed up to your Google account. ${people.length} people and ${rels.length} relationships. Only you can see them unless you share your family tree.`
                   : `Everything is stored only in this browser on this device. ${people.length} people and ${rels.length} relationships saved. Sign in above to back it up to your Google account, or download a backup file regularly.`}

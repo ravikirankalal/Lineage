@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { socialGraph } from '../connections';
+import { connectionsOf } from '../connections';
 import { FamilyGraph, familyPath, kinship } from '../kinship';
 import { emptyPerson } from '../person';
 import { labelsFor, layoutFamily, pathEdgeKeys, relationPath } from '../tree';
@@ -30,34 +30,13 @@ function build() {
   return { list, rels, G: new FamilyGraph(new Map(list.map((p) => [p.id, p])), rels) };
 }
 
-describe('socialGraph', () => {
+describe('family only', () => {
   const { list, rels, G } = build();
-  const sg = socialGraph('me', list, rels, G);
-  const node = (id: string) => sg.nodes.find((x) => x.id === id);
-  it('puts people in rings and groups', () => {
-    expect(sg.centerId).toBe('me');
-    expect(node('me')?.ring).toBe(0);
-    expect(node('dad')).toMatchObject({ ring: 1, group: 'family', label: 'Father' });
-    expect(node('wife')?.ring).toBe(1);
-    expect(node('bestie')).toMatchObject({ ring: 1, group: 'close_friend' });
-    expect(node('cousin')).toMatchObject({ ring: 2, group: 'extended' });
-    expect(node('pal')).toMatchObject({ ring: 2, group: 'friend' });
-    expect(node('boss')).toMatchObject({ ring: 2, group: 'colleague' });
-    expect(node('palsPal')).toMatchObject({ ring: 3, group: 'acquaintance' });
-    expect(node('nbr')).toMatchObject({ ring: 3, group: 'neighbor' });
-    expect(node('townie')).toMatchObject({ ring: 4, group: 'city' });
-    expect(node('stranger')).toBeUndefined();
-    expect(new Set(sg.nodes.map((x) => x.id)).size).toBe(sg.nodes.length);
-  });
-  it('links the centre to every node and includes edges between connections', () => {
-    for (const x of sg.nodes) if (x.id !== 'me') expect(sg.edges.some((e) => e.a === 'me' && e.b === x.id)).toBe(true);
-    expect(sg.edges.find((e) => e.a === 'me' && e.b === 'dad')?.kind).toBe('family');
-    expect(sg.edges.find((e) => e.a === 'me' && e.b === 'pal')?.kind).toBe('social');
-    expect(sg.edges.find((e) => e.a === 'me' && e.b === 'townie')?.kind).toBe('implicit');
-    expect(sg.edges.some((e) => e.kind === 'social' && [e.a, e.b].sort().join() === 'pal,palsPal')).toBe(true);
-    expect(sg.edges.some((e) => e.kind === 'social' && [e.a, e.b].sort().join() === 'bro,pal')).toBe(true);
-    expect(sg.edges.some((e) => e.kind === 'family' && [e.a, e.b].sort().join() === 'dad,mom')).toBe(true);
-    expect(sg.nodes.some((x) => x.id.startsWith('~'))).toBe(false);
+  it('lists only relatives; old non-family links and shared places are ignored', () => {
+    const ids = connectionsOf('me', list, rels, G).flatMap((g) => g.items.map((i) => i.person.id));
+    expect(connectionsOf('me', list, rels, G).map((g) => g.key)).toEqual(['family', 'extended']);
+    for (const x of ['dad', 'mom', 'bro', 'wife', 'son', 'cousin']) expect(ids).toContain(x);
+    for (const x of ['pal', 'bestie', 'palsPal', 'boss', 'nbr', 'townie', 'stranger']) expect(ids).not.toContain(x);
   });
   it('never puts friends in the family graph', () => {
     expect(G.familyComponent('me').has('pal')).toBe(false);

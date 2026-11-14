@@ -204,12 +204,6 @@ function Editor({ initial, isNew }: { initial: Person; isNew: boolean }) {
           <Field label="What they look like">
             <textarea className="input min-h-[80px]" placeholder="Tall, curly hair, glasses, always wears a cap, mole on left cheek…" value={p.appearance ?? ''} onChange={(e) => set('appearance', e.target.value || undefined)} />
           </Field>
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="How you know them" className="col-span-2">
-              <input className="input" placeholder="Met at Ravi’s wedding" value={p.howWeMet ?? ''} onChange={(e) => set('howWeMet', e.target.value || undefined)} />
-            </Field>
-            <Field label="When"><input className="input" placeholder="2019" value={p.metOn ?? ''} onChange={(e) => set('metOn', e.target.value || undefined)} /></Field>
-          </div>
           <Field label="Occupation"><input className="input" placeholder="Teacher, farmer, runs a shop…" value={p.occupation ?? ''} onChange={(e) => set('occupation', e.target.value || undefined)} /></Field>
         </Section>
 

@@ -19,3 +19,9 @@ Delegate to the subagents in `.claude/agents/` (see AGENTS.md):
 ## Session workflow
 Read STATE.md + MEMORY.md → pick the next PLAN.md item → delegate or implement →
 `npm run verify` (tests, build, browser smoke) → update docs → commit.
+
+## Which checks to run (owner's rule, 2026-11-14)
+- Every change: `npm run verify` (unit tests, build, smoke).
+- Only when the change touches import/export, editing, merging, backup/restore or data handling, or before a
+  big release: also `npm run qa` (the browser flows take a few minutes).
+- Only when sharing or permissions change: also `npm run test:rules`.

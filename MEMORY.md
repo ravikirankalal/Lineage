@@ -221,3 +221,11 @@ Read this before changing code. Append new learnings at the bottom.
   invites need no person. Promoting a member to editor asks for the person on the Sharing page; that check is
   client-side only (only the owner can change roles anyway). The Sharing page calls `syncNow()` first, because
   the rules read the cloud copy of the person, and a phone number added a moment ago may not have synced yet.
+- (2026-11-14) Lineage is family-only. Nothing creates or shows friend/colleague/classmate/neighbour/acquaintance
+  links, implicit circles (same city, school, work) or "how we met". `SocialType`, `howWeMet` and `metOn` stay in
+  the types and the backup normaliser, so old databases, backups and synced records still load; their data is kept
+  and ignored. `connectionsOf` returns only the 'family' and 'extended' groups. ConnectionsMap and socialGraph were
+  deleted.
+- (2026-11-14) Checks, the owner's rule: `npm run verify` on every change; `npm run qa` only for changes to
+  import/export, editing, merging, backup or data handling (or before a big release); `npm run test:rules` only
+  for sharing and permission changes. See CLAUDE.md.

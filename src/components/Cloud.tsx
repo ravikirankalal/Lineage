@@ -105,7 +105,7 @@ export function SpaceList({ onPicked }: { onPicked?: () => void }) {
   };
   return (
     <div className="space-y-1">
-      {row(uid, 'My people', mine ? 'Everyone you’ve added' : 'Your own family and friends')}
+      {row(uid, 'My people', mine ? 'Everyone you’ve added' : 'Your own family')}
       {shared.length > 0 && <div className="section-title px-3 pb-1 pt-3">Shared with me</div>}
       {shared.map((s) => row(s.id, s.name, ROLE_HINT[s.role], s.role, s))}
     </div>
@@ -197,7 +197,7 @@ export function BackupConsentSheet() {
       <div className="space-y-3 text-sm text-stone-600 dark:text-stone-300">
         <p>They’ll be kept safe in your account and appear on every device where you sign in.</p>
         {backup.combine && <p>Your account already has people saved from another device. The two will be combined.</p>}
-        <p className="text-stone-500">Only you can see them. If you later share your family tree, relatives see only family — never friends, colleagues or private notes.</p>
+        <p className="text-stone-500">Only you can see them. If you later share your family tree, relatives see only the family tree — never private notes.</p>
       </div>
     </Sheet>
   );

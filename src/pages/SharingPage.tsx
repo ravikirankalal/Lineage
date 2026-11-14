@@ -130,7 +130,7 @@ export function SharingPage() {
 
       <div className="mb-4 flex items-start gap-3 rounded-2xl bg-brand-50 p-4 text-sm text-brand-900 ring-1 ring-brand-100 dark:bg-brand-900/30 dark:text-brand-100 dark:ring-brand-800">
         <ShieldCheck size={20} className="mt-0.5 shrink-0" />
-        <span>They’ll see only your family — not friends, colleagues or private notes.</span>
+        <span>They’ll see your family tree, but not your private notes.</span>
       </div>
 
       {!me && (
