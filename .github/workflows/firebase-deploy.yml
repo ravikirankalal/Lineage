@@ -2,7 +2,7 @@ name: Deploy to Firebase
 
 # Builds the app with the public Firebase web config (repo *variables*, not secrets) and deploys
 # Hosting plus Firestore rules and indexes. Skips cleanly until the FIREBASE_SERVICE_ACCOUNT
-# secret is set. See FIREBASE_SETUP.md. The GitHub Pages workflow (deploy.yml) is separate.
+# secret is set. See FIREBASE_SETUP.md.
 
 on:
   push:

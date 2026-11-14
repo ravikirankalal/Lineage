@@ -51,7 +51,7 @@ What is secret and what is not:
 
 ## 5. Authorize the domains the app runs on
 1. **Authentication → Settings** tab → **Authorized domains** → **Add domain**.
-2. Add `ravikirankalal.github.io` (the GitHub Pages site).
+2. (Only if you host elsewhere: add that domain. GitHub Pages hosting was retired, so it's not needed.)
 3. Check that `<project-id>.web.app` and `<project-id>.firebaseapp.com` (Firebase Hosting) and
    `localhost` are already listed. Add any that are missing.
 
@@ -94,9 +94,6 @@ What is secret and what is not:
 4. Firestore indexes take a few minutes to build after the first deploy. If sharing shows an
    "index" error right after deploying, wait 5 minutes and retry.
 
-The GitHub Pages site (`https://ravikirankalal.github.io/Lineage/`) gets the same config only if
-its workflow (`deploy.yml`) builds with the same `VITE_FIREBASE_*` variables. Until then it stays
-local-only, which is fine.
 
 Until the `FIREBASE_SERVICE_ACCOUNT` secret exists, the Firebase workflow skips itself with a notice.
 

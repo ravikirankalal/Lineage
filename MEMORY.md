@@ -141,3 +141,6 @@ Read this before changing code. Append new learnings at the bottom.
 - (2026-11-14) The public Firebase web config is committed in `.env.production`. Builds no longer
   read VITE_FIREBASE_* repo variables except PROJECT_ID for deploy commands, because a truncated
   variable (key cut at '-') broke sign-in with auth/api-key-not-valid.
+
+- (2026-11-14) **GitHub Pages hosting retired.** `deploy.yml` was deleted, and Firebase Hosting
+  (https://lineage-d575c.web.app) is the only host. The older GitHub Pages notes above are historical.
