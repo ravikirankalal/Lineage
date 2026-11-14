@@ -146,7 +146,8 @@
 - [ ] Regional terms for great-grandparents, grand-uncles/aunts (plus Telugu younger cross-cousin,
       parallel nephew/niece, step/foster)
 - [ ] Wider tree cards so "Great-grandfather" fits
-- [ ] Tree: draw in-law families (a spouse's parents) and inner-side great-aunts/uncles in Everyone
+- [x] Tree: the spouse's parents (and their ancestors) in Everyone, "+" on the spouse elsewhere
+- [ ] Tree: other in-law families (siblings'/children's spouses' parents) and inner-side great-aunts/uncles
 - [ ] Move `likelyDuplicates` from `MergeSheet.tsx` to `src/lib` (and test it)
 - [ ] Multiple photos per person, photo-based recall
 - [ ] Map view of where people live / come from
