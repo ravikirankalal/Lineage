@@ -125,6 +125,8 @@ _Last updated: 2026-11-13_
   theirs from their cards. Half-siblings via a step-parent get their own bracket. Tested.
   A cousin whose other parent isn't recorded joins the uncle/aunt couple's single line (edge from the recorded
   parent only), so a family never shows two lines; a child with a different recorded other parent keeps its own.
+  Parent lines also reach people linked to the family only as a brother/sister (parents inferred through the
+  explicit full/untyped sibling link, as kinship already does), e.g. a great-uncle added as "brother of".
 - Main vs secondary cards (owner's rule): when someone appears twice, the card in their birth family (joined
   to their parents) is the main card; the card beside their spouse is a secondary "Also shown elsewhere" stub that
   can't expand to their ancestors. Cross layout makes spouse cards last; the other layouts re-run with that

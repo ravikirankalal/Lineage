@@ -399,6 +399,23 @@ describe('layoutFamily', () => {
     }
   });
 
+  it('cross layout: siblings recorded only as brother/sister still get the parents\' line', () => {
+    // The grandfather's brother and my sister are linked by a sibling relationship only, not to the parents.
+    const f = family();
+    f.add('me', 'male', '1980'); f.add('sis', 'female', '1984'); f.add('dad', 'male', '1950'); f.add('mom', 'female', '1952');
+    f.add('gf', 'male', '1920'); f.add('gm', 'female', '1922'); f.add('ggf', 'male', '1890'); f.add('ggm', 'female', '1892');
+    f.add('greatUncle', 'male', '1918');
+    f.rel('dad', 'me', 'parent'); f.rel('mom', 'me', 'parent'); f.rel('me', 'sis', 'sibling');
+    f.rel('gf', 'dad', 'parent'); f.rel('gm', 'dad', 'parent'); f.rel('ggf', 'gf', 'parent'); f.rel('ggm', 'gf', 'parent');
+    f.rel('gf', 'greatUncle', 'sibling');
+    const G = f.graph();
+    const L = lay(G, 'me', 'everyone', [], false, 'cross');
+    checkGeometry(L, 'inferred parents');
+    for (const [a, b] of [['ggf', 'greatUncle'], ['ggm', 'greatUncle'], ['ggf', 'gf'], ['dad', 'sis'], ['mom', 'sis']]) {
+      expect(L.edges.some((e) => e.from === a && e.to === b), `${a}→${b}`).toBe(true);
+    }
+  });
+
   it('keeps the main card in the birth family when someone also appears beside a spouse', () => {
     // My sister married our cousin (my uncle's son): he is drawn under his parents and beside her.
     const f = family();

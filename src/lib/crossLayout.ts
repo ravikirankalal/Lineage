@@ -120,6 +120,10 @@ class Cross {
   descentKind(parent: string, child: string): TreeEdge['kind'] {
     return isBlood(this.g.parentsOf(child).find((e) => e.id === parent)?.subtype) ? 'descent' : 'step';
   }
+  /** A recorded parent, or one inferred through an explicit full/untyped sibling link (as kinship does). */
+  childOf(parent: string, child: string) {
+    return this.isParent(parent, child) || this.g.bloodParents(child).includes(parent);
+  }
   isParent(parent: string, child: string) {
     return this.g.parentsOf(child).some((e) => e.id === parent);
   }
@@ -251,7 +255,7 @@ class Cross {
       const start: [number, number] = couple ? [PC, yq] : [PC - W2, yq];
       for (const c of group) {
         const cid = c.personId!;
-        if (!this.isParent(q, cid)) continue;
+        if (!this.childOf(q, cid)) continue;
         const yc = c.y + H2;
         b.edges.push(this.edge(this.descentKind(q, cid), [[start[0], start[1]], [xb, yq], [xb, yc], [W2, yc]], q, cid));
         lo = Math.min(lo, yq, yc);
@@ -381,8 +385,8 @@ class Cross {
          */
         const childLines = (person: string, personY: number, partners: string[], kids: { id: string; y: number }[], xbOwn: number, xbCouple: number, joinUnknown = false) => {
           for (const k of kids) {
-            if (!this.isParent(person, k.id)) continue;
-            let j = partners.findIndex((sp) => this.isParent(sp, k.id));
+            if (!this.childOf(person, k.id)) continue;
+            let j = partners.findIndex((sp) => this.childOf(sp, k.id));
             // A child whose other parent isn't recorded at all joins the couple's single line (drawn from the
             // person only), so a family with one partner shown never gets two lines.
             const unknownOther = this.g.parentsOf(k.id).every((e) => e.id === person);
