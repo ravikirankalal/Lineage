@@ -179,6 +179,11 @@ Read this before changing code. Append new learnings at the bottom.
   spouses; each side has its own "Cousins" column beside it (x = ±PC) with every cousin of that side (first,
   second, …) and their spouses; parents at ±2·PC, each older generation one further out (`colX`, `gapIn`).
   Each side keeps its own row range (`top`/`bottom` per side), so the sides no longer take turns.
+- (2026-11-14) **Second cousins column by screen shape** (owner): `layoutCrossEveryone` lays out with and
+  without a "Second cousins" column (between first cousins and parents; `secondCousinsColumn`) and keeps the one
+  whose width/height is closer (log ratio) to `opts.aspect` (LineageView: window w/h in 0.25 steps). The column
+  only adds width (second cousins stay level with their parents), so it is chosen on wide screens only. Extra
+  Everyone trees use the same choice so the columns line up. An explicit `secondCousinsColumn` wins.
 - (2026-11-14) **Trees and bands aligned** (owner): `stack()` puts every extra tree's own person at x = 0 (the
   main focus's column), so generation columns line up across trees; every band reaches the same far left/right
   (father's side / only band from the left edge, mother's side / only band to the right edge); in top-to-bottom

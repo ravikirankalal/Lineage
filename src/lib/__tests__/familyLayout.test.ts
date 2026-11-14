@@ -499,6 +499,27 @@ describe('layoutFamily', () => {
         expect(L.edges.some((e) => e.from === a && e.to === b), `${a}→${b}`).toBe(true);
       }
     }
+    // Second cousins in their own column (between the first cousins and the parents) when the screen is wide
+    // enough for that to fit the tree's shape better; on a tall phone they stay with the first cousins.
+    const S = layoutFamily(G, { focusId: 'me', level: 'everyone', expanded: new Set(open), orient: 'cross', secondCousinsColumn: true });
+    checkGeometry(S, 'second cousins column');
+    const sAt = (id: string) => S.nodes.find((n) => n.personId === id && !n.dupOf && !n.key.includes('/'))!;
+    for (const [gf, dir] of [['dgf', -1], ['mgf', 1]] as const) {
+      expect(sAt(gf + 'BroGk').x, 'second cousin').toBe(dir * 416);
+      expect(sAt(gf + 'BroKid').x, "parents' cousin").toBe(dir * 624);
+      expect(sAt('dad').x).toBe(-624);
+      expect(S.edges.some((e) => e.from === gf + 'BroKid' && e.to === gf + 'BroGk')).toBe(true);
+    }
+    expect((S.regions ?? []).flatMap((r) => r.columns.map((c) => c.label))).toContain('Second cousins');
+    expect(L.secondCousins).toBe(true);
+    const wide = layoutFamily(G, { focusId: 'me', level: 'everyone', expanded: new Set(open), orient: 'cross', aspect: 3 });
+    const tall = layoutFamily(G, { focusId: 'me', level: 'everyone', expanded: new Set(open), orient: 'cross', aspect: 0.5 });
+    const xOf = (M: TreeLayout) => M.nodes.find((n) => n.personId === 'dgfBroGk' && !n.dupOf)!.x;
+    expect(xOf(wide)).toBe(-416);
+    expect(xOf(tall)).toBe(-208);
+    // Every tree below lines up with the main one (the same columns).
+    const wideTrees = (wide.regions ?? []).filter((r) => r.side === 'father');
+    expect(new Set(wideTrees.map((r) => r.x0)).size).toBe(1);
     // Grandmothers married in: their brothers and sisters aren't in the main tree (they're in her own tree).
     for (const id of ['dgmBro', 'mgmSis', 'dgmBroKid']) expect(main(id), id).toBeUndefined();
     expect(L.nodes.some((n) => n.personId === 'dgmBro')).toBe(true);
@@ -728,6 +749,17 @@ describe('layoutFamily', () => {
       }
     }
   }, 120_000);
+
+  it('keeps cards and lines apart with second cousins in their own column (generated families)', () => {
+    for (const seed of [1, 2, 3]) {
+      const G = generatedFamily(140, seed);
+      const all = new Set(G.people.keys());
+      for (const id of [...G.people.keys()].slice(0, 40)) {
+        const L = layoutFamily(G, { focusId: id, level: 'everyone', expanded: all, orient: 'cross', secondCousinsColumn: true });
+        checkGeometry(L, `split seed ${seed} ${id}`);
+      }
+    }
+  }, 60_000);
 
   it('is fast on 1,000 people', () => {
     const G = generatedFamily(1000, 7);
