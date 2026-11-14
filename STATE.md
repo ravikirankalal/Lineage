@@ -134,6 +134,10 @@ _Last updated: 2026-11-13_
   line) and a tree for each person who married in and has recorded parents (grandmothers, your spouse, siblings'
   and uncles' spouses), each with its own titled band. Their main card is there; beside the spouse a copy.
   Tested (every person drawn with exactly one main card, unique keys, geometry, titles); screenshot-checked.
+- Cross layout: every shown ancestor's brothers and sisters bring their descendants into the main tree, one
+  column per generation, each level with their own parent (parents' cousins in the Parents column, second
+  cousins in your column). Grandmothers' siblings stay in the grandmother's own tree. Tested with positions
+  and lines on all four grandparents; geometry tests pass on generated families.
 - Everyone draws every person in the family in all three layouts: anyone still missing after the layout (and,
   in cross, the descendants and married-in trees) gets a small tree of their own below, titled with how they're
   related. Tested on generated families (each person exactly one main card, valid copies, geometry, unique keys);
