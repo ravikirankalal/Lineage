@@ -439,8 +439,12 @@ class Builder {
     return { shape, principals: real };
   }
 
-  /** Collaterals (outer edge only) and parents of an already placed person, then recurse upwards. */
-  ancestry(occ: Occupancy, all: Shape, x: string, gen: number, side: 'L' | 'R', outer: boolean) {
+  /**
+   * Collaterals (outer edge only) and parents of an already placed person, then recurse upwards.
+   * `inlaw`: the pedigree of the focus's spouse (role 'relative', its own bar height; outside Everyone
+   * only the parents, and only when the spouse card is expanded).
+   */
+  ancestry(occ: Occupancy, all: Shape, x: string, gen: number, side: 'L' | 'R', outer: boolean, inlaw = false) {
     const g = this.g;
     const xn = this.byId.get(x);
     if (!xn) return;
@@ -471,7 +475,7 @@ class Builder {
     // Parents above, centred over x and its siblings.
     const parents = this.pedigreeParents(x);
     if (!parents.length) return;
-    if (gen + 1 > this.up && !this.isExpanded(x)) {
+    if ((gen + 1 > this.up || (inlaw && gen > 0 && this.level !== 'everyone')) && !this.isExpanded(x)) {
       xn.expandable = { ...xn.expandable, up: true };
       return;
     }
@@ -481,7 +485,7 @@ class Builder {
     const rowCont: Cont = new Map([[kRow(gen + 1), [-HALF, w + HALF]]]);
     const off = occ.free(rowCont, (lo + hi) / 2 - w / 2, dir);
     const top = rowTop(gen + 1);
-    const pn = parents.map((p, i) => this.node({ id: p, role: 'ancestor' }, off + i * STEP, gen + 1));
+    const pn = parents.map((p, i) => this.node({ id: p, role: inlaw ? 'relative' : 'ancestor' }, off + i * STEP, gen + 1));
     const piece: Shape = { nodes: [], edges: [], cont: new Map() };
     extend(piece.cont, kRow(gen + 1), off - HALF, off + w + HALF);
     let ax = off;
@@ -493,7 +497,8 @@ class Builder {
       ax = off + STEP / 2;
       sy = top + CARD.h / 2;
     }
-    const barY = top + CARD.h + ROW_GAP / 2 + dir * 4;
+    // In-law bars run just under their parents' row so they don't merge with the family's own bars.
+    const barY = inlaw ? top + CARD.h + 12 : top + CARD.h + ROW_GAP / 2 + dir * 4;
     const childTop = rowTop(gen);
     for (const kn of row) {
       const kid = kn.personId!;
@@ -512,8 +517,21 @@ class Builder {
     const sides: ('L' | 'R')[] = pn.length === 2 ? ['L', 'R'] : [side];
     pn.forEach((n, i) => {
       if (n.dupOf) return;
-      this.ancestry(occ, all, parents[i], gen + 1, sides[i], outer && sides[i] === side);
+      this.ancestry(occ, all, parents[i], gen + 1, sides[i], outer && sides[i] === side, inlaw);
     });
+  }
+
+  /** The focus's spouses' parents (and in Everyone their ancestors), above each spouse card. */
+  inLaws(occ: Occupancy, all: Shape) {
+    const fn = this.byId.get(this.opts.focusId);
+    if (!fn) return;
+    for (const e of this.g.spousesOf(this.opts.focusId)) {
+      const sn = this.byId.get(e.id);
+      if (!sn || sn.role !== 'spouse' || sn.generation !== 0) continue; // drawn elsewhere (e.g. a cousin)
+      if (!this.pedigreeParents(e.id).some((p) => !this.placed.has(p))) continue;
+      if (this.level === 'everyone' || this.isExpanded(e.id)) this.ancestry(occ, all, e.id, 0, sn.x < fn.x ? 'L' : 'R', false, true);
+      else sn.expandable = { ...sn.expandable, up: true };
+    }
   }
 }
 
@@ -532,6 +550,8 @@ export function layoutFamilyV2(graph: FamilyGraph, opts: TreeOptions): TreeLayou
   } else if (principals.length === 1) {
     b.ancestry(occ, all, principals[0], 1, graph.person(principals[0])?.gender === 'female' ? 'R' : 'L', true);
   }
+
+  b.inLaws(occ, all);
 
   // An expanded card keeps its control so it can be collapsed again.
   for (const n of b.nodes) if (n.expanded && !n.dupOf && !n.expandable) n.expandable = { down: true };

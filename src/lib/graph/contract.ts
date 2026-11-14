@@ -18,7 +18,7 @@ export type TreeLevel =
   | 'immediate' // parents, siblings, spouses, children, plus ancestors and descendants (today's view, fixed)
   | 'extended' // + aunts/uncles with spouses and cousins, siblings' spouses and children, the spouse's parents and siblings
   | 'everyone'; // every generation and every block open, plus collaterals along the outer edge of the pedigree.
-  // Relatives of people who married in (a spouse's parents, a sibling-in-law's family) need a re-centre.
+  // Plus the focus's spouse's parents and their ancestors. Other in-law families need a re-centre.
 
 export interface TreeOptions {
   focusId: string; // the card the view is centred on

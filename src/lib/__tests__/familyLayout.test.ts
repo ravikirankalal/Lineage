@@ -62,13 +62,14 @@ function remarried() {
   f.add('dad', 'male', '1950'); f.add('mom', 'female', '1952'); f.add('stepmom', 'female', '1955'); f.add('mom2', 'male', '1949');
   f.add('me', 'male', '1980'); f.add('sis', 'female', '1978'); f.add('halfBro', 'male', '1990'); f.add('halfSis', 'female', '1992');
   f.add('gf', 'male', '1920'); f.add('gm', 'female', '1922'); f.add('uncle', 'male', '1948'); f.add('aunty', 'female', '1950'); f.add('cousin', 'female', '1975');
-  f.add('wife', 'female', '1981'); f.add('son', 'male', '2010'); f.add('sisHusband', 'male', '1976'); f.add('niece', 'female', '2005');
+  f.add('wife', 'female', '1981'); f.add('wifeDad', 'male', '1955'); f.add('wifeMom', 'female', '1957'); f.add('wifeBro', 'male', '1984'); f.add('son', 'male', '2010'); f.add('sisHusband', 'male', '1976'); f.add('niece', 'female', '2005');
   f.rel('dad', 'mom', 'spouse', 'divorced'); f.rel('dad', 'stepmom', 'spouse'); f.rel('mom', 'mom2', 'spouse');
   for (const c of ['me', 'sis']) { f.rel('dad', c, 'parent'); f.rel('mom', c, 'parent'); }
   f.rel('dad', 'halfBro', 'parent'); f.rel('stepmom', 'halfBro', 'parent');
   f.rel('mom', 'halfSis', 'parent'); f.rel('mom2', 'halfSis', 'parent');
   for (const c of ['dad', 'uncle']) { f.rel('gf', c, 'parent'); f.rel('gm', c, 'parent'); }
   f.rel('uncle', 'aunty', 'spouse'); f.rel('uncle', 'cousin', 'parent'); f.rel('aunty', 'cousin', 'parent');
+  f.rel('wifeDad', 'wifeMom', 'spouse'); for (const c of ['wife', 'wifeBro']) { f.rel('wifeDad', c, 'parent'); f.rel('wifeMom', c, 'parent'); }
   f.rel('me', 'wife', 'spouse'); f.rel('me', 'son', 'parent'); f.rel('wife', 'son', 'parent');
   f.rel('sis', 'sisHusband', 'spouse'); f.rel('sis', 'niece', 'parent'); f.rel('sisHusband', 'niece', 'parent');
   return f.graph();
@@ -113,6 +114,24 @@ describe('layoutFamily', () => {
     for (const level of ['immediate', 'extended', 'everyone'] as const) checkGeometry(lay(G, 'me', level), level);
   });
 
+  it("shows the spouse's parents in Everyone, and on request elsewhere", () => {
+    const G = remarried();
+    const all = lay(G, 'me', 'everyone');
+    checkGeometry(all, 'in-laws');
+    const at = (L: TreeLayout, id: string) => L.nodes.find((n) => n.personId === id && !n.dupOf);
+    for (const id of ['wifeDad', 'wifeMom']) expect(at(all, id)).toMatchObject({ generation: 1, role: 'relative' });
+    expect(all.edges.some((e) => e.kind === 'descent' && e.from === 'wifeDad' && e.to === 'wife')).toBe(true);
+    expect(at(all, 'wifeBro')).toBeUndefined(); // only the parents, not the spouse's siblings
+    const imm = lay(G, 'me');
+    expect(at(imm, 'wifeDad')).toBeUndefined();
+    expect(at(imm, 'wife')?.expandable?.up).toBe(true);
+    const opened = lay(G, 'me', 'immediate', ['wife']);
+    checkGeometry(opened, 'in-laws expanded');
+    expect(at(opened, 'wifeMom')?.generation).toBe(1);
+    // From the wife's side, her parents are her own ancestors and I am the in-law.
+    expect(at(lay(G, 'wife', 'everyone'), 'wifeDad')?.role).toBe('ancestor');
+  });
+
   it('expands a card on request', () => {
     const G = remarried();
     const L = lay(G, 'me');
@@ -127,7 +146,7 @@ describe('layoutFamily', () => {
 
   it('draws ghosts for missing parents', () => {
     const G = remarried();
-    const L = lay(G, 'wife', 'immediate', [], true);
+    const L = lay(G, 'sisHusband', 'immediate', [], true);
     expect(L.nodes.filter((n) => n.role === 'ghost').map((n) => n.ghost).sort()).toEqual(['father', 'mother']);
     checkGeometry(L, 'ghosts');
   });
