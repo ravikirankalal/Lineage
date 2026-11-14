@@ -14,11 +14,11 @@ export function TreePage() {
   if (!p) return <p className="p-6 text-stone-500">Person not found.</p>;
   return (
     <div>
-      <div className="mb-4 flex items-center gap-2">
-        <button className="icon-btn -ml-2" onClick={() => nav(-1)} aria-label="Back"><ArrowLeft size={20} /></button>
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">{displayName(p)}’s family</h1>
-          <p className="text-sm text-stone-500">Labels show how each person is related to {p.isMe ? 'you' : p.firstName}.</p>
+      <div className="mb-3 flex items-center gap-2">
+        <button className="icon-btn -ml-2 print:hidden" onClick={() => nav(`/people/${p.id}`)} aria-label={`Back to ${p.firstName}’s profile`}><ArrowLeft size={20} /></button>
+        <div className="min-w-0">
+          <h1 className="truncate text-xl font-bold tracking-tight">{displayName(p)}’s family</h1>
+          <p className="truncate text-sm text-stone-500">Labels show how each person is related to {p.isMe ? 'you' : p.firstName}.</p>
         </div>
       </div>
       <LineageView key={p.id} ego={p} egoLabel={p.isMe ? 'You' : p.firstName} />

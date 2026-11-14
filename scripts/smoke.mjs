@@ -50,7 +50,7 @@ async function run(name, viewport) {
   await page.goto(BASE + '#/family');
   await page.getByText('Earliest ancestor').waitFor();
   await shot('2-tree');
-  await page.getByRole('button', { name: /Relatives \(/ }).click();
+  await page.getByRole('button', { name: /Relatives \(/ }).click(); await page.getByPlaceholder('Search relatives').waitFor(); await page.waitForFunction(() => document.querySelectorAll('section h3').length > 0);
   const rel = await body();
   for (const label of ['First cousin', 'Father-in-law', 'Aunt (by marriage)', "Father's brother's son"]) check(rel.includes(label), `[${name}] relatives missing "${label}"`);
   check(!rel.includes('Sandeep Kumar'), `[${name}] friend leaked into My Family`);

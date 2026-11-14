@@ -100,7 +100,7 @@ async function main(browser) {
     const yBro = (await page.getByText('Vijay K.').boundingBox()).y;
     check(Math.abs(yMe - yBro) < 5, `[1] brother not beside me in tree (y ${yMe} vs ${yBro})`);
     await shot(page, '1b-tree-brother');
-    await page.getByRole('button', { name: /Relatives \(/ }).click();
+    await page.getByRole('button', { name: /Relatives \(/ }).click(); await page.getByPlaceholder('Search relatives').waitFor(); await page.waitForFunction(() => document.querySelectorAll('section h3').length > 0);
     const rel = await body(page);
     check(/Vijay Kumar[\s\S]{0,40}Brother/.test(rel), '[1] Vijay not "Brother" in Relatives');
     await shot(page, '1c-relatives');
@@ -132,7 +132,7 @@ async function main(browser) {
     await openProfile(page, 'Arun Kumar');
     await profileAdd(page, 'Friend', 'Sunil Friend');
     await page.goto(BASE + '#/family');
-    await page.getByRole('button', { name: /Relatives \(/ }).click();
+    await page.getByRole('button', { name: /Relatives \(/ }).click(); await page.getByPlaceholder('Search relatives').waitFor(); await page.waitForFunction(() => document.querySelectorAll('section h3').length > 0);
     check(!(await body(page)).includes('Sunil'), '[friend] friend leaked into My Family');
   });
 
@@ -395,7 +395,7 @@ async function features(browser) {
     // or on two lines when there is no lifespan). Elsewhere it stays "Father · Pitaji".
     const card = (await page.locator('button[title*="Pitaji"]').first().innerText()).replace(/\s+/g, ' ');
     check(/Pitaji( ·)? Father/.test(card) && !/Father · Pitaji/.test(card), `[8] tree card not term-first: "${card}"`);
-    await page.getByRole('button', { name: /Relatives \(/ }).click();
+    await page.getByRole('button', { name: /Relatives \(/ }).click(); await page.getByPlaceholder('Search relatives').waitFor(); await page.waitForFunction(() => document.querySelectorAll('section h3').length > 0);
     const rl = await body(page);
     check(/Uncle · Mama · Mother's brother/.test(rl) && /Uncle · Chacha · Father's brother/.test(rl), '[8] Relatives list lacks terms');
     await shot(page, '8a-relatives-hindi');
@@ -466,7 +466,7 @@ async function features(browser) {
     const fb = await body(page);
     check(!/Who are you\?/.test(fb), '[9] "Who are you?" picker shown — me not restored from _LINEAGE_ME');
     check(/Ravi R\.\s*You/.test(fb), '[9] Ravi not the tree ego after import');
-    check(/5\s*Generations/.test(fb), '[9] generations not restored');
+    check(/5\s*[Gg]enerations/.test(fb), '[9] generations not restored');
     check(/Anjali R\.\s*(Bharya · )?Wife/.test(fb) && /Ammamma(\s*·)?\s*Grandmother/.test(fb), '[9] spouse/kinship labels missing after import: ' + fb.replace(/\n/g, ' | ').slice(0, 300));
     await shot(page, '9a-tree-after-ged');
     await openProfile(page, 'Prakash Rao');

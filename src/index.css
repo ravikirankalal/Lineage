@@ -25,3 +25,24 @@
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }
 .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+
+/* Print: only the page title and the tree, fitted to one landscape page (FamilyTree sets
+   --print-transform from the layout bounds). App chrome, controls and overlays are hidden. */
+@media print {
+  @page { size: landscape; margin: 10mm; }
+  html, body { background: #fff !important; color: #1c1917 !important; }
+  aside, body > div nav, .print\:hidden { display: none !important; }
+  main { max-width: none !important; padding: 0 !important; }
+  .tree-viewport {
+    width: 1000px !important; height: 660px !important; overflow: hidden !important;
+    background: #fff !important; box-shadow: none !important; border-radius: 0 !important;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .tree-world { transform: var(--print-transform) !important; }
+  .tree-node { transition: none !important; transform: none !important; opacity: 1 !important; }
+  .tree-edges { opacity: 1 !important; }
+  .tree-card { background: #fff !important; color: #1c1917 !important; }
+  .tree-card .tree-text div, .tree-card .tree-text span { color: #57534e !important; }
+  .tree-card .tree-text > div:first-child { color: #1c1917 !important; }
+  .tree-card-focus { box-shadow: 0 0 0 3px #266955 !important; }
+}

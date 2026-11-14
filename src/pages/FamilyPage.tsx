@@ -5,6 +5,7 @@ import { ShareLink, SpaceSwitcher } from '../components/Cloud';
 import { Empty } from '../components/Empty';
 import { LineageView } from '../components/LineageView';
 import { PersonRow } from '../components/PersonRow';
+import { useIsPhone } from '../components/tree/useTreeParams';
 import { savePerson } from '../lib/db';
 import { useCloud, usePermissions } from '../lib/cloud/CloudProvider';
 import { useData } from '../lib/data';
@@ -16,20 +17,31 @@ export function FamilyPage() {
   const { isShared, canEdit } = usePermissions();
   const { activeSpace } = useCloud();
   const stats = useMemo(() => (me ? lineageStats(graph, me.id, relativesOf(graph, me.id)) : undefined), [graph, me]);
+  const phone = useIsPhone();
   if (!loaded) return null;
 
   return (
     <div>
-      <div className="mb-5 flex items-start gap-3">
+      <div className="mb-3 flex items-start gap-3 sm:mb-5">
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">{isShared && activeSpace ? activeSpace.name : 'My Family'}</h1>
+          {phone && me && stats ? (
+            // Phones: one short summary so the tree gets the screen.
+            <p className="text-sm text-stone-500 dark:text-stone-400">
+              <b className="text-stone-700 dark:text-stone-200">{stats.relatives}</b> relatives · <b className="text-stone-700 dark:text-stone-200">{stats.generationsUp + stats.generationsDown + 1}</b> generations
+              {stats.earliest && (
+                <> · <Link to={`/people/${stats.earliest.id}`} className="underline decoration-stone-300 underline-offset-2">Earliest ancestor: {stats.earliest.firstName}</Link></>
+              )}
+            </p>
+          ) : (
           <p className="text-sm text-stone-500">
             {isShared && me
               ? `Labels show how each person is related to ${me.firstName}.`
               : 'Your ancestors, descendants and every relative — family only, no friends.'}
           </p>
+          )}
         </div>
-        <ShareLink className="shrink-0" />
+        <ShareLink className="shrink-0 print:hidden" />
       </div>
       <SpaceSwitcher className="mb-4 md:hidden" />
       {!me ? (isShared ? (
@@ -40,8 +52,8 @@ export function FamilyPage() {
         </div>
       ) : <ChooseMe hasPeople={people.length > 0} />) : (
         <>
-          {stats && (
-            <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {stats && !phone && (
+            <div className="mb-5 grid print:hidden grid-cols-2 gap-2 sm:grid-cols-4">
               <Stat value={stats.relatives} label="Relatives" />
               <Stat value={stats.generationsUp + stats.generationsDown + 1} label="Generations" />
               <Stat value={stats.ancestors} label="Direct ancestors" />
