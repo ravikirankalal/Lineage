@@ -29,13 +29,13 @@ export function generationLabel(gen: number, focusName?: string | null): string 
 }
 
 const LABEL_ROOM = 44; // above the tree, for column labels
-const REGION_ROOM = 64; // above the cross layout: region title + column titles
+export const REGION_ROOM = 64; // above the cross layout: region title + column titles
 const REGION_LABEL: Record<'father' | 'middle' | 'mother', string> = {
   father: 'Father’s side',
   middle: 'Your generation',
   mother: 'Mother’s side',
 };
-const SIDE = 20;
+export const SIDE = 20;
 
 /**
  * Generation stripes for a layout: one per run of adjacent rows (top-to-bottom) or columns (left-to-right,
@@ -50,17 +50,18 @@ export function generationBands(layout: TreeLayout, orient: TreeOrient, focusNam
     // Three regions side by side instead of one stripe per generation.
     const y0 = bounds.minY - REGION_ROOM;
     const y1 = bounds.maxY + SIDE;
-    const bands = layout.regions.map((r): GenBand => ({
-      key: r.side, gen: r.side === 'father' ? 1 : r.side === 'middle' ? 0 : -1,
-      x0: r.x0, x1: r.x1, y0, y1, label: r.side === 'middle' ? generationLabel(0, focusName) : REGION_LABEL[r.side], vertical: true, region: r.side, columns: r.columns,
+    const bands = layout.regions.map((r, i): GenBand => ({
+      key: `${r.side}:${i}`, gen: r.side === 'father' ? 1 : r.side === 'middle' ? 0 : -1,
+      x0: r.x0, x1: r.x1, y0: r.y0 ?? y0, y1: r.y1 ?? y1,
+      label: r.label ?? (r.side === 'middle' ? generationLabel(0, focusName) : REGION_LABEL[r.side]), vertical: true, region: r.side, columns: r.columns,
     }));
     return {
       bands,
       bounds: {
         minX: Math.min(bounds.minX, ...bands.map((b) => b.x0)),
         maxX: Math.max(bounds.maxX, ...bands.map((b) => b.x1)),
-        minY: y0,
-        maxY: y1,
+        minY: Math.min(...bands.map((b) => b.y0)),
+        maxY: Math.max(...bands.map((b) => b.y1)),
       },
     };
   }

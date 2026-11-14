@@ -48,7 +48,7 @@ describe('generation bands', () => {
   }
 
   it('splits the cross layout into three regions: father\'s side, your generation, mother\'s side', () => {
-    const L = layoutFamily(graph(), { focusId: 'me', level: 'everyone', expanded: new Set(), orient: 'cross' });
+    const L = layoutFamily(graph(), { focusId: 'me', level: 'extended', expanded: new Set(), orient: 'cross' });
     const { bands, bounds } = generationBands(L, 'cross');
     expect(bands.map((b) => b.region)).toEqual(['father', 'middle', 'mother']);
     expect(bands.map((b) => b.label)).toEqual(['Father’s side', 'Your generation', 'Mother’s side']);
@@ -68,5 +68,18 @@ describe('generation bands', () => {
     expect(bands[0].columns!.map((c) => c.label)).toEqual(['Grandparents', 'Parents']);
     expect(bands[2].columns!.map((c) => c.label)).toEqual(['Parents']);
     expect(bounds.minY).toBeLessThan(L.bounds.minY);
+  });
+
+  it('gives each extra Everyone tree its own titled band, stacked below the main one', () => {
+    const L = layoutFamily(graph(), { focusId: 'me', level: 'everyone', expanded: new Set(), orient: 'cross' });
+    const { bands } = generationBands(L, 'cross');
+    expect(bands.slice(0, 3).map((b) => b.label)).toEqual(['Father’s side', 'Your generation', 'Mother’s side']);
+    expect(bands.length).toBeGreaterThan(3);
+    expect(new Set(bands.map((b) => b.key)).size).toBe(bands.length);
+    const mainBottom = Math.max(...bands.slice(0, 3).map((b) => b.y1));
+    for (const b of bands.slice(3)) {
+      expect(b.y0, b.label).toBeGreaterThan(mainBottom);
+      expect(b.label).not.toBe('Father’s side');
+    }
   });
 });

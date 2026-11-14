@@ -33,6 +33,10 @@ export interface TreeOptions {
    * left, mother's side right, brothers above, sisters below, spouses and children beside
    * (src/lib/crossLayout.ts). */
   orient?: TreeOrient;
+  /** Engine-internal (the extra trees below the cross layout's Everyone): leave out the focus's brothers
+   * and sisters, and the parents of people who married in. */
+  noSiblings?: boolean;
+  noInLaws?: boolean;
 }
 export type TreeOrient = 'down' | 'right' | 'cross';
 
@@ -80,6 +84,11 @@ export interface TreeRegion {
   x0: number;
   x1: number;
   columns: { x: number; label: string }[];
+  /** Everyone in the cross layout stacks more trees below the main one (descendants, and the family of
+   * each person who married in); their regions carry their own title and vertical extent. */
+  label?: string;
+  y0?: number;
+  y1?: number;
 }
 
 // export function layoutFamily(graph: FamilyGraph, opts: TreeOptions): TreeLayout

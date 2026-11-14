@@ -169,7 +169,7 @@ class Builder {
     const all = opts.level === 'everyone';
     this.up = opts.up ?? (all ? MANY : 4);
     this.minGen = -(opts.down ?? (all ? MANY : 3));
-    for (const s of g.siblingsOf(opts.focusId)) this.sibling.set(s.id, { half: s.half, step: s.step });
+    if (!opts.noSiblings) for (const s of g.siblingsOf(opts.focusId)) this.sibling.set(s.id, { half: s.half, step: s.step });
   }
 
   get level() {
@@ -679,7 +679,7 @@ function rowPass(graph: FamilyGraph, opts: TreeOptions, reserved: ReadonlySet<st
   }
 
   b.resolveStubs();
-  b.inLaws(occ, all);
+  if (!opts.noInLaws) b.inLaws(occ, all);
 
   // An expanded card keeps its control so it can be collapsed again.
   for (const n of b.nodes) if (n.expanded && !n.dupOf && !n.expandable) n.expandable = { down: true };

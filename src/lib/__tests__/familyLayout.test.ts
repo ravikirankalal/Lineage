@@ -371,7 +371,8 @@ describe('layoutFamily', () => {
     f.rel('dgf', 'dad', 'parent'); f.rel('dgm', 'dad', 'parent'); f.rel('mgf', 'mom', 'parent'); f.rel('mgm', 'mom', 'parent');
     for (const [kid, a, b] of [['dgf', 'dgfF', 'dgfM'], ['dgm', 'dgmF', 'dgmM'], ['mgf', 'mgfF', 'mgfM'], ['mgm', 'mgmF', 'mgmM']]) { f.rel(a, kid, 'parent'); f.rel(b, kid, 'parent'); }
     const G = f.graph();
-    for (const level of ['immediate', 'extended', 'everyone'] as const) {
+    // (Everyone also draws each grandmother's own family in a tree below: checked further down.)
+    for (const level of ['immediate', 'extended'] as const) {
       const L = lay(G, 'me', level, [], false, 'cross');
       checkGeometry(L, `patriline ${level}`);
       const ids = new Set(L.nodes.map((n) => n.personId));
@@ -397,6 +398,18 @@ describe('layoutFamily', () => {
         expect(fromGf[0][1]).toBeLessThan(at(gm).y);
       }
     }
+    // Everyone: the main tree is the same (a grandmother's copy right below her husband), and each
+    // grandmother's own parents are drawn in her family's tree further down.
+    const E = lay(G, 'me', 'everyone', [], false, 'cross');
+    checkGeometry(E, 'patriline everyone');
+    for (const [gf, gm, gmDad] of [['dgf', 'dgm', 'dgmF'], ['mgf', 'mgm', 'mgmF']]) {
+      const gfCard = E.nodes.find((n) => n.personId === gf && !n.dupOf)!;
+      const copy = E.nodes.find((n) => n.personId === gm && n.x === gfCard.x && n.y === gfCard.y + 100);
+      expect(copy?.dupOf, `${gm} copy under ${gf}`).toBeDefined();
+      const main = E.nodes.find((n) => n.personId === gm && !n.dupOf)!;
+      expect(main.y).toBeGreaterThan(gfCard.y + 200);
+      expect(E.edges.some((e) => e.from === gmDad && e.to === gm)).toBe(true);
+    }
   });
 
   it('cross layout: with one great-grandparent recorded, the line still starts from their marriage line', () => {
@@ -418,6 +431,61 @@ describe('layoutFamily', () => {
         expect(start[1]).toBeLessThan(top + 100);
       }
     }
+  });
+
+  it('cross layout, Everyone: descendants and the families of people who married in, in trees below', () => {
+    const f = family();
+    const people: [string, Gender, string][] = [
+      ['me', 'male', '1980'], ['wife', 'female', '1982'], ['wifeDad', 'male', '1950'], ['wifeMom', 'female', '1952'], ['wifeBro', 'male', '1985'],
+      ['son', 'male', '2008'], ['grandkid', 'female', '2030'], ['sonWife', 'female', '2009'],
+      ['sis', 'female', '1984'], ['sisHusband', 'male', '1981'], ['niece', 'female', '2012'],
+      ['dad', 'male', '1950'], ['mom', 'female', '1952'], ['dgf', 'male', '1920'], ['dgm', 'female', '1922'],
+      ['dgmDad', 'male', '1890'], ['dgmMom', 'female', '1892'], ['dgmSis', 'female', '1925'],
+      ['uncle', 'male', '1948'], ['uncleWife', 'female', '1950'], ['cousin', 'male', '1975'], ['cousinKid', 'male', '2005'],
+      ['greatUncle', 'male', '1918'], ['ggf', 'male', '1890'], ['dadsCousin', 'male', '1945'],
+    ];
+    for (const [id, gd, y] of people) f.add(id, gd, y);
+    const kids = (a: string, b: string | null, ...cs: string[]) => { for (const c of cs) { f.rel(a, c, 'parent'); if (b) f.rel(b, c, 'parent'); } if (b) f.rel(a, b, 'spouse'); };
+    kids('dad', 'mom', 'me', 'sis');
+    kids('dgf', 'dgm', 'dad', 'uncle');
+    kids('ggf', null, 'dgf', 'greatUncle');
+    kids('dgmDad', 'dgmMom', 'dgm', 'dgmSis');
+    kids('wifeDad', 'wifeMom', 'wife', 'wifeBro');
+    kids('me', 'wife', 'son');
+    kids('son', 'sonWife', 'grandkid');
+    kids('sisHusband', 'sis', 'niece');
+    kids('uncle', 'uncleWife', 'cousin');
+    kids('cousin', null, 'cousinKid');
+    kids('greatUncle', null, 'dadsCousin');
+    const G = f.graph();
+    const L = lay(G, 'me', 'everyone', [], false, 'cross');
+    checkGeometry(L, 'everyone trees');
+    expect(new Set(L.nodes.map((n) => n.key)).size).toBe(L.nodes.length); // keys stay unique
+    const ids = new Set(L.nodes.map((n) => n.personId));
+    for (const [id] of people) expect(ids.has(id), id).toBe(true); // everyone is drawn
+    const mains = (id: string) => L.nodes.filter((n) => n.personId === id && !n.dupOf);
+    for (const [id] of people) expect(mains(id), `${id}: one main card`).toHaveLength(1);
+    const keyOf = new Map(L.nodes.map((n) => [n.key, n]));
+    for (const n of L.nodes) if (n.dupOf) expect(keyOf.get(n.dupOf)?.personId, n.key).toBe(n.personId);
+    // The wife's main card is in her own family's tree (with her parents), below the main tree; beside me a copy.
+    const myCard = mains('me')[0];
+    const wifeMain = mains('wife')[0];
+    expect(wifeMain.y).toBeGreaterThan(myCard.y + 200);
+    expect(L.edges.some((e) => e.from === 'wifeDad' && e.to === 'wife')).toBe(true);
+    expect(L.nodes.some((n) => n.personId === 'wife' && n.dupOf === wifeMain.key)).toBe(true);
+    // Someone who married in with no recorded parents keeps a single card (no copy).
+    for (const id of ['uncleWife', 'sonWife']) expect(L.nodes.filter((n) => n.personId === id), id).toHaveLength(1);
+    // (The sister's husband is also the niece's father, so her descendants' tree has a copy of him.)
+    // Titled trees: the main regions plus descendants and married-in families.
+    const labels = (L.regions ?? []).map((r) => r.label).filter(Boolean);
+    expect(labels).toContain('me’s descendants');
+    expect(labels).toContain('wife’s family');
+    expect(labels).toContain('dgm’s family');
+    expect(L.nodes.filter((n) => n.role === 'focus').map((n) => n.personId)).toEqual(['me']);
+    // Other levels stay as they were: no extra trees.
+    const ext = lay(G, 'me', 'extended', [], false, 'cross');
+    expect(ext.regions).toHaveLength(3);
+    expect(ext.nodes.some((n) => n.personId === 'son')).toBe(false);
   });
 
   it('cross layout: siblings recorded only as brother/sister still get the parents\' line', () => {
