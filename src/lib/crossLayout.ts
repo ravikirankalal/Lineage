@@ -20,7 +20,7 @@ import type { FamilyGraph } from './kinship';
  *
  * - Every ancestor's brothers (above) and sisters (below) bring their families: their children one column
  *   further in, level with them, and so on down to the focus's column (parents' cousins in the parents'
- *   column, second cousins beside the focus).
+ *   column, second cousins beside the focus). Everyone in the focus's column has their spouse below them.
  *
  * Levels: immediate (siblings without their spouses, ancestors' siblings hidden), extended (+ siblings'
  * spouses, parents' brothers and sisters with their children), everyone (+ every ancestor's brothers and
@@ -153,10 +153,10 @@ class Cross {
   /**
    * Rows a brother's or sister's family takes in the cross layout: the person, their partners below them,
    * and beside them (one column further in per generation) their children, each with their own family,
-   * down to the focus's generation (people there are drawn without partners or children).
+   * down to the focus's generation (people there are drawn with their partners, without children).
    */
   bandRows(id: string, gen: number): number {
-    if (gen <= 0) return 1;
+    if (gen <= 0) return 1 + this.partners(id).length; // the focus's generation: partners, no children
     const k = `${id}:${gen}`;
     const hit = this.memo.get(k);
     if (hit !== undefined) return hit;
@@ -174,9 +174,10 @@ class Cross {
   placeBand(id: string, gen: number, dir: number, row: number, yRow: (r: number) => number, flags: Partial<TreeNode> = {}): TreeNode {
     const x = this.colX(dir, gen);
     const n = this.node(id, 'relative', gen, x, yRow(row), flags);
-    if (n.dupOf || gen <= 0) return n;
+    if (n.dupOf) return n;
     const partners = this.partners(id);
     this.partnerCards(id, partners, gen, dir, row, yRow, () => 'spouse');
+    if (gen <= 0) return n;
     const kids = this.g.childrenOf(id).map((c) => c.id).sort(byBirth(this.g));
     let r = row;
     const placed: { id: string; y: number }[] = [];
