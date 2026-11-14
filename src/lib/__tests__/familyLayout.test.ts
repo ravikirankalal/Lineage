@@ -319,6 +319,8 @@ describe('layoutFamily', () => {
     f.rel('uncle', 'uncleWife', 'spouse'); f.rel('uncle', 'cousin', 'parent'); f.rel('uncleWife', 'cousin', 'parent');
     f.rel('mAunt', 'mAuntHusband', 'spouse');
     f.add('halfBro', 'male', '1990'); f.rel('dad', 'halfBro', 'parent'); f.rel('stepmom', 'halfBro', 'parent');
+    // A cousin recorded with only the uncle as parent still shares the couple's single line.
+    f.add('cousinB', 'female', '1977'); f.rel('uncle', 'cousinB', 'parent');
     const G = f.graph();
     for (const level of ['immediate', 'extended', 'everyone'] as const) checkGeometry(lay(G, 'me', level, [], false, 'cross'), `spouses ${level}`);
     const L = lay(G, 'me', 'extended', [], false, 'cross');
@@ -347,6 +349,11 @@ describe('layoutFamily', () => {
       expect(pa![0][1]).toBeLessThan(at(b).y);
     };
     fromCouple('uncle', 'uncleWife', 'cousin');
+    const pCousin = L.edges.find((e) => e.from === 'uncle' && e.to === 'cousin')!.points;
+    const pCousinB = L.edges.find((e) => e.from === 'uncle' && e.to === 'cousinB')!.points;
+    expect(pCousinB[0]).toEqual(pCousin[0]); // same start: the middle of the uncle–wife line, not the uncle's card
+    expect(pCousinB[1]).toEqual(pCousin[1]);
+    expect(L.edges.some((e) => e.from === 'uncleWife' && e.to === 'cousinB')).toBe(false); // no invented parent link
     fromCouple('dad', 'stepmom', 'halfBro'); // a half-brother from the father and step-mother's line
     expect(L.edges.find((e) => e.from === 'dad' && e.to === 'me')!.points[0][0]).toBe(at('dad').x + CARD.w / 2); // me: from dad's card
     // Immediate: a step-parent still shows below the parent; uncles and their spouses don't.
