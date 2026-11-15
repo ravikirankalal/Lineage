@@ -1,10 +1,11 @@
-// Exploratory QA flows (qa-tester). Serves dist/ with `vite preview`, drives real-user flows from a
-// fresh database, saves screenshots, and fails on any page/console error or failed check.
-// Usage: npm run build && node scripts/qa-flows.mjs [--out <dir>]   (default /tmp/lineage-qa)
-import { spawn } from 'node:child_process';
-import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+// Exploratory QA flows (qa-tester) against the Firebase emulators: signs in, drives real-user flows
+// on fresh families, checks sharing between two accounts, saves screenshots, and fails on any
+// page/console error or failed check. Builds its own emulator bundle (see emu.mjs).
+// Usage: node scripts/qa-flows.mjs [--out <dir>]   (default /tmp/lineage-qa)
+import { mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
+import { EXPECTED_CONSOLE, signIn, startStack, stopAll } from './emu.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -12,21 +13,8 @@ const { chromium } = require('playwright');
 const outIdx = process.argv.indexOf('--out');
 const OUT = resolve(outIdx > 0 ? process.argv[outIdx + 1] : '/tmp/lineage-qa');
 const PORT = 4191; // not 4190: that port is on the browsers' blocked list (ERR_UNSAFE_PORT)
-const BASE = `http://localhost:${PORT}/`;
+let BASE = '';
 mkdirSync(OUT, { recursive: true });
-
-// Run vite directly (not via npx) so kill() reaches the server and no orphan holds the port.
-const server = spawn(process.execPath, [resolve('node_modules/vite/bin/vite.js'), 'preview', '--port', String(PORT), '--strictPort'], { stdio: process.env.QA_DEBUG ? 'inherit' : 'ignore' });
-const stop = () => server.kill();
-process.on('exit', stop);
-
-async function waitForServer() {
-  for (let i = 0; i < 50; i++) {
-    try { if ((await fetch(BASE)).ok) return; } catch { /* not up yet */ }
-    await new Promise((r) => setTimeout(r, 200));
-  }
-  throw new Error('preview server did not start');
-}
 
 const failures = [];
 const passed = [];
@@ -34,7 +22,7 @@ const check = (cond, msg) => { if (!cond) failures.push(msg); return cond; };
 
 function watch(page, tag) {
   page.on('pageerror', (e) => failures.push(`[${tag}] page error: ${e.message}`));
-  page.on('console', (m) => m.type() === 'error' && failures.push(`[${tag}] console error: ${m.text().slice(0, 300)}`));
+  page.on('console', (m) => m.type() === 'error' && !EXPECTED_CONSOLE.some((re) => re.test(m.text())) && failures.push(`[${tag}] console error: ${m.text().slice(0, 300)}`));
 }
 
 async function flow(name, fn) {
@@ -69,7 +57,7 @@ async function main(browser) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 }, acceptDownloads: true });
   const page = await ctx.newPage();
   watch(page, 'main');
-  await page.goto(BASE);
+  await signIn(page, BASE, 'arun@example.com', 'Arun Kumar');
 
   await flow('1 add self, parents via ghost cards, brother (as the parents\' son)', async () => {
     await page.getByRole('button', { name: /Add yourself first/ }).click();
@@ -160,86 +148,6 @@ async function main(browser) {
   });
 
   // Give existing people typed details to test non-overwrite.
-  await flow('3 import vcf + csv, duplicates matched, typed fields kept', async () => {
-    await openProfile(page, 'Raj Kumar');
-    await page.getByRole('link', { name: 'Edit' }).click();
-    await page.getByLabel('Nickname / pet name').fill('Rajanna');
-    await page.getByLabel('Born').fill('1960');
-    await page.getByLabel('Occupation').fill('Farmer');
-    await page.getByText('Add phone').click();
-    await page.getByPlaceholder('Phone', { exact: true }).fill('98480 12345');
-    await page.getByRole('button', { name: 'Save' }).first().click();
-    await page.getByRole('heading', { name: /^Family\b/ }).first().waitFor();
-
-    const dir = join(OUT, 'files');
-    mkdirSync(dir, { recursive: true });
-    const vcf = join(dir, 'contacts.vcf');
-    writeFileSync(vcf, [
-      'BEGIN:VCARD', 'VERSION:3.0', 'FN:Rajesh K', 'N:K;Rajesh;;;', 'NICKNAME:Raju', 'TEL;TYPE=CELL:+91 9848012345',
-      'BDAY:1961-02-03', 'TITLE:Retired', 'EMAIL:raj@example.com', 'END:VCARD',
-      'BEGIN:VCARD', 'VERSION:3.0', 'FN:Kavya Rao', 'N:Rao;Kavya;;;', 'TEL:+91-90000-11111', 'END:VCARD',
-      'BEGIN:VCARD', 'VERSION:3.0', 'FN:Deepak Shah', 'N:Shah;Deepak;;;', 'EMAIL:deepak@example.com', 'ORG:Acme', 'END:VCARD', '',
-    ].join('\r\n'));
-    const csv = join(dir, 'google.csv');
-    writeFileSync(csv, [
-      'Name,Given Name,Family Name,Nickname,Birthday,Notes,Phone 1 - Type,Phone 1 - Value,E-mail 1 - Type,E-mail 1 - Value,Organization 1 - Name',
-      'Vijay Kumar,Vijay,Kumar,Viju,1990-05-05,from csv,Mobile,+91 77777 88888,* Home,vijay@example.com,Infosys',
-      'Nisha Patel,Nisha,Patel,,,,Mobile,099999 22222,,,',
-      '"Gupta, Anil",Anil,Gupta,,,"multi, comma note",Work,+1 (415) 555-0100 ::: +1 415 555 0199,,,',
-    ].join('\n'));
-
-    await page.goto(BASE + '#/import');
-    await page.locator('input[type=file]').setInputFiles(vcf);
-    await page.getByText(/found ·/).waitFor();
-    const iv = await body(page);
-    check(/3 found · 2 new · 1 already known/.test(iv), `[3] vcf summary wrong: ${iv.match(/\d+ found[^\n]*/)?.[0]}`);
-    check(/Matches Raj Kumar/.test(iv), '[3] +91 phone did not match Raj Kumar');
-    await shot(page, '3a-import-vcf');
-    await page.getByRole('button', { name: /^Import \d/ }).click();
-    await page.getByText(/Added 2 new people, filled in details for 1/).waitFor();
-
-    await page.locator('input[type=file]').setInputFiles(csv);
-    await page.getByText(/found ·/).waitFor();
-    const ic = await body(page);
-    check(/3 found · 2 new · 1 already known/.test(ic), `[3] csv summary wrong: ${ic.match(/\d+ found[^\n]*/)?.[0]}`);
-    check(/(Matches|Possibly) Vijay Kumar/.test(ic), '[3] CSV row did not match Vijay Kumar by name');
-    await shot(page, '3b-import-csv');
-    await page.getByRole('button', { name: /^Import \d/ }).click();
-    await page.getByText(/Added 2 new/).waitFor();
-
-    // Re-import vcf: everything should match now.
-    await page.locator('input[type=file]').setInputFiles(vcf);
-    await page.getByText(/found ·/).waitFor();
-    check(/3 found · 0 new · 3 already known/.test(await body(page)), '[3] re-import did not match all 3');
-    await page.getByRole('button', { name: 'Cancel' }).click();
-    check(await page.locator('nav a[aria-current=page]', { hasText: 'Import' }).count() > 0, '[3] Import nav item not active on Import page');
-
-    await openProfile(page, 'Raj Kumar');
-    const rp = await body(page);
-    check(rp.includes('“Rajanna”') && !rp.includes('Raju'), '[3] nickname overwritten by import');
-    check(/Born 1960/.test(rp), '[3] birth year overwritten by import');
-    check(rp.includes('Farmer'), '[3] occupation overwritten');
-    check(rp.includes('raj@example.com'), '[3] email gap not filled from vcf');
-    check((rp.match(/98480|9848012345/g) || []).length === 1, '[3] duplicate phone added (same number, different format)');
-    await shot(page, '3c-raj-after-import');
-    await openProfile(page, 'Vijay Kumar');
-    const vj = await body(page);
-    check(vj.includes('vijay@example.com') && vj.includes('Infosys'), '[3] CSV did not fill gaps for Vijay');
-    // Loose imported contacts stay off the People page, but are suggested when adding a relative.
-    await page.goto(BASE + '#/');
-    await page.getByPlaceholder(/Search names/).fill('Anil Gupta');
-    const pl = await body(page);
-    check(await page.locator('a[href*="/people/"]', { hasText: 'Anil Gupta' }).count() === 0, '[3] loose contact listed on the People page');
-    check(/imported contacts? aren’t listed here/.test(pl), '[3] People page lacks the hidden-contacts note');
-    await openProfile(page, 'Vijay Kumar');
-    await page.getByRole('button', { name: 'Add', exact: true }).click();
-    await page.getByRole('button', { name: 'Son', exact: true }).click();
-    await page.getByPlaceholder('Search people or type a new name').fill('Anil');
-    await page.getByText('From your contacts').first().waitFor();
-    check(/Anil Gupta/.test(await body(page)), '[3] contact not suggested in the add sheet');
-    await page.keyboard.press('Escape');
-  });
-
   await flow('4 edit, unlink, delete', async () => {
     await openProfile(page, 'Vijay Kumar');
     await page.getByRole('link', { name: 'Edit' }).click();
@@ -276,35 +184,15 @@ async function main(browser) {
     await page.goBack();
   });
 
-  await flow('5 backup, delete all, restore (replace)', async () => {
+  await flow('5 delete all data', async () => {
     await page.goto(BASE + '#/settings');
-    const before = (await body(page)).match(/(\d+) people and (\d+) relationships/);
-    const dl = page.waitForEvent('download');
-    await page.getByText('Download backup').click();
-    const d = await dl;
-    const path = join(OUT, 'files', d.suggestedFilename());
-    await d.saveAs(path);
-    const json = JSON.parse(readFileSync(path, 'utf8'));
-    check(json.app === 'lineage' && json.people.length === Number(before[1]), '[5] backup content mismatch');
+    check(!/Download backup|Restore from backup|Sync now/.test(await body(page)), '[5] Settings still offers backup or sync');
     await page.getByText('Delete all data').click();
     await page.getByRole('button', { name: 'Delete everything' }).click();
     await page.getByText('All data deleted.').waitFor();
     check(/0 people and 0 relationships/.test(await body(page)), '[5] delete all did not clear');
-    await page.locator('input[accept*=json]').setInputFiles(path);
-    await page.getByRole('button', { name: 'Replace everything' }).click();
-    await page.getByText('Backup restored.').waitFor();
-    const after = (await body(page)).match(/(\d+) people and (\d+) relationships/);
-    check(after[0] === before[0], `[5] restore mismatch: ${before[0]} vs ${after[0]}`);
-    await page.goto(BASE + '#/family');
-    const ok = await page.getByText('Rohan K.').waitFor({ timeout: 5000 }).then(() => true, () => false);
-    if (!check(ok, '[5] tree empty after restore')) await shot(page, '5-FAIL-family-after-restore');
-    // Merge restore on top of existing should be idempotent.
-    await page.goto(BASE + '#/settings');
-    await page.locator('input[accept*=json]').setInputFiles(path);
-    await page.getByRole('button', { name: 'Merge with current' }).click();
-    await page.getByText('Backup restored.').waitFor();
-    check((await body(page)).includes(before[0]), '[5] merge restore duplicated data');
-    await shot(page, '5-settings-restored');
+    await page.reload();
+    await page.getByText(/0 people and 0 relationships/).waitFor();
   });
 
   await ctx.close();
@@ -315,7 +203,7 @@ async function dark(browser) {
   const page = await ctx.newPage();
   watch(page, 'dark');
   await flow('6 dark mode + very long name', async () => {
-    await page.goto(BASE);
+    await signIn(page, BASE, 'dark@example.com', 'Dark Mode');
     await page.getByText('Try a sample family').click();
     await page.getByText('Ravi Rao').first().waitFor();
     await shot(page, '6a-dark-people');
@@ -339,13 +227,12 @@ async function dark(browser) {
   await ctx.close();
 }
 
-// Merge duplicates, regional family terms and the GEDCOM round-trip, on the sample family.
+// Merge duplicates and regional family terms, on the sample family.
 async function features(browser) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, acceptDownloads: true });
   const page = await ctx.newPage();
   watch(page, 'features');
-  const relCount = async () => (await body(page)).match(/(\d+) people and (\d+) relationships/);
-  await page.goto(BASE);
+  await signIn(page, BASE, 'ravi@example.com', 'Ravi Rao');
   await page.getByText('Try a sample family').click();
   await page.getByText('Ravi Rao').first().waitFor();
 
@@ -443,105 +330,120 @@ async function features(browser) {
     await shot(page, '8b-kamala-telugu');
   });
 
-  await flow('9 GEDCOM export, delete all, re-import; hand-written ABT/PEDI', async () => {
-    const dir = join(OUT, 'files');
-    mkdirSync(dir, { recursive: true });
-    await page.goto(BASE + '#/settings');
-    const before = await relCount();
-    await page.goto(BASE + '#/import');
-    const save = async (text) => {
-      const dl = page.waitForEvent('download');
-      await page.getByText(text).click();
-      const d = await dl;
-      const path = join(dir, d.suggestedFilename());
-      await d.saveAs(path);
-      return path;
-    };
-    const radio = (n) => page.getByRole('radio', { name: n });
-    check(await radio(/Family tree only \(safe to share\)/).getAttribute('aria-checked') === 'true', '[9] export Contents not defaulting to "safe to share"');
-    const famPath = await save('Download my family tree (.ged)');
-    check(!/-private/.test(famPath), `[9] safe export has -private suffix: ${famPath}`);
-    const fam = readFileSync(famPath, 'utf8');
-    check(/^1 _LINEAGE_ME Y\s*$/m.test(fam), '[9] export lacks _LINEAGE_ME Y');
-    check(/^0 HEAD/.test(fam) && /0 TRLR\s*$/.test(fam), '[9] .ged missing HEAD/TRLR');
-    check(!/98480|PHON/.test(fam), '[9] phone in "safe to share" export');
-    const allSafe = readFileSync(await save(/Download everyone/), 'utf8');
-    check(allSafe.includes('Kiran'), '[9] "everyone" export missing relatives');
-    check(!/98480|PHON/.test(allSafe), '[9] phone in "safe to share" everyone export');
-    await radio(/Everything \(private backup\)/).click();
-    check(await radio(/Everything/).getAttribute('aria-checked') === 'true', '[9] full Contents option not selected');
-    const allPath = await save(/Download everyone/);
-    check(/-private\.ged$/.test(allPath), `[9] full export lacks -private suffix: ${allPath}`);
-    check(/98480/.test(readFileSync(allPath, 'utf8')), '[9] full export missing phone numbers');
-    const famIndi = (fam.match(/^0 @[^@]+@ INDI/gm) || []).length;
+  await ctx.close();
+}
 
-    await page.goto(BASE + '#/settings');
-    await page.getByText('Delete all data').click();
-    await page.getByRole('button', { name: 'Delete everything' }).click();
-    await page.getByText('All data deleted.').waitFor();
-    await page.goto(BASE + '#/import');
-    await page.locator('input[type=file]').setInputFiles(famPath);
-    await page.getByText('Family tree ready to import').waitFor();
-    const pv = await body(page);
-    check(pv.includes(`${famIndi} people`), '[9] import preview count mismatch');
-    check(pv.includes('Re-importing a file adds everyone again — use Merge on a person’s page to combine duplicates.'), '[9] GEDCOM summary card text missing');
-    await page.getByRole('button', { name: /^Import \d/ }).click();
-    await page.getByText(/Added \d+ new people/).waitFor();
-    await page.goto(BASE + '#/settings');
-    const after = await relCount();
-    check(Number(after[1]) === famIndi && Number(after[1]) <= Number(before[1]), `[9] people after import ${after[0]}`);
-    await page.goto(BASE + '#/family');
-    // _LINEAGE_ME restores "me": no "Who are you?" picker after wipe + re-import.
-    await page.getByText(/Earliest ancestor|Who are you\?/).first().waitFor();
-    const fb = await body(page);
-    check(!/Who are you\?/.test(fb), '[9] "Who are you?" picker shown — me not restored from _LINEAGE_ME');
-    check(/Ravi R\.\s*You/.test(fb), '[9] Ravi not the tree ego after import');
-    check(/5\s*[Gg]enerations/.test(fb), '[9] generations not restored');
-    check(/Anjali R\.\s*(Bharya · )?Wife/.test(fb) && /Ammamma(\s*·)?\s*Grandmother/.test(fb), '[9] spouse/kinship labels missing after import: ' + fb.replace(/\n/g, ' | ').slice(0, 300));
-    await shot(page, '9a-tree-after-ged');
-    await openProfile(page, 'Prakash Rao');
-    check(/Uncle · Babai/.test(await body(page)), '[9] Prakash not uncle after import');
+// Sharing: the owner invites a viewer and an editor (who must be in the tree with a phone number).
+async function sharing(browser) {
+  const ctx = (n) => browser.newContext({ viewport: { width: 1280, height: 860 } });
+  const [oc, vc, ec] = await Promise.all([ctx(), ctx(), ctx()]);
+  const owner = await oc.newPage();
+  const viewer = await vc.newPage();
+  const editor = await ec.newPage();
+  watch(owner, 'owner');
+  watch(viewer, 'viewer');
+  watch(editor, 'editor');
+  await flow('10 sharing: viewer reads only, editor must have a phone, edits show up live', async () => {
+    await signIn(owner, BASE, 'owner@example.com', 'Ravi Rao');
+    await owner.getByText('Try a sample family').click();
+    await owner.getByText('Ravi Rao').first().waitFor();
+    await owner.goto(BASE + '#/sharing');
+    const email = owner.getByPlaceholder('name@gmail.com');
+    // Viewer: email only.
+    await email.fill('viewer@example.com');
+    await owner.getByRole('button', { name: /Send invite/ }).click();
+    await owner.getByText(/Invited viewer@example.com/).waitFor();
+    // Editor: someone without a phone can't be picked to send; Kiran (has a phone) can.
+    await owner.getByRole('radio', { name: /^Editor/ }).click();
+    await email.fill('editor@example.com');
+    await owner.getByLabel('Search your tree by name').fill('Ravi Rao');
+    await owner.getByRole('button', { name: /Ravi Rao/ }).first().click();
+    check(await owner.getByRole('button', { name: /Send invite/ }).isDisabled(), '[10] editor invite allowed for a person with no phone');
+    await owner.getByRole('button', { name: 'Pick someone else' }).click();
+    await owner.getByLabel('Search your tree by name').fill('Kiran');
+    await owner.getByRole('button', { name: /Kiran Rao/ }).first().click();
+    await owner.getByRole('button', { name: /Send invite/ }).click();
+    await owner.getByText(/Invited editor@example.com/).waitFor();
+    await shot(owner, '10a-owner-invites');
 
-    const hand = join(dir, 'hand.ged');
-    writeFileSync(hand, ['0 HEAD', '1 GEDC', '2 VERS 5.5.1', '1 CHAR UTF-8',
-      '0 @I1@ INDI', '1 NAME Gopal /Iyer/', '1 SEX M', '1 BIRT', '2 DATE ABT 1940', '1 FAMS @F1@',
-      '0 @I2@ INDI', '1 NAME Meenakshi /Iyer/', '1 SEX F', '1 FAMS @F1@',
-      '0 @I3@ INDI', '1 NAME Ramesh /Iyer/', '1 SEX M', '1 FAMC @F1@',
-      '0 @I4@ INDI', '1 NAME Lakshmi /Iyer/', '1 SEX F', '1 BIRT', '2 DATE ABT JUN 1975', '1 FAMC @F1@', '2 PEDI adopted',
-      '0 @I5@ INDI', '1 NAME Venkat /Iyer/', '1 SEX M', '1 BIRT', '2 DATE 1910', '1 DEAT', '2 DATE BEF 2010', '1 FAMC @F2@',
-      '0 @F2@ FAM', '1 CHIL @I1@', '1 CHIL @I5@',
-      '0 @F1@ FAM', '1 HUSB @I1@', '1 WIFE @I2@', '1 CHIL @I3@', '1 CHIL @I4@', '0 TRLR', ''].join('\n'));
-    await page.goto(BASE + '#/import');
-    await page.locator('input[type=file]').setInputFiles(hand);
-    await page.getByText('Family tree ready to import').waitFor();
-    await page.getByRole('button', { name: /^Import \d/ }).click();
-    await page.getByText(/Added 5 new people/).waitFor();
-    await openProfile(page, 'Lakshmi Iyer');
-    const lk = await body(page);
-    check(/Gopal Iyer[\s\S]{0,20}Adoptive father/.test(lk) && /Ramesh Iyer\s*Brother/.test(lk), '[9] PEDI adopted not imported');
-    check(/about Jun 1975/.test(lk), '[9] ABT date qualifier lost');
-    await shot(page, '9b-adopted-child');
-    // DEAT BEF 2010: deceased, but no exact death date, so no "Lived N years".
-    await openProfile(page, 'Venkat Iyer');
-    const vk = await body(page);
-    check(!/Lived \d+ years/.test(vk), '[9] BEF death date treated as exact: "Lived N years" shown');
-    check(/Passed away/.test(vk), '[9] DEAT BEF 2010 did not mark Venkat deceased');
-    await shot(page, '9c-death-before');
+    await signIn(viewer, BASE, 'viewer@example.com', 'Vee Viewer');
+    await viewer.getByRole('button', { name: 'Accept' }).click();
+    await viewer.getByText(/Viewing/).first().waitFor();
+    await viewer.goto(BASE + '#/');
+    await viewer.getByText('Ravi Rao').first().waitFor();
+    check(!(await viewer.getByLabel('Add person').count()), '[10] viewer offered "Add person"');
+    await openProfile(viewer, 'Ravi Rao');
+    check(!(await viewer.getByRole('link', { name: 'Edit' }).count()), '[10] viewer offered Edit');
+    check(!(await viewer.getByRole('button', { name: 'Add', exact: true }).count()), '[10] viewer offered Add');
+    await shot(viewer, '10b-viewer-profile');
+
+    await signIn(editor, BASE, 'editor@example.com', 'Kiran Rao');
+    await editor.getByRole('button', { name: 'Accept' }).click();
+    await editor.getByText(/Viewing/).first().waitFor();
+    await openProfile(editor, 'Ravi Rao');
+    await profileAdd(editor, 'Son', 'Shared Kid');
+    // The owner's open page picks it up live, without a reload.
+    await owner.goto(BASE + '#/');
+    const live = await owner.getByText('Shared Kid').first().waitFor({ timeout: 15_000 }).then(() => true, () => false);
+    check(live, '[10] editor\'s new relative did not reach the owner');
+    const vlive = await viewer.goto(BASE + '#/').then(() => viewer.getByText('Shared Kid').first().waitFor({ timeout: 15_000 })).then(() => true, () => false);
+    check(vlive, '[10] editor\'s new relative did not reach the viewer');
+    await shot(owner, '10c-owner-sees-editor-change');
+  });
+  await Promise.all([oc.close(), vc.close(), ec.close()]);
+}
+
+// Clean-up of older data: imported contacts that never became family are deleted on the owner's
+// first load; linked ones (and people added by hand) stay. Seeded through the emulator's admin REST.
+async function cleanup(browser) {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const page = await ctx.newPage();
+  watch(page, 'cleanup');
+  await flow('11 old imported contacts never linked to the family are deleted, linked ones kept', async () => {
+    const uid = await signIn(page, BASE, 'oldowner@example.com', 'Old Owner');
+    const FS = `http://127.0.0.1:8080/v1/projects/demo-lineage/databases/(default)/documents/spaces/${uid}`;
+    const val = (v) => typeof v === 'string' ? { stringValue: v } : typeof v === 'number' ? { integerValue: String(v) } : typeof v === 'boolean' ? { booleanValue: v }
+      : Array.isArray(v) ? { arrayValue: { values: v.map(val) } } : { mapValue: { fields: Object.fromEntries(Object.entries(v).map(([k, x]) => [k, val(x)])) } };
+    const put = (coll, id, data, scope = 'private') => fetch(`${FS}/${coll}/${id}`, {
+      method: 'PATCH', headers: { Authorization: 'Bearer owner', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: { data: val({ id, ...data }), scope: val(scope), updatedAt: val(1), updatedBy: val(uid) } }),
+    }).then((r) => { if (!r.ok) throw new Error('seed failed ' + r.status); });
+    const P = (first, source, extra = {}) => ({ firstName: first, gender: 'unknown', phones: [], emails: [], work: [], education: [], facts: [], tags: [], createdAt: 1, updatedAt: 1, ...(source ? { source } : {}), ...extra });
+    await put('people', 'me', P('Olda', 'vcard', { isMe: true }), 'family');
+    await put('people', 'mum', P('Mumtaz', 'google'), 'family');
+    await put('people', 'loose1', P('Loosey', 'picker'));
+    await put('people', 'loose2', P('Csvy', 'csv'));
+    await put('people', 'pal', P('Pally', 'vcard'));
+    await put('people', 'typed', P('Typedia'));
+    await put('relationships', 'r1', { fromId: 'mum', toId: 'me', type: 'parent', createdAt: 1 }, 'family');
+    await put('relationships', 'r2', { fromId: 'me', toId: 'pal', type: 'friend', createdAt: 1 });
+    await page.reload();
+    await page.getByText('Mumtaz').first().waitFor();
+    const gone = await page.waitForFunction(() => !/Loosey|Csvy|Pally/.test(document.body.innerText), null, { timeout: 15_000 }).then(() => true, () => false);
+    check(gone, '[11] loose contacts still listed');
+    const left = await fetch(`${FS}/people`, { headers: { Authorization: 'Bearer owner' } }).then((r) => r.json());
+    const ids = (left.documents ?? []).map((d) => d.name.split('/').pop()).sort();
+    check(JSON.stringify(ids) === JSON.stringify(['me', 'mum', 'typed']), `[11] people left in the cloud: ${ids.join(', ')}`);
+    const rels = await fetch(`${FS}/relationships`, { headers: { Authorization: 'Bearer owner' } }).then((r) => r.json());
+    const rids = (rels.documents ?? []).map((d) => d.name.split('/').pop()).sort();
+    check(JSON.stringify(rids) === JSON.stringify(['r1']), `[11] links left in the cloud: ${rids.join(', ')}`);
+    await shot(page, '11-after-cleanup');
   });
   await ctx.close();
 }
 
 try {
-  await waitForServer();
+  BASE = await startStack(PORT);
   const browser = await chromium.launch();
-  await main(browser);
-  await dark(browser);
-  await features(browser);
+  // QA_ONLY=cleanup,sharing runs just those groups (default: all).
+  const only = (process.env.QA_ONLY ?? '').split(',').filter(Boolean);
+  const groups = { main, dark, features, sharing, cleanup };
+  for (const [k, fn] of Object.entries(groups)) if (!only.length || only.includes(k)) await fn(browser);
   await browser.close();
 } catch (e) {
   failures.push('crashed: ' + e.message);
 }
-stop();
+stopAll();
 console.log('PASSED FLOWS:\n' + passed.map((p) => ' + ' + p).join('\n'));
 if (failures.length) {
   console.error('QA FAILED\n' + failures.map((f) => ' - ' + f).join('\n'));

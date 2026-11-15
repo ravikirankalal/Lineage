@@ -1,17 +1,15 @@
 import { ArrowLeft, Check, Search, TriangleAlert } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { phoneKey } from '../lib/contacts';
 import { useData } from '../lib/data';
 import { mergePeople, previewMerge, type MergePreview } from '../lib/db';
-import { displayName, formatPlace, fullName, lifespan, matchesQuery, norm } from '../lib/person';
+import { displayName, formatPlace, fullName, lifespan, matchesQuery, norm, phoneKey } from '../lib/person';
 import type { Person } from '../lib/types';
 import { Avatar } from './Avatar';
 import { PersonRow } from './PersonRow';
 import { Sheet } from './Sheet';
 
 // ---------------------------------------------------------------------------------------------
-// Duplicate suggestions. Pure and UI-free; belongs in src/lib (next to findDuplicate in
-// contacts.ts) once that file is free to edit.
+// Duplicate suggestions. Pure and UI-free.
 
 export interface DuplicateSuggestion {
   person: Person;

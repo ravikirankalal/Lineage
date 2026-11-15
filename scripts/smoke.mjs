@@ -1,9 +1,10 @@
-// End-to-end smoke test: builds nothing, serves dist/ with `vite preview`, drives the main flows
-// in Chromium at phone and desktop sizes, saves screenshots, and fails on any page error.
-// Usage: npm run build && npm run smoke [-- --out <dir>]
-import { spawn } from 'node:child_process';
+// End-to-end smoke test against the Firebase emulators (Lineage requires sign-in and keeps the
+// tree in Firestore): signs in, loads the sample family, drives the main flows in Chromium at phone
+// and desktop sizes, saves screenshots, and fails on any page error. Builds its own emulator bundle.
+// Usage: npm run smoke [-- --out <dir>]
 import { mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { EXPECTED_CONSOLE, signIn, startStack, stopAll } from './emu.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -11,25 +12,8 @@ const { chromium } = require('playwright');
 const outIdx = process.argv.indexOf('--out');
 const OUT = outIdx > 0 ? process.argv[outIdx + 1] : 'smoke-output';
 const PORT = 4179;
-const BASE = `http://localhost:${PORT}/`;
+let BASE = '';
 mkdirSync(OUT, { recursive: true });
-
-// Spawn vite directly (not via npx) so kill() stops the actual server process.
-const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' });
-const stop = () => server.kill();
-process.on('exit', stop);
-
-async function waitForServer() {
-  await new Promise((r) => setTimeout(r, 300));
-  if (server.exitCode !== null) throw new Error(`port ${PORT} busy — stop the old preview server`);
-  for (let i = 0; i < 50; i++) {
-    try {
-      if ((await fetch(BASE)).ok) return;
-    } catch { /* not up yet */ }
-    await new Promise((r) => setTimeout(r, 200));
-  }
-  throw new Error('preview server did not start');
-}
 
 const failures = [];
 const check = (cond, msg) => { if (!cond) failures.push(msg); };
@@ -38,11 +22,16 @@ async function run(name, viewport) {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport });
   page.on('pageerror', (e) => failures.push(`[${name}] page error: ${e.message}`));
-  page.on('console', (m) => m.type() === 'error' && failures.push(`[${name}] console error: ${m.text().slice(0, 300)}`));
+  page.on('console', (m) => m.type() === 'error' && !EXPECTED_CONSOLE.some((re) => re.test(m.text())) && failures.push(`[${name}] console error: ${m.text().slice(0, 300)}`));
   const shot = (s) => page.screenshot({ path: `${OUT}/${name}-${s}.png`, fullPage: true });
   const body = () => page.locator('body').innerText();
 
+  // Signed out: only the sign-in screen.
   await page.goto(BASE);
+  await page.getByRole('button', { name: 'Sign in with Google' }).waitFor();
+  check(!(await page.getByRole('navigation').count()), `[${name}] app shown before sign-in`);
+  await shot('0-sign-in');
+  await signIn(page, BASE, `${name}@example.com`, `Smoke ${name}`);
   await page.getByText('Try a sample family').click();
   await page.getByText('Ravi Rao').first().waitFor();
   await shot('1-people');
@@ -75,21 +64,31 @@ async function run(name, viewport) {
   await page.getByText('Smoke Tester').first().waitFor();
   await shot('6-added');
 
-  await page.goto(BASE + '#/import');
-  await shot('8-import');
+  // Saved in the cloud, not the page: still there after a reload.
+  await page.reload();
+  await page.getByText('Smoke Tester').first().waitFor();
+  check(!(await page.getByRole('link', { name: 'Import' }).count()), `[${name}] Import still in the navigation`);
+
   await page.goto(BASE + '#/settings');
+  const st = await body();
+  for (const w of ['Download backup', 'Restore from backup', 'Sync now']) check(!st.includes(w), `[${name}] Settings still offers "${w}"`);
   await shot('9-settings');
+  // Sign out: back to the sign-in screen, no family shown.
+  await page.getByRole('button', { name: 'Sign out' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Sign out' }).click();
+  await page.getByRole('button', { name: 'Sign in with Google' }).waitFor();
+  check(!(await body()).includes('Ravi Rao'), `[${name}] family still visible after sign-out`);
   await browser.close();
 }
 
 try {
-  await waitForServer();
+  BASE = await startStack(PORT);
   await run('phone', { width: 390, height: 844 });
   await run('desktop', { width: 1280, height: 860 });
 } catch (e) {
   failures.push('crashed: ' + e.message);
 }
-stop();
+stopAll();
 if (failures.length) {
   console.error('SMOKE FAILED\n' + failures.map((f) => ' - ' + f).join('\n'));
   process.exit(1);

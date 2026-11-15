@@ -1,27 +1,28 @@
-import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  activeSpaceId,
   addRelationship,
   clearAll,
-  db,
   deletePerson,
   deleteRelationship,
   ensureRelationship,
-  exportBackup,
-  importBackup,
+  ops,
+  purgeLooseContacts,
   purgeNonFamilyLinks,
   mergePeople,
-  openSpaceDb,
   previewMerge,
   savePerson,
 } from '../db';
 import { emptyPerson } from '../person';
+import { store, write } from '../store';
+import { freshSpace, type MemoryBackend, type TestDb } from './memoryBackend';
 
 const person = (id: string, extra: Parameters<typeof emptyPerson>[0] = {}) => emptyPerson({ id, firstName: id, ...extra });
 
-beforeEach(async () => {
-  await clearAll();
+// Each test gets a fresh, empty in-memory space; `db` seeds and inspects it.
+let db: TestDb;
+let backend: MemoryBackend;
+beforeEach(() => {
+  ({ db, backend } = freshSpace());
 });
 
 describe('addRelationship on an existing edge', () => {
@@ -100,124 +101,6 @@ describe('parent cycles', () => {
     await addRelationship({ fromId: 'A', toId: 'B', type: 'parent' }); // A is grandparent and parent of C: odd but acyclic
     await addRelationship({ fromId: 'C', toId: 'A', type: 'friend' });
     expect(await db.relationships.count()).toBe(4);
-  });
-});
-
-describe('importBackup', () => {
-  const backup = (people: unknown[], relationships: unknown[] = [], version: unknown = 1) => ({
-    app: 'lineage',
-    version,
-    exportedAt: new Date().toISOString(),
-    people,
-    relationships,
-  });
-
-  it('round-trips an export', async () => {
-    await savePerson(person('A', { isMe: true }));
-    await savePerson(person('B'));
-    await addRelationship({ fromId: 'A', toId: 'B', type: 'parent', subtype: 'adoptive' });
-    const data = await exportBackup();
-    await clearAll();
-    await importBackup(JSON.parse(JSON.stringify(data)), 'replace');
-    expect(await db.people.count()).toBe(2);
-    expect((await db.relationships.toArray())[0].subtype).toBe('adoptive');
-    expect((await db.people.get('A'))?.isMe).toBe(true);
-  });
-
-  it('merge keeps the local "me" and strips isMe from incoming people', async () => {
-    await savePerson(person('local', { isMe: true }));
-    await importBackup(backup([person('remote', { isMe: true }), person('other')]), 'merge');
-    const mes = (await db.people.toArray()).filter((p) => p.isMe);
-    expect(mes.map((p) => p.id)).toEqual(['local']);
-  });
-
-  it('merge keeps isMe when the incoming "me" is the same person', async () => {
-    await savePerson(person('local', { isMe: true }));
-    await importBackup(backup([person('local', { isMe: true, lastName: 'New' }), person('x', { isMe: true })]), 'merge');
-    const mes = (await db.people.toArray()).filter((p) => p.isMe);
-    expect(mes.map((p) => p.id)).toEqual(['local']);
-    expect((await db.people.get('local'))?.lastName).toBe('New');
-  });
-
-  it('merge without a local "me" accepts one incoming "me"', async () => {
-    await savePerson(person('local'));
-    await importBackup(backup([person('r1', { isMe: true }), person('r2', { isMe: true })]), 'merge');
-    const mes = (await db.people.toArray()).filter((p) => p.isMe);
-    expect(mes.map((p) => p.id)).toEqual(['r1']);
-  });
-
-  it('replace keeps at most one "me"', async () => {
-    await savePerson(person('local', { isMe: true }));
-    await importBackup(backup([person('r1', { isMe: true }), person('r2', { isMe: true })]), 'replace');
-    const all = await db.people.toArray();
-    expect(all.map((p) => p.id).sort()).toEqual(['r1', 'r2']);
-    expect(all.filter((p) => p.isMe).map((p) => p.id)).toEqual(['r1']);
-  });
-
-  it('normalises malformed people, keeps id/createdAt and stamps updatedAt (so sync keeps the restore)', async () => {
-    const t0 = Date.now();
-    await importBackup(
-      backup([
-        { id: 'a', createdAt: 5, updatedAt: 7, lastName: 'Example' },
-        { id: 'b', firstName: 42, gender: 'robot', phones: null, tags: 'x' },
-        { firstName: 'no id' },
-        null,
-        'junk',
-      ]),
-      'replace',
-    );
-    const a = await db.people.get('a');
-    expect(a).toMatchObject({ id: 'a', createdAt: 5, firstName: '', lastName: 'Example', gender: 'unknown' });
-    expect(a!.updatedAt).toBeGreaterThanOrEqual(t0);
-    for (const k of ['phones', 'emails', 'work', 'education', 'facts', 'tags'] as const) expect(a?.[k]).toEqual([]);
-    const b = await db.people.get('b');
-    expect(b?.firstName).toBe('');
-    expect(b?.gender).toBe('unknown');
-    expect(b?.phones).toEqual([]);
-    expect(b?.tags).toEqual([]);
-    expect(await db.people.count()).toBe(2);
-  });
-
-  it('drops invalid relationships and dangling ends, but keeps links to existing local people in merge', async () => {
-    await savePerson(person('local'));
-    await importBackup(
-      backup(
-        [person('a'), person('b')],
-        [
-          { id: 'ok', fromId: 'a', toId: 'b', type: 'parent', createdAt: 1 },
-          { id: 'toLocal', fromId: 'local', toId: 'a', type: 'sibling', createdAt: 1 },
-          { id: 'oldFriend', fromId: 'a', toId: 'b', type: 'friend', createdAt: 1 }, // family only: not restored
-          { id: 'self', fromId: 'a', toId: 'a', type: 'friend', createdAt: 1 },
-          { id: 'dangling', fromId: 'a', toId: 'ghost', type: 'friend', createdAt: 1 },
-          { fromId: 'a', toId: 'b', type: 'spouse' },
-          { id: 'noType', fromId: 'a', toId: 'b' },
-          { id: 'badType', fromId: 'a', toId: 'b', type: 'enemy' },
-          { id: 'noFrom', toId: 'b', type: 'friend' },
-          null,
-        ],
-      ),
-      'merge',
-    );
-    expect((await db.relationships.toArray()).map((r) => r.id).sort()).toEqual(['ok', 'toLocal']);
-  });
-
-  it('in replace mode, links to people only in the old local data are dropped', async () => {
-    await savePerson(person('local'));
-    await importBackup(backup([person('a')], [{ id: 'r', fromId: 'local', toId: 'a', type: 'friend', createdAt: 1 }]), 'replace');
-    expect(await db.relationships.count()).toBe(0);
-  });
-
-  it('accepts version 1 (and a missing version), rejects future versions', async () => {
-    await expect(importBackup(backup([person('a')], [], 1), 'merge')).resolves.toBeUndefined();
-    await expect(importBackup(backup([person('b')], [], undefined), 'merge')).resolves.toBeUndefined();
-    await expect(importBackup(backup([person('c')], [], 2), 'merge')).rejects.toThrow(/newer version of Lineage/);
-    await expect(importBackup(backup([person('d')], [], 'abc'), 'merge')).rejects.toThrow(/not a Lineage backup/);
-    expect((await db.people.toCollection().primaryKeys()).sort()).toEqual(['a', 'b']);
-  });
-
-  it('rejects non-backups', async () => {
-    await expect(importBackup({ app: 'other', people: [], relationships: [] }, 'merge')).rejects.toThrow(/not a Lineage backup/);
-    await expect(importBackup(null, 'merge')).rejects.toThrow(/not a Lineage backup/);
   });
 });
 
@@ -581,11 +464,9 @@ describe('mergePeople', () => {
   });
 });
 
-describe('version 2: updatedAt on relationships and tombstones', () => {
-  const tomb = async (id: string) => db.tombstones.get(id);
-  beforeEach(async () => {
-    await db.tombstones.clear();
-  });
+describe('writes go to the cloud as one batch per change', () => {
+  const last = () => backend.commits[backend.commits.length - 1];
+  const deleted = (w: { id: string; data: unknown }[] | undefined) => (w ?? []).filter((x) => x.data === null);
 
   it('addRelationship stamps createdAt/updatedAt; updating an edge bumps updatedAt', async () => {
     await db.people.bulkPut([person('P'), person('X')]);
@@ -601,136 +482,113 @@ describe('version 2: updatedAt on relationships and tombstones', () => {
     expect((await db.relationships.get(id))!.updatedAt).toBeGreaterThanOrEqual(t0);
   });
 
-  it('savePerson re-stamps the person who loses isMe', async () => {
+  it('savePerson re-stamps the person who loses isMe, in the same batch', async () => {
     await db.people.bulkPut([person('A', { isMe: true, updatedAt: 1 }), person('B')]);
     await savePerson(person('B', { isMe: true }));
     const a = await db.people.get('A');
     expect(a!.isMe).toBeUndefined();
     expect(a!.updatedAt).toBeGreaterThan(1);
+    expect(last().map((w) => w.id).sort()).toEqual(['A', 'B']);
   });
 
-  it('deletePerson tombstones the person and their edges', async () => {
+  it('deletePerson deletes the person and their edges together', async () => {
     await db.people.bulkPut([person('A'), person('B'), person('C')]);
     const ab = await addRelationship({ fromId: 'A', toId: 'B', type: 'parent' });
-    const ca = await addRelationship({ fromId: 'C', toId: 'A', type: 'friend' });
-    const bc = await addRelationship({ fromId: 'B', toId: 'C', type: 'friend' });
+    const bc = await addRelationship({ fromId: 'B', toId: 'C', type: 'sibling' });
     await deletePerson('A');
-    expect(await tomb('A')).toMatchObject({ id: 'A', table: 'people' });
-    expect(await tomb(ab)).toMatchObject({ table: 'relationships' });
-    expect(await tomb(ca)).toMatchObject({ table: 'relationships' });
-    expect(await tomb(bc)).toBeUndefined();
-    expect(await db.relationships.count()).toBe(1);
+    expect(deleted(last()).map((w) => w.id).sort()).toEqual(['A', ab].sort());
+    expect((await db.relationships.toArray()).map((r) => r.id)).toEqual([bc]);
   });
 
-  it('deleting a missing person or edge records nothing', async () => {
+  it('deleting a missing person or edge sends nothing', async () => {
     await deletePerson('ghost');
     await deleteRelationship('ghost-edge');
-    expect(await db.tombstones.count()).toBe(0);
+    expect(backend.commits).toEqual([]);
   });
 
-  it('deleteRelationship tombstones the edge', async () => {
-    await db.people.bulkPut([person('A'), person('B')]);
-    const id = await addRelationship({ fromId: 'A', toId: 'B', type: 'spouse' });
-    await deleteRelationship(id);
-    expect(await db.relationships.get(id)).toBeUndefined();
-    expect(await tomb(id)).toMatchObject({ table: 'relationships' });
-  });
-
-  it('mergePeople tombstones drop and its dropped edges, and stamps moved edges', async () => {
-    await db.people.bulkPut([person('K'), person('D'), person('Par')]);
+  it('mergePeople sends drop, dropped edges and moved edges as one batch', async () => {
+    await db.people.bulkPut([person('K'), person('D'), person('Par'), person('Sib')]);
     const kp = await addRelationship({ fromId: 'Par', toId: 'K', type: 'parent' });
     const dp = await addRelationship({ fromId: 'Par', toId: 'D', type: 'parent' }); // duplicate after merge
-    const df = await addRelationship({ fromId: 'D', toId: 'Par', type: 'friend' }); // moved
-    await db.relationships.update(df, { updatedAt: 1 });
+    const ds = await addRelationship({ fromId: 'D', toId: 'Sib', type: 'sibling' }); // moved to K
+    await db.relationships.update(ds, { updatedAt: 1 });
+    const before = backend.commits.length;
     await mergePeople('K', 'D');
-    expect(await tomb('D')).toMatchObject({ table: 'people' });
-    expect(await tomb(dp)).toMatchObject({ table: 'relationships' });
-    expect(await tomb(kp)).toBeUndefined();
-    expect(await tomb(df)).toBeUndefined();
-    const moved = await db.relationships.get(df);
+    expect(backend.commits.length).toBe(before + 1);
+    expect(deleted(last()).map((w) => w.id).sort()).toEqual(['D', dp].sort());
+    expect(await db.relationships.get(kp)).toBeDefined();
+    const moved = await db.relationships.get(ds);
     expect(moved!.fromId).toBe('K');
     expect(moved!.updatedAt).toBeGreaterThan(1);
   });
 
-  it('clearAll tombstones everything', async () => {
+  it('clearAll deletes everything', async () => {
     await db.people.bulkPut([person('A'), person('B')]);
-    const id = await addRelationship({ fromId: 'A', toId: 'B', type: 'sibling' });
+    await addRelationship({ fromId: 'A', toId: 'B', type: 'sibling' });
     await clearAll();
-    expect((await db.tombstones.toArray()).map((t) => t.id).sort()).toEqual(['A', 'B', id].sort());
+    expect(await db.people.count()).toBe(0);
+    expect(await db.relationships.count()).toBe(0);
   });
 
-  it('importBackup replace tombstones removed ids, stamps rows, and revives re-imported ids', async () => {
-    await db.people.bulkPut([person('Gone'), person('Kept')]);
-    await db.tombstones.put({ id: 'Back', table: 'people', deletedAt: 1 });
-    const t0 = Date.now();
-    await importBackup(
-      {
-        app: 'lineage',
-        version: 1,
-        exportedAt: '',
-        people: [person('Kept'), person('Back')],
-        relationships: [{ id: 'e1', fromId: 'Kept', toId: 'Back', type: 'sibling', createdAt: 3 }],
-      },
-      'replace',
-    );
-    expect(await tomb('Gone')).toMatchObject({ table: 'people' });
-    expect(await tomb('Kept')).toBeUndefined();
-    expect(await tomb('Back')).toBeUndefined();
-    const e1 = await db.relationships.get('e1');
-    expect(e1!.createdAt).toBe(3);
-    expect(e1!.updatedAt).toBeGreaterThanOrEqual(t0);
+  it('composed changes (write + ops) are one batch, and reads see earlier steps', async () => {
+    await db.people.bulkPut([person('A')]);
+    const before = backend.commits.length;
+    await write((t) => {
+      ops.savePerson(t, person('New'));
+      ops.addRelationship(t, { fromId: 'A', toId: 'New', type: 'parent' });
+      expect(ops.findRelationship(t, 'A', 'New', 'parent')).toBeDefined();
+    });
+    expect(backend.commits.length).toBe(before + 1);
+    expect(await db.relationships.count()).toBe(1);
   });
 
-  it('exportBackup round-trips relationship updatedAt and old backups without it still import', async () => {
-    await importBackup(
-      { app: 'lineage', version: 1, exportedAt: '', people: [person('A'), person('B')], relationships: [{ id: 'old', fromId: 'A', toId: 'B', type: 'sibling' }] },
-      'merge',
-    );
-    const r = await db.relationships.get('old');
-    expect(typeof r!.createdAt).toBe('number');
-    expect(typeof r!.updatedAt).toBe('number');
-    const b = await exportBackup();
-    expect(b.relationships[0].updatedAt).toBe(r!.updatedAt);
+  it('a failing step sends nothing (no partial writes)', async () => {
+    await db.people.bulkPut([person('A'), person('B')]);
+    await addRelationship({ fromId: 'A', toId: 'B', type: 'parent' });
+    const before = backend.commits.length;
+    await expect(write((t) => {
+      ops.savePerson(t, person('C'));
+      ops.addRelationship(t, { fromId: 'B', toId: 'A', type: 'parent' }); // cycle: throws
+    })).rejects.toThrow(/own ancestor/);
+    expect(backend.commits.length).toBe(before);
+    expect(await db.people.get('C')).toBeUndefined();
+  });
+
+  it('refuses changes when the backend can\'t write (offline or viewer), with its message', async () => {
+    backend.offline = 'You’re offline.';
+    await expect(savePerson(person('A'))).rejects.toThrow('You’re offline.');
+    expect(backend.commits).toEqual([]);
+  });
+
+  it('refuses changes when signed out (no backend)', async () => {
+    store.connect(null);
+    await expect(savePerson(person('A'))).rejects.toThrow(/Sign in/);
   });
 });
 
-describe('purgeNonFamilyLinks', () => {
-  it('deletes non-family links for good, with tombstones so the delete syncs', async () => {
-    await savePerson(person('A'));
-    await savePerson(person('B'));
+describe('clean-ups of older data', () => {
+  it('purgeNonFamilyLinks deletes non-family links for good', async () => {
+    await db.people.bulkPut([person('A'), person('B')]);
     const fam = await addRelationship({ fromId: 'A', toId: 'B', type: 'parent' });
-    const pal = await addRelationship({ fromId: 'A', toId: 'B', type: 'friend' });
+    await addRelationship({ fromId: 'A', toId: 'B', type: 'friend' });
     expect(await purgeNonFamilyLinks()).toBe(1);
     expect((await db.relationships.toArray()).map((r) => r.id)).toEqual([fam]);
-    expect((await db.tombstones.get(pal))?.table).toBe('relationships');
     expect(await purgeNonFamilyLinks()).toBe(0);
   });
-});
 
-describe('openSpaceDb', () => {
-  it('switches the live db binding and helpers follow it', async () => {
-    expect(activeSpaceId()).toBeNull();
-    const local = db;
-    expect(local.name).toBe('lineage');
-    await savePerson(person('LocalOnly'));
-    try {
-      openSpaceDb('space-1');
-      expect(activeSpaceId()).toBe('space-1');
-      expect(db).not.toBe(local);
-      expect(db.name).toBe('lineage-space-space-1');
-      expect(local.isOpen()).toBe(false);
-      expect(await db.people.get('LocalOnly')).toBeUndefined();
-      await savePerson(person('SpaceOnly'));
-      await deletePerson('SpaceOnly');
-      expect(await db.tombstones.get('SpaceOnly')).toBeDefined();
-      openSpaceDb('space-1'); // no-op
-      expect(db.name).toBe('lineage-space-space-1');
-    } finally {
-      openSpaceDb(null);
-    }
-    expect(db.name).toBe('lineage');
-    expect(await db.people.get('LocalOnly')).toBeDefined();
-    expect(await db.tombstones.get('SpaceOnly')).toBeUndefined();
-    expect(() => openSpaceDb('')).toThrow();
+  it('purgeLooseContacts deletes imported contacts with no family link, and keeps everyone else', async () => {
+    await db.people.bulkPut([
+      person('me', { isMe: true, source: 'vcard' }),
+      person('mum', { source: 'google' }), // a contact who became family
+      person('loose', { source: 'picker' }), // never linked
+      person('pal', { source: 'csv' }), // only an old friend link
+      person('typed'), // added by hand, not linked yet
+    ]);
+    await addRelationship({ fromId: 'mum', toId: 'me', type: 'parent' });
+    const friend = await addRelationship({ fromId: 'me', toId: 'pal', type: 'friend' });
+    expect(await purgeLooseContacts()).toBe(2);
+    expect((await db.people.toArray()).map((p) => p.id).sort()).toEqual(['me', 'mum', 'typed']);
+    expect(await db.relationships.get(friend)).toBeUndefined();
+    expect(await purgeLooseContacts()).toBe(0);
   });
 });

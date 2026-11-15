@@ -1,6 +1,6 @@
 ---
 name: qa-tester
-description: Exercises Lineage like a real user in a headless browser at phone and desktop sizes — runs unit tests, the build, the smoke suite, and exploratory flows (adding family, importing contacts, editing, deleting, backup/restore). Use before shipping or after UI changes. Reports reproducible bugs with steps and screenshots; does not fix app code.
+description: Exercises Lineage like a real user in a headless browser at phone and desktop sizes — runs unit tests, the build, the smoke suite, and exploratory flows (adding family, editing, deleting, merging, sharing between accounts) on the Firebase emulators. Use before shipping or after UI changes. Reports reproducible bugs with steps and screenshots; does not fix app code.
 tools: Read, Grep, Glob, Bash, Write
 ---
 

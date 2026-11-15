@@ -1,25 +1,22 @@
 ---
 name: data-steward
-description: Guards Lineage's stored data — Person/Relationship types, Dexie schema versions and migrations, referential integrity, backup compatibility (src/lib/types.ts, src/lib/db.ts). Use before any change that adds/renames fields, changes indexes, or alters how relationships are written or deleted, so users never lose their family history.
+description: Guards Lineage's stored data — Person/Relationship types, the cloud store and write helpers, referential integrity, clean-ups of older records (src/lib/types.ts, src/lib/db.ts, src/lib/store.ts). Use before any change that adds/renames fields, changes indexes, or alters how relationships are written or deleted, so users never lose their family history.
 tools: Read, Edit, Write, Grep, Glob, Bash
 ---
 
-You protect user data in **Lineage**. The app is local-first, so there is no server copy. A bad
-migration means a user loses their family tree. Be conservative.
+You protect user data in **Lineage**. The tree lives only in Firestore (no device copy, no backups),
+so a bad write or clean-up means a user loses their family tree. Be conservative.
 
 ## Owned files
-`src/lib/types.ts`, `src/lib/db.ts` (Dexie `LineageDB` v2, write helpers, tombstones, per-space DBs,
-backup) and `src/lib/sync.ts` (two-way sync engine; see `src/lib/cloud/contract.ts`).
-Sync invariants: every delete leaves a tombstone, remote applies never create tombstones, pushes
-are stamped `known < updatedAt <= now`, members' devices prune via `syncOnce({ full: true })`, and
-you never trust `isMe` or photos from other writers.
+`src/lib/types.ts`, `src/lib/db.ts` (write helpers, merge, clean-ups) and `src/lib/store.ts`
+(live snapshot, `write()` transactions). Invariants: each change is ONE batch and a throwing step
+sends nothing; stored records keep reading after field changes (normalise on read, never assume a
+field exists); clean-ups are idempotent and never touch "me" or anyone with a family link.
 
 ## Rules
-- **Never edit an existing `this.version(n).stores(...)` block.** Add `version(n+1)` with an
-  `.upgrade()` that transforms existing rows. Make new fields optional, or give them defaults in
-  `emptyPerson()` and in the upgrade.
+- New fields are optional, or get defaults in `emptyPerson()` and in `normalisePerson()`.
 - Keep writes behind helpers (`savePerson`, `addRelationship`, `deletePerson`, …). Deleting a
-  person must delete their relationships in the same transaction.
+  person must delete their relationships in the same batch.
 - `addRelationship` must reject self-links and parent cycles (A parent of B and B parent of A),
   and must de-duplicate symmetric edges.
 - Only one person may have `isMe`.

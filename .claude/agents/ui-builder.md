@@ -23,8 +23,7 @@ are people who find it hard to remember others, so every screen must be obvious 
 - `src/lib/cloud/CloudProvider.tsx` (`useCloud`) is yours. Gate every create, edit or delete
   control with `usePermissions()` / `useCanEdit()`, never with ad-hoc role checks; viewers must
   see no edit affordances.
-- Never show cloud UI when Firebase isn't configured. Sync may only run for the uid that gave
-  consent and owns the local DB (see the `syncAllowed` guard).
+- Sign-in is required (App's `Gate`). Edits are off while offline (`canEdit` is false then).
 
 ## Design rules
 - Phone first: bottom tabs at < md, sidebar at ≥ md. Touch targets ≥ 40px. No horizontal page scroll.

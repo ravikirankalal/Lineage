@@ -1,69 +1,54 @@
 # State
 
-_Last updated: 2026-11-13_
+_Last updated: 2026-11-15_
 
-## Status: v0.3 (unmerged branch) — phases 1–10 built; third fleet round (Google sign-in, cloud sync, family sharing, server-side authorization) security-reviewed and QA'd on emulators
+## Status: cloud only (2026-11-15) — sign-in required; the tree lives in Firestore, read live and written directly; no device copy, sync, offline editing, contacts import, GEDCOM or backups
 
 | Area | State | Verified by |
 | --- | --- | --- |
-| Data model, Dexie DB, backup/restore | ✅ done | `db.test.ts` (patch-only updates, `ensureRelationship`, cycle rejection, single isMe, backup normalisation/version check); `npm run qa` flow 5 (backup → delete all → restore) |
+| Cloud-only data layer: `store.ts` (live snapshot, transactions, one batch per change), `firestoreBackend.ts` (live listeners; owner reads all, members `scope == 'family'`; writes scope 'family'; owner deletes, editors soft-delete), `db.ts` helpers over it | ✅ done | `db.test.ts` (36, on an in-memory backend: batching, no partial writes, offline/viewer/signed-out refusal, merge, clean-ups); `npm run smoke` and `npm run qa` on the Auth + Firestore emulators (data survives reload; sharing flow 10: viewer read-only, editor change reaches owner and viewer live) |
+| Sign-in required (gate before any data), offline bar and read-only while offline, sign-out back to the sign-in screen | ✅ done | `npm run smoke` (sign-in screen first, no app before sign-in, sign-out hides the family) |
+| Removed: Dexie and sync, contacts import (vCard/CSV/picker/Google), GEDCOM, JSON backups, Import page, offline service worker (sw.js now unregisters itself), old on-device copies (deleted at startup) | ✅ done | `tsc -b`; smoke checks Import/backup/sync are gone |
+| Clean-ups of older data: non-family links and imported contacts that never became family are deleted (owner, own family) | ✅ done | `db.test.ts` "clean-ups of older data"; `npm run qa` flow 11 (seeded emulator account: unlinked contacts deleted in the cloud, linked contacts and hand-added people kept). Dry run on a backup of the owner's real data: 1,742 to delete, 87 kept |
 | People list / search / filters / profile / edit | ✅ done | `npm run smoke` (phone + desktop screenshots); `npm run qa` flows 4 (edit, unlink, delete) and 6 (dark mode, very long name) |
-| Add relationship sheet (family + social, inline create) | ✅ done | `npm run qa` flows 1–2 (self, parents via ghost cards, brother, wife + son "Also <wife>'s son"); smoke adds a relation |
+| Add relationship sheet (family only, inline create) | ✅ done | `npm run qa` flows 1–2 (self, parents via ghost cards, brother, wife + son "Also <wife>'s son"); smoke adds a relation |
 | Merge duplicates (`mergePeople` / `previewMerge`, `MergeSheet`) | ✅ done | `db.test.ts` (keep's values win, otherNames, subtypes kept, contradictory links removed, cycle rejection, direct-relation warning); `npm run qa` merge flow |
 | Kinship engine (blood, in-law, step, half, foster, sides, paths) | ✅ done | `kinship.test.ts` (8), `kinship-step.test.ts` (18), `kinship-gaps.test.ts` (12: path-text instead of "Relative", half-sibling extension, foster siblings, `relativesOf` equal to per-target `kinship()`) |
 | Hindi/Telugu family terms (`kinshipTerms.ts`, Settings "Family terms", `KinLabel`, tree cards) | ✅ done (known gaps below) | `kinship-terms.test.ts` (88, incl. batch `regionalTermsFor` equal to `regionalTerm` on fixture and random families); `npm run qa` family-terms flow (term-first tree cards) |
-| GEDCOM 5.5.1 import/export ("Import & export" page) | ✅ done | `gedcom.test.ts` (67: parse, export, round trip, privacy modes, ASSO/RELA siblings, approximate dates, `_LINEAGE_ME`); `npm run qa` GEDCOM round-trip flow (incl. export privacy, restored "me") |
 | Performance (500 people) | ✅ done | regional terms ~240 ms → 1.5 ms, `relativesOf` ~260 ms → 12 ms (agent-measured); equality tests guard correctness |
-| Connections view incl. implicit circles | ✅ done | smoke screenshots (profile) |
 | My Family: tree, relatives, lines, stats | ✅ done | smoke screenshots; `npm run qa` "friend never appears in My Family" |
 | Lineage for any person (`/people/:id/tree`) | ✅ done | manual |
 | Editors must be in the tree with a phone (Sharing page person picker; `invite`/`setRole` take `personId`; rules `personWithPhone`) | ✅ done | `tests/rules/rules.test.ts` (45 on the emulator: editor invite needs an existing, undeleted person with a phone; viewers need none; invitee can't claim another person); `sharing.test.ts` (3); `npm run verify`, `npm run qa`. Sharing UI not screenshotted (needs Google sign-in) |
 | Family only: no friends/colleagues/circles (add sheet family choices only; profile shows Immediate/Extended family; no Map view, no "Friends & others" filter, no "How you know them"; sample family has no friends) | ✅ done | 361 unit tests (`graph.test.ts` "family only": old non-family links and shared places ignored); `npm run smoke` passed (checks profile and add sheet have no non-family sections). `npm run qa` not run (owner's lighter rule) |
-| Old non-family links deleted for good (`purgeNonFamilyLinks` runs from DataProvider whenever one appears; tombstones sync the delete; backup restore skips them) | ✅ done | `db.test.ts` (purge + tombstone, restore drops a friend link); 362 unit tests; `npm run verify`; `npm run qa` (all 10 flows; QA script now waits for the profile's "Family" heading). Known gap: `scripts/qa-cloud.mjs` still expects the old sample friends and needs rework before its next run |
-| People page lists family only (`inFamilyList`: me, anyone with a family link, people added by hand or from GEDCOM). Loose imported contacts are hidden there, shown as a count, and offered as "From your contacts" in the add sheet once you type | ✅ done | `familyList.test.ts` (2); 364 unit tests; `npm run verify`; `npm run qa` (flow 3 checks the contact is hidden from People and suggested in the add sheet) |
-| Contacts import: vCard, CSV, Contact Picker | ✅ done | `contacts.test.ts` (16: dedupe strength, in-file dedupe, merge rules); `npm run qa` flow 3 (vcf + csv, duplicates matched); picker untested (needs Android Chrome) |
 | Remember section | 🗑️ removed 2026-11-14 at the owner's request (birthdays strip and *Needs details* filter remain on People) | — |
-| PWA manifest + service worker, dark mode | ✅ done | build; qa flow 6 (dark mode) |
-| Google sign-in, account card, sign-out (never deletes cloud data) | ✅ done (emulator) | `npm run qa:cloud` (8 flows, Auth + Firestore emulators); not yet exercised against the real project lineage-d575c |
-| Sync: Dexie v2 (relationship updatedAt, tombstones, meta), per-space DBs, `sync.ts` (LWW, scopes, watermarks, resync prune) | ✅ done | `sync.test.ts`, `migration.test.ts`, `db.test.ts` (fake remote); `npm run qa:cloud` (two devices, one account) |
-| Family sharing: `/sharing`, invites (editor/viewer, shows sender), space switcher, read-only mode for viewers | ✅ done (emulator) | `npm run qa:cloud` (invite, join, viewer read-only, friends never shared, member removal → family copy removed) |
+| Family sharing: `/sharing`, invites (editor/viewer, shows sender), space switcher, read-only mode for viewers | ✅ done (emulator) | `npm run qa` flow 10 (three accounts). |
 | Authorization (`firestore.rules`: deny-by-default, roles, validated writes, single-use invites) | ✅ done | `npm run test:rules` (43, Firestore emulator); security review: 3 high, 2 medium, 4 low, all fixed |
-| Account isolation (another account's local data is never uploaded) | ✅ done | `npm run qa:cloud`; security review (account-switch race fixed) |
 | Firebase Hosting + `firebase-deploy.yml` | ✅ live at https://lineage-d575c.web.app (the only host; GitHub Pages retired 2026-11-14) | deploy runs verified via GitHub Actions; site checked to serve the current build |
 | Agent fleet (`.claude/agents/`, AGENTS.md), smoke + QA scripts | ✅ done | three fleet rounds, see AGENTS.md → Fleet log |
 
-`npm test` → 284 passing across 9 files (adds `sync.test.ts` and `migration.test.ts`).
-`npm run test:rules` → 43 passing (Firestore emulator, port 8180).
-`npm run smoke`, `npm run qa` (10 flows) and `npm run qa:cloud` (8/8 flows) → passed at HEAD
-(`81a1ad2`), as reported by the main session.
+`npm test` → 205 passing. `npm run test:rules` → 45 passing (Firestore emulator, port 8180).
+`npm run smoke` and `npm run qa` (10 flows incl. sharing and the contact clean-up, flow 11) → passed on the Auth + Firestore emulators. Run one group with `QA_ONLY=cleanup` (or main, dark, features, sharing).
 
 ## Known limitations
-- Without sign-in, data is per-browser/per-device (use backup files or GEDCOM to move data).
-- Cloud features are verified on emulators only; the first real sign-in happens after merge.
+- Lineage needs the internet: nothing is cached, and changes can't be made offline.
 - Accepted by design: members of a shared family see a family person's full record (phones,
   address, notes); there is no shared/private split for family notes yet.
-- Last-write-wins on client clocks, so a device with a wrong clock can win or lose edits.
-- A record stamped with a far-future `updatedAt` before the rules fix stays frozen (rules now
-  require `updatedAt` ≤ now + 5 min and monotonic).
+- `updatedAt` uses client clocks (rules require it to grow and be ≤ now + 5 min).
+- Records an older version kept as 'private' (people never linked to the family) stay visible only
+  to the owner until edited; new writes are all 'family'.
+- Old soft-deleted records (`deleted: true`) stay in Firestore; the app skips them.
 - Regional ("Telugu") terms in a shared space are computed from the owner's "me".
-- Removing a member is best-effort on their devices: a device that never comes online keeps its copy.
-- Re-importing a GEDCOM file adds duplicates (no matching against existing people yet); use Merge to clean up.
 - Regional terms missing for great-grandparents, grand-uncles/aunts, Telugu younger cross-cousin,
   parallel nephew/niece, and step/foster relatives (English label only).
 - Long English labels ("Great-grandfather") can be cramped on narrow tree cards.
-- Tree shows focus person's siblings & spouses but not siblings' families — tap a sibling to recentre.
-- Very wide families (many children per generation) make a wide tree; zoom out or use the Relatives tab.
 - Half-relationships are only detected for siblings (not half-uncles/half-cousins).
 - Explicit step edges and chains of two half edges are not transitive (only half + full sibling extends).
 - An explicit half-sibling's ancestors are not reachable as blood relatives.
-- The Contact Picker API only exists in Chrome on Android; elsewhere use a .vcf export.
 
 ## Next up (see PLAN.md backlog)
-1. Merge this branch; check the first real Google sign-in, sync and invite on https://lineage-d575c.web.app
-  
-2. Split family notes into shared and private
-3. Server-time stamps instead of client clocks; an invite cap per space
-4. GEDCOM re-import that matches existing people
+1. Split family notes into shared and private
+2. Server-time stamps instead of client clocks; an invite cap per space
+3. Hard-delete old soft-deleted records
 
 ## Phase 11 status (2026-11-14)
 - Shipped: mobile-first tree UI (pinch/pan, Fit, Centre on me, tap-card sheet, Find in tree with path

@@ -17,7 +17,7 @@ don't silently change the contract. Also read `MEMORY.md` and `AGENTS.md`.
 - `src/lib/cloud/firebase.ts`: initialisation from `VITE_FIREBASE_*` env vars, plus emulator mode
   (`VITE_FIREBASE_EMULATORS=1`, project `demo-lineage`)
 - `src/lib/cloud/auth.ts`: `useAuth()` with Google sign-in
-- `src/lib/cloud/firestoreRemote.ts`: the sync engine's `RemoteStore` on Firestore
+- `src/lib/cloud/firestoreBackend.ts`: the store's backend (live listeners, batched writes, role-aware deletes)
 - `src/lib/cloud/spaces.ts`: spaces, invites and membership
 - `firestore.rules`, `firestore.indexes.json`, `firebase.json`, `.firebaserc.example`, `.env.example`
 - `tests/rules/**`: security-rules tests on the Firestore emulator (`npm run test:rules`)

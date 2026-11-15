@@ -1,65 +1,21 @@
-import { AlertCircle, ChevronRight, Cloud, CloudOff, LogOut, RefreshCw, Users } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { ChevronRight, LogOut, Users } from 'lucide-react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { syncStatusText, useCloud } from '../lib/cloud/CloudProvider';
-import { GoogleButton, RoleBadge, SpaceList, UserAvatar } from './Cloud';
+import { useCloud } from '../lib/cloud/CloudProvider';
+import { RoleBadge, SpaceList, UserAvatar } from './Cloud';
 import { Sheet } from './Sheet';
 
-/** Re-render every 30 s so "Synced 2 min ago" stays true. */
-function useNow(ms = 30_000) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), ms);
-    return () => clearInterval(t);
-  }, [ms]);
-  return now;
-}
-
-/** Settings: sign in with Google, sync status, sharing and sign out. Hidden when not configured. */
+/** Settings: the signed-in account, sharing, families shared with you, and sign out. */
 export function AccountCard() {
   const cloud = useCloud();
-  const { auth, status, backup, spaces } = cloud;
-  const now = useNow();
-  const [signingIn, setSigningIn] = useState(false);
-  const [err, setErr] = useState('');
+  const { auth, spaces } = cloud;
   const [confirmOut, setConfirmOut] = useState(false);
   const [leaving, setLeaving] = useState<{ id: string; name: string } | null>(null);
 
-  if (!cloud.configured) return null;
-
-  if (auth.loading) {
-    return <section className="card p-5 text-sm text-stone-500">Checking your account…</section>;
-  }
-
-  if (!auth.user) {
-    return (
-      <section className="card p-5">
-        <div className="flex items-start gap-3">
-          <Cloud className="mt-0.5 shrink-0 text-brand-600" />
-          <div className="min-w-0 flex-1">
-            <h2 className="font-semibold">Back up and share</h2>
-            <p className="mt-1 text-sm text-stone-500">Sign in to keep your people safe on all your devices and to share your family tree with relatives. You can keep using Lineage without signing in.</p>
-            <GoogleButton className="mt-4" busy={signingIn} onClick={async () => {
-              setSigningIn(true);
-              setErr('');
-              try { await auth.signIn(); } catch (e) { setErr('Sign-in didn’t finish. ' + ((e as Error).message ?? '')); }
-              setSigningIn(false);
-            }} />
-            {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
-          </div>
-        </div>
-      </section>
-    );
-  }
+  if (!auth.user) return null;
 
   const user = auth.user;
   const shared = spaces.filter((s) => s.id !== user.uid);
-  const statusIcon = status.state === 'syncing' ? <RefreshCw size={15} className="animate-spin" />
-    : status.state === 'offline' ? <CloudOff size={15} />
-      : status.state === 'error' ? <AlertCircle size={15} />
-        : <Cloud size={15} />;
-  const statusCls = status.state === 'error' ? 'text-red-600 dark:text-red-400' : status.state === 'offline' ? 'text-amber-700 dark:text-amber-300' : 'text-stone-500';
-  const unsynced = status.state === 'error' || status.state === 'offline' || backup.paused;
 
   return (
     <section className="card">
@@ -71,18 +27,7 @@ export function AccountCard() {
             {user.name && <div className="truncate text-sm text-stone-500">{user.email}</div>}
           </div>
         </div>
-        {backup.paused ? (
-          <div className="mt-4 flex flex-col gap-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-900/20 dark:text-amber-200 sm:flex-row sm:items-center">
-            <span className="flex-1">Backup is off. Your people are only on this device.</span>
-            <button className="btn-primary" onClick={backup.approve}>Back up now</button>
-          </div>
-        ) : (
-          <div className={`mt-4 flex items-center gap-2 text-sm ${statusCls}`} role="status" aria-live="polite">
-            {statusIcon}<span>{syncStatusText(status, now)}</span>
-          </div>
-        )}
         <div className="mt-4 flex flex-wrap gap-2">
-          {!backup.paused && <button className="btn-secondary" disabled={status.state === 'syncing'} onClick={() => cloud.syncNow()}><RefreshCw size={16} /> Sync now</button>}
           <button className="btn-ghost" onClick={() => setConfirmOut(true)}><LogOut size={16} /> Sign out</button>
         </div>
       </div>
@@ -113,18 +58,11 @@ export function AccountCard() {
       )}
 
       <Sheet open={confirmOut} onClose={() => setConfirmOut(false)} title="Sign out?"
-        footer={<div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        footer={<div className="flex justify-end gap-2">
           <button className="btn-ghost" onClick={() => setConfirmOut(false)}>Cancel</button>
-          <button className="btn-danger" onClick={async () => { setConfirmOut(false); await cloud.signOut(false); }}>Remove from this device</button>
-          <button className="btn-primary" onClick={async () => { setConfirmOut(false); await cloud.signOut(true); }}>Keep on this device</button>
+          <button className="btn-primary" onClick={async () => { setConfirmOut(false); await cloud.signOut(); }}>Sign out</button>
         </div>}>
-        <div className="space-y-3 text-sm text-stone-600 dark:text-stone-300">
-          {backup.separateLocal
-            ? <p><b>Keep on this device</b>: your people stay saved on this device, ready for when you sign in again. Signed out, this browser shows the people that were here before you.</p>
-            : <p><b>Keep on this device</b>: your people stay here and you can keep using Lineage. Changes won’t be backed up until you sign in again.</p>}
-          <p><b>Remove from this device</b>: good for a shared or borrowed phone. Everything stays safe in your Google account; sign in again to get it back.</p>
-          {unsynced && <p className="rounded-xl bg-amber-50 p-3 text-amber-900 dark:bg-amber-900/20 dark:text-amber-200">Some recent changes may not be backed up yet. If you remove them now, they’ll be lost.</p>}
-        </div>
+        <p className="text-sm text-stone-600 dark:text-stone-300">Your family tree stays safe in your Google account. Sign in again to see it.</p>
       </Sheet>
 
       <Sheet open={!!leaving} onClose={() => setLeaving(null)} title={`Leave ${leaving?.name ?? ''}?`}

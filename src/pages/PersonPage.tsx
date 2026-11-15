@@ -118,7 +118,7 @@ export function PersonPage() {
           <button className="btn-ghost" onClick={() => setConfirmDelete(false)}>Cancel</button>
           <button className="btn bg-red-600 text-white hover:bg-red-700" onClick={async () => { await deletePerson(p.id); nav('/', { replace: true }); }}>Delete</button>
         </div>}>
-        <p className="text-sm text-stone-600 dark:text-stone-300">This removes {displayName(p)} and all of their relationships. It can’t be undone (unless you have a backup).</p>
+        <p className="text-sm text-stone-600 dark:text-stone-300">This removes {displayName(p)} and all of their relationships. It can’t be undone.</p>
       </Sheet>
     </div>
   );

@@ -87,8 +87,6 @@ export function SharingPage() {
     setBusy(true);
     setMsg(null);
     try {
-      // The rules check the person and phone in the cloud copy, so push local edits first.
-      if (role === 'editor') await cloud.syncNow();
       await invite(uid!, e, role, role === 'editor' ? chosen!.id : undefined);
       setEmail('');
       setPersonId(null);
@@ -225,7 +223,7 @@ export function SharingPage() {
           <button className="btn-ghost" onClick={() => { setPromoting(null); setPromotePick(undefined); }}>Cancel</button>
           <button className="btn-primary" disabled={!promotePick || !hasPhone(promotePick)} onClick={() => {
             const m = promoting; const p = promotePick; setPromoting(null); setPromotePick(undefined);
-            if (m && p) void act(async () => { await cloud.syncNow(); await setRole(uid!, m.uid, 'editor', p.id); });
+            if (m && p) void act(() => setRole(uid!, m.uid, 'editor', p.id));
           }}>Make editor</button>
         </div>}>
         <p className="mb-3 text-sm text-stone-600 dark:text-stone-300">Editors must be in your tree with a phone number saved. Who are they?</p>

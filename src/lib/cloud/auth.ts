@@ -109,3 +109,16 @@ export function useAuth(): AuthState {
   const s = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   return { configured: cloudConfigured(), loading: s.loading, user: s.user, signIn, signOut };
 }
+
+/**
+ * Emulator builds only (smoke and QA scripts): sign in without the Google popup. The auth emulator
+ * accepts an unsigned Google ID token. Production builds never take this branch (no emulators).
+ */
+if (usingEmulators() && typeof window !== 'undefined') {
+  (window as unknown as { __lineageTestSignIn?: (email: string, name?: string) => Promise<string> }).__lineageTestSignIn = async (email, name) => {
+    const auth = await getFirebaseAuth();
+    const { GoogleAuthProvider, signInWithCredential } = await import('firebase/auth');
+    const token = JSON.stringify({ sub: 'test-' + email, email, email_verified: true, name: name ?? email.split('@')[0] });
+    return (await signInWithCredential(auth, GoogleAuthProvider.credential(token))).user.uid;
+  };
+}

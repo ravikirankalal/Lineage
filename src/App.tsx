@@ -1,12 +1,11 @@
-import { Cloud, Download, Eye, GitBranch, Settings, Users } from 'lucide-react';
-import { useEffect, type ReactNode } from 'react';
+import { CloudOff, Eye, GitBranch, Settings, Users } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { HashRouter, Link, NavLink, Route, Routes, useLocation } from 'react-router-dom';
-import { BackupConsentSheet, CloudNotice, InviteBanner, SharedSpaceBanner, SpaceSwitcher } from './components/Cloud';
+import { CloudNotice, GoogleButton, InviteBanner, SharedSpaceBanner, SpaceSwitcher } from './components/Cloud';
 import { Empty } from './components/Empty';
 import { CloudProvider, useCanEdit, useCloud } from './lib/cloud/CloudProvider';
 import { DataProvider } from './lib/data';
 import { FamilyPage } from './pages/FamilyPage';
-import { ImportPage } from './pages/ImportPage';
 import { PeoplePage } from './pages/PeoplePage';
 import { PersonEditPage } from './pages/PersonEditPage';
 import { PersonPage } from './pages/PersonPage';
@@ -17,7 +16,6 @@ import { TreePage } from './pages/TreePage';
 const NAV = [
   { to: '/', label: 'People', icon: Users, end: true },
   { to: '/family', label: 'My Family', icon: GitBranch },
-  { to: '/import', label: 'Import', icon: Download },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -41,17 +39,16 @@ function EditOnly({ children }: { children: ReactNode }) {
   );
 }
 
-function SidebarNote() {
-  const { configured, auth, status, isShared } = useCloud();
-  if (configured && auth.user) {
-    return (
-      <p className="mt-auto flex items-start gap-2 px-3 text-xs leading-relaxed text-stone-400">
-        <Cloud size={14} className="mt-0.5 shrink-0" />
-        {isShared ? 'Shared family. Only family is shown here.' : status.state === 'offline' ? 'Offline. Changes are saved on this device.' : 'Backed up to your Google account.'}
-      </p>
-    );
-  }
-  return <p className="mt-auto px-3 text-xs leading-relaxed text-stone-400">Your data stays on this device. Back it up from Settings.</p>;
+/** No internet: nothing can be read or saved, so say so plainly. */
+function OfflineBar() {
+  const { online } = useCloud();
+  if (online) return null;
+  return (
+    <div role="status" className="mb-4 flex items-center gap-3 rounded-2xl bg-amber-50 px-4 py-2.5 text-sm text-amber-900 ring-1 ring-amber-100 dark:bg-amber-900/20 dark:text-amber-200 dark:ring-amber-900/40">
+      <CloudOff size={17} className="shrink-0" />
+      <span>You’re offline. Lineage needs the internet; changes can’t be made until you’re back online.</span>
+    </div>
+  );
 }
 
 function Shell() {
@@ -74,14 +71,13 @@ function Shell() {
             </NavLink>
           ))}
         </nav>
-        <SidebarNote />
       </aside>
 
       <main className="mx-auto w-full min-w-0 max-w-5xl flex-1 px-4 pb-28 pt-4 sm:px-6 md:pb-10 md:pt-8">
+        <OfflineBar />
         <CloudNotice />
         <SharedSpaceBanner />
         <InviteBanner />
-        <BackupConsentSheet />
         <Routes>
           <Route path="/" element={<PeoplePage />} />
           <Route path="/people/new" element={<EditOnly><PersonEditPage /></EditOnly>} />
@@ -89,7 +85,6 @@ function Shell() {
           <Route path="/people/:id/edit" element={<EditOnly><PersonEditPage /></EditOnly>} />
           <Route path="/people/:id/tree" element={<TreePage />} />
           <Route path="/family" element={<FamilyPage />} />
-          <Route path="/import" element={<ImportPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/sharing" element={<SharingPage />} />
           <Route path="*" element={<PeoplePage />} />
@@ -112,20 +107,50 @@ function Shell() {
   );
 }
 
-/** Re-mounts the data layer whenever the local database is swapped (sign-out, space switch). */
-function SpaceData({ children }: { children: ReactNode }) {
-  const { dataKey } = useCloud();
-  return <DataProvider key={dataKey}>{children}</DataProvider>;
+function Centered({ children }: { children: ReactNode }) {
+  return <div className="flex min-h-dvh flex-col items-center justify-center px-6 py-10 text-center">{children}</div>;
+}
+
+/** Sign-in is required: the family tree lives in your Google account, not on this device. */
+function SignIn() {
+  const { auth } = useCloud();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  return (
+    <Centered>
+      <img src="./icon.svg" alt="" className="h-14 w-14" />
+      <h1 className="mt-4 text-3xl font-bold tracking-tight">Lineage</h1>
+      <p className="mt-2 max-w-sm text-stone-500">Your family tree, kept safe in your Google account and shared with the relatives you choose.</p>
+      <GoogleButton className="mt-8" busy={busy} onClick={async () => {
+        setBusy(true);
+        setErr('');
+        try { await auth.signIn(); } catch (e) { setErr('Sign-in didn’t finish. ' + ((e as Error).message ?? '')); }
+        setBusy(false);
+      }} />
+      {err && <p className="mt-3 max-w-sm text-sm text-red-600">{err}</p>}
+    </Centered>
+  );
+}
+
+/** Signed out → sign in; signed in → the app once the family tree has loaded. */
+function Gate() {
+  const { configured, auth, state, error, online } = useCloud();
+  if (!configured) return <Centered><p className="text-stone-500">Lineage isn’t set up correctly (no Firebase settings in this build).</p></Centered>;
+  if (auth.loading) return <Centered><p className="text-stone-500">Loading…</p></Centered>;
+  if (!auth.user) return <SignIn />;
+  if (state === 'error') return <Centered><p className="max-w-sm text-stone-600 dark:text-stone-300">{error}</p><button className="btn-primary mt-6" onClick={() => location.reload()}>Try again</button></Centered>;
+  if (state === 'loading') return <Centered><p className="text-stone-500">{online ? 'Opening your family tree…' : 'You’re offline. Lineage needs the internet.'}</p></Centered>;
+  return <Shell />;
 }
 
 export function App() {
   return (
     <CloudProvider>
-      <SpaceData>
+      <DataProvider>
         <HashRouter>
-          <Shell />
+          <Gate />
         </HashRouter>
-      </SpaceData>
+      </DataProvider>
     </CloudProvider>
   );
 }
