@@ -42,14 +42,15 @@ function ChooseMe({ hasPeople }: { hasPeople: boolean }) {
   const [q, setQ] = useState('');
   return (
     <div className="card">
+      {/* Adding a brand-new person is only for the very first one (you); after that everyone joins
+          through someone already in the tree, so no one is left unconnected (owner). */}
       <Empty icon={<GitBranch size={26} />} title="Who are you?"
-        action={<Link to="/people/new?me=1" className="btn-primary"><UserPlus size={18} /> Add myself</Link>}>
-        Your family tree grows from you. Add yourself, then your parents, grandparents and beyond.
+        action={hasPeople ? undefined : <Link to="/people/new?me=1" className="btn-primary"><UserPlus size={18} /> Add myself</Link>}>
+        {hasPeople ? 'Your family tree grows from you. Pick yourself from the people already here.' : 'Your family tree grows from you. Add yourself, then your parents, grandparents and beyond.'}
       </Empty>
       {hasPeople && (
         <div className="border-t border-stone-100 p-4 dark:border-stone-800">
-          <p className="mb-2 text-sm text-stone-500">…or pick yourself from people you already added:</p>
-          <input className="input mb-2" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} />
+                    <input className="input mb-2" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} />
           <div className="max-h-72 overflow-y-auto">
             {people.filter((p) => matchesQuery(p, q)).slice(0, 30).map((p) => (
               <PersonRow key={p.id} person={p} onClick={() => savePerson({ ...p, isMe: true })} />

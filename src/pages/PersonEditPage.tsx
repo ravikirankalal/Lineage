@@ -1,6 +1,6 @@
 import { ArrowLeft, Camera, Plus, Trash2, X } from 'lucide-react';
 import { useMemo, useRef, useState, type ReactNode } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Avatar } from '../components/Avatar';
 import { savePerson } from '../lib/db';
 import { usePermissions } from '../lib/cloud/CloudProvider';
@@ -11,11 +11,17 @@ import type { Gender, Person, Place } from '../lib/types';
 export function PersonEditPage() {
   const { id } = useParams();
   const [params] = useSearchParams();
-  const { byId, loaded } = useData();
+  const { byId, people, loaded } = useData();
   const { isShared } = usePermissions();
   const existing = id ? byId.get(id) : undefined;
+  // A new, unconnected person only as the very first one (yourself, in your own empty family).
+  // Everyone else is added from someone already in the tree, so no one is left unconnected (owner).
+  // Decided once, when the page opens: saving that first person mustn't bounce the page away.
+  const allowNew = useRef<boolean | null>(null);
+  if (loaded && allowNew.current === null) allowNew.current = !isShared && people.length === 0 && params.get('me') === '1';
   if (!loaded) return null;
   if (id && !existing) return <p className="p-6 text-stone-500">Person not found.</p>;
+  if (!id && !allowNew.current) return <Navigate to="/" replace />;
   return <Editor key={id ?? 'new'} initial={existing ?? emptyPerson({ isMe: (!isShared && params.get('me') === '1') || undefined })} isNew={!existing} />;
 }
 

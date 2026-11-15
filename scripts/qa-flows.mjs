@@ -245,23 +245,31 @@ async function features(browser) {
   await page.getByText('Ravi Rao').first().waitFor();
 
   await flow('7 merge duplicate Prakash, parent merge allowed, cycle refused', async () => {
+    // New people only join through someone in the tree: no "new person" page any more.
     await page.goto(BASE + '#/people/new');
-    await page.getByLabel('First name *').fill('Prakash');
-    await page.getByLabel('Last name / surname').fill('Rao');
+    await page.waitForURL((u) => !u.hash.includes('/people/new'));
+    check(!(await page.getByLabel('First name *').count()), '[7] the new-person page still opens');
+    // A duplicate Prakash, added as Venkata's son, then given a birth year and phone.
+    await openProfile(page, 'Venkata Rao');
+    await profileAdd(page, 'Son', 'Prakash Rao');
+    await page.goto(BASE + '#/');
+    await page.getByPlaceholder(/Search names/).fill('Prakash');
+    await page.locator('a', { hasText: 'Prakash Rao' }).filter({ hasNotText: 'fertiliser' }).first().click();
+    await page.waitForURL(/#\/people\/[^/]+$/);
+    await page.getByRole('link', { name: 'Edit' }).click();
     await page.getByLabel('Born').fill('1962');
     await page.getByText('Add phone').click();
     await page.getByPlaceholder('Phone', { exact: true }).fill('98765 43210');
     await page.getByRole('button', { name: 'Save' }).first().click();
     await page.getByRole('heading', { level: 2, name: /^Family\b/ }).first().waitFor();
-    // No spouse yet: the other parent must be chosen before the daughter can be added.
+    // No spouse yet: the other parent (his daughter's mother) must be chosen before she can be added.
     await page.getByRole('button', { name: 'Add', exact: true }).click();
     await page.getByRole('button', { name: 'Daughter', exact: true }).click();
     await page.getByPlaceholder('Search people or type a new name').fill('Latha Rao');
     check(await page.getByRole('button', { name: /Add “Latha Rao”/ }).isDisabled(), '[7] daughter could be added without the other parent');
-    // This Prakash was added without a gender, so it's "Other parent", not mother or father.
-    await page.getByLabel("Other parent's name").fill('Sita Rao');
+    await page.getByLabel("Mother's name").fill('Sita Rao');
     await shot(page, '7-other-parent-choosing');
-    await page.getByText('Add “Sita Rao” as the other parent').click();
+    await page.getByText('Add “Sita Rao” as the mother').click();
     // Chosen: shown as a selected profile ("New person"), changeable.
     check(await page.getByLabel('Selected: Sita Rao').isVisible(), '[7] chosen other parent not shown as selected');
     await shot(page, '7-other-parent-chosen');
