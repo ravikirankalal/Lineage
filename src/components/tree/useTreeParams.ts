@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { TreeLevel, TreeOrient } from '../../lib/graph/contract';
+import { recallSearch, rememberSearch } from './viewMemory';
 
 const LEVELS: TreeLevel[] = ['immediate', 'extended', 'everyone'];
+/** The tree's own settings in the URL. */
+const KEYS = ['focus', 'level', 'hl', 'open', 'dir'];
 
 const PHONE_QUERY = '(max-width: 639px)';
 
@@ -34,8 +37,21 @@ export interface TreeParams {
  * Back/forward step through focus changes and returning from a profile restores the view.
  * Focus and highlight changes push a history entry; level and expand/collapse replace it.
  */
-export function useTreeParams(egoId: string, isValid: (id: string) => boolean) {
-  const [sp, setSp] = useSearchParams();
+export function useTreeParams(egoId: string, isValid: (id: string) => boolean, scope?: string) {
+  const [urlSp, setSp] = useSearchParams();
+  // Opened plain (the Family Tree tab, a link): carry on with this page's last settings.
+  const plain = !KEYS.some((k) => urlSp.has(k));
+  const remembered = plain && scope ? recallSearch(scope) : undefined;
+  const sp = useMemo(() => (remembered ? new URLSearchParams(remembered) : urlSp), [remembered, urlSp]);
+  useEffect(() => {
+    if (remembered) setSp(new URLSearchParams(remembered), { replace: true });
+  }, [remembered, setSp]);
+  useEffect(() => {
+    if (!scope || plain) return;
+    const keep = new URLSearchParams();
+    for (const k of KEYS) { const v = urlSp.get(k); if (v) keep.set(k, v); }
+    rememberSearch(scope, keep.toString());
+  }, [scope, plain, urlSp]);
   // Default level: Extended, on every screen (owner, 2026-11-15).
   const defaultLevel: TreeLevel = 'extended';
   // Default layout: the cross (father's side left, mother's right, brothers up, sisters down) on tall

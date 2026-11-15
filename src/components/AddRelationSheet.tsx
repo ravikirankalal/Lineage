@@ -110,11 +110,14 @@ function AddRelationBody({ person, preset, onClose }: { person: Person; preset?:
     }
   }
 
+  // The other parent is the child's mother when adding to a man, father when adding to a woman.
+  const parentWord = oppositeGender === 'female' ? 'mother' : oppositeGender === 'male' ? 'father' : 'other parent';
+
   /** Writes every edge for linking `other` as one batch (optionally creating them first). */
   async function link(child: Person, create = false) {
     if (!info || !choice) return;
-    if (isChild && !other) { setError(`Choose ${child.firstName || 'their'}’s other parent first.`); return; }
-    if (isChild && other?.person?.id === child.id) { setError('The other parent can’t be the child.'); return; }
+    if (isChild && !other) { setError(`Choose ${child.firstName || 'their'}’s ${parentWord} first.`); return; }
+    if (isChild && other?.person?.id === child.id) { setError(`The ${parentWord} can’t be the child.`); return; }
     setBusy(true);
     setError('');
     try {
@@ -220,7 +223,7 @@ function AddRelationBody({ person, preset, onClose }: { person: Person; preset?:
       )}
       {isChild && (
         <OtherParentPicker
-          person={person} spouses={[...spouses, ...exSpouses]} exSpouseIds={new Set(exSpouses.map((s) => s.id))}
+          word={parentWord} person={person} spouses={[...spouses, ...exSpouses]} exSpouseIds={new Set(exSpouses.map((s) => s.id))}
           other={other} setOther={(o) => { setOther(o); setPicking(false); setOtherQ(''); setError(''); }}
           picking={picking || !other} setPicking={setPicking} q={otherQ} setQ={setOtherQ} candidates={otherCandidates}
           married={married} setMarried={setMarried} showMarried={!!other && !otherIsSpouse} />
@@ -284,8 +287,10 @@ function AddRelationBody({ person, preset, onClose }: { person: Person; preset?:
 
 type OtherParent = { person?: Person; name?: string };
 
-/** "Other parent" for a new son or daughter: required. Spouses first, then anyone in the tree or a new name. */
-function OtherParentPicker({ person, spouses, exSpouseIds, other, setOther, picking, setPicking, q, setQ, candidates, married, setMarried, showMarried }: {
+/** The other parent (mother or father) for a new son or daughter: required. Spouses first, then anyone in the tree or a new name. */
+function OtherParentPicker({ word, person, spouses, exSpouseIds, other, setOther, picking, setPicking, q, setQ, candidates, married, setMarried, showMarried }: {
+  /** 'mother', 'father' or 'other parent' */
+  word: string;
   person: Person;
   spouses: Person[];
   exSpouseIds: Set<string>;
@@ -307,12 +312,13 @@ function OtherParentPicker({ person, spouses, exSpouseIds, other, setOther, pick
     return w ? `${person.firstName}’s ${w.toLowerCase()}` : formatPlace(p.address, true) || p.occupation || 'In your tree';
   };
   const choosing = picking || !other;
+  const Word = word[0].toUpperCase() + word.slice(1);
   // Spouses not already chosen are offered as profiles to tap.
   const offered = spouses.filter((s) => s.id !== other?.person?.id);
   return (
-    <div role="group" aria-label="Other parent">
+    <div role="group" aria-label={Word}>
       <div className="mb-1.5 flex items-center justify-between">
-        <div className="section-title">Other parent</div>
+        <div className="section-title">{Word}</div>
         {other && picking && <button type="button" className="text-sm font-medium text-brand-700 dark:text-brand-300" onClick={() => { setPicking(false); setQ(''); }}>Cancel</button>}
       </div>
       {other && !picking && (
@@ -337,12 +343,12 @@ function OtherParentPicker({ person, spouses, exSpouseIds, other, setOther, pick
               {offered.map((s) => <PersonRow key={s.id} person={s} subtitle={role(s)} onClick={() => setOther({ person: s })} />)}
             </div>
           )}
-          <input className="input" placeholder={offered.length ? 'Someone else: type a name' : `Name of ${person.firstName}’s partner`} aria-label="Other parent's name" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className="input" placeholder={offered.length ? 'Someone else: type a name' : `Name of ${person.firstName}’s partner`} aria-label={`${Word}'s name`} value={q} onChange={(e) => setQ(e.target.value)} />
           {q.trim() && (
             <div className="-mx-2 max-h-56 overflow-y-auto">
               <button type="button" onClick={() => setOther({ name: q.trim() })} className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left hover:bg-brand-50 dark:hover:bg-brand-900/30">
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700 dark:bg-brand-900/60 dark:text-brand-200"><UserPlus size={20} /></div>
-                <div className="min-w-0 font-medium">Add “{q.trim()}” as the other parent</div>
+                <div className="min-w-0 font-medium">Add “{q.trim()}” as the {word}</div>
               </button>
               {candidates.map((p) => (
                 <PersonRow key={p.id} person={p} subtitle={role(p)} onClick={() => setOther({ person: p })} />
