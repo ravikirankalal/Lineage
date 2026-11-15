@@ -34,8 +34,8 @@ with the relatives you choose. The tree lives in your Google account (Firebase),
     *Dadi · Grandmother* on tree cards
   - father's line and mother's line, with stats (relatives, generations, earliest ancestor)
   - "Show in tree" jumps to Family Tree with the path highlighted
-- **Birthdays & gaps** — upcoming birthdays on the People page, and a *Needs details* filter for
-  people whose profiles are thin.
+- **Birthdays** — upcoming birthdays on the People page. One bar there switches between Relatives,
+  Lines, *In contacts* and your tags; the search box finds anyone.
 - **Sign in with Google (required)** — the tree is read live from your account and every change is
   saved straight to it; changes by relatives you share with appear as they happen. Lineage needs
   the internet: nothing is kept on the device, and nothing can be changed offline.

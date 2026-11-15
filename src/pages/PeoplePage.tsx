@@ -1,5 +1,5 @@
 import { ArrowDown, Cake, Contact, FlaskConical, List, Plus, Search, UserPlus, Users, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Avatar } from '../components/Avatar';
 import { Empty } from '../components/Empty';
@@ -13,28 +13,30 @@ import { useContactMatches } from '../lib/contactMatches';
 import { isNativeApp } from '../lib/native';
 import { loadDemo } from '../lib/demo';
 import { relativesOf } from '../lib/kinship';
-import { daysUntilBirthday, formatPlace, fullName, matchesQuery, missingDetails } from '../lib/person';
+import { daysUntilBirthday, formatPlace, fullName, matchesQuery } from '../lib/person';
 import type { Person } from '../lib/types';
 
-type Filter = 'all' | 'thin' | 'contacts' | `tag:${string}`;
-type View = 'everyone' | 'relatives' | 'lines';
+/** One bar: the Relatives and Lines views (with "me"), then filters over everyone. */
+type Tab = 'relatives' | 'lines' | 'contacts' | `tag:${string}`;
 
 export function PeoplePage() {
   const { people, graph, me, loaded } = useData();
   const nav = useNavigate();
   const { canEdit, isOwner, isShared } = usePermissions();
   const [q, setQ] = useState('');
-  const [filter, setFilter] = useState<Filter>('all');
   const [sort, setSort] = useState<'name' | 'recent'>('name');
-  // Everyone A–Z, every relative of "me" by kind, or the direct lines (?view=relatives|lines).
+  // The tab lives in the URL (?view=relatives|lines|contacts|tag:x), so Back returns to it.
+  // There is no "everyone" list any more (owner): Relatives is the start, search finds anyone.
   const [sp, setSp] = useSearchParams();
-  const v = sp.get('view');
-  const view: View = me && (v === 'relatives' || v === 'lines') ? v : 'everyone';
-  const setView = (next: View) => setSp((prev) => {
+  const v = sp.get('view') ?? '';
+  const isTab = (x: string): x is Tab => x === 'contacts' || x.startsWith('tag:') || (!!me && (x === 'relatives' || x === 'lines'));
+  const tab: Tab | null = isTab(v) ? v : me ? 'relatives' : null;
+  const setTab = (next: Tab | null) => setSp((prev) => {
     const p = new URLSearchParams(prev);
-    if (next === 'everyone') p.delete('view'); else p.set('view', next);
+    if (!next || (next === 'relatives' && me)) p.delete('view'); else p.set('view', next);
     return p;
   }, { replace: true });
+  const filter = tab === 'relatives' || tab === 'lines' ? null : tab;
 
   // How each person relates to me — shown as the subtitle, and the Relatives view.
   const relatives = useMemo(() => (me ? relativesOf(graph, me.id) : []), [graph, me]);
@@ -48,9 +50,8 @@ export function PeoplePage() {
 
   const list = useMemo(() => {
     let l = people.filter((p) => matchesQuery(p, q));
-    if (filter === 'thin') l = l.filter((p) => !p.isMe && missingDetails(p).length >= 3);
-    else if (filter === 'contacts') l = l.filter((p) => matches.has(p.id));
-    else if (filter.startsWith('tag:')) l = l.filter((p) => p.tags.includes(filter.slice(4)));
+    if (filter === 'contacts') l = l.filter((p) => matches.has(p.id));
+    else if (filter?.startsWith('tag:')) l = l.filter((p) => p.tags.includes(filter.slice(4)));
     if (sort === 'name') l.sort((a, b) => fullName(a).localeCompare(fullName(b)));
     else l.sort((a, b) => b.updatedAt - a.updatedAt);
     return l;
@@ -95,7 +96,31 @@ export function PeoplePage() {
     );
   }
 
-  // Group alphabetically when sorting by name.
+  const addButton = canEdit && (
+    <Link to="/people/new" aria-label="Add person"
+      className="fixed bottom-24 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-900/20 transition hover:bg-brand-700 active:scale-95 md:bottom-8 md:right-8">
+      <Plus size={26} />
+    </Link>
+  );
+
+  const pickContacts = () => { if (gc.status !== 'ready' && gc.status !== 'loading') void (isNativeApp() ? loadNativeContacts() : loadGoogleContacts()); };
+  const chips: { key: Tab; label: string; icon?: ReactNode; onPick?: () => void }[] = [
+    ...(me ? [
+      { key: 'relatives' as Tab, label: `Relatives (${relatives.length})`, icon: <List size={15} /> },
+      { key: 'lines' as Tab, label: 'Lines', icon: <ArrowDown size={15} /> },
+    ] : []),
+    ...(contactsOffered ? [{ key: 'contacts' as Tab, label: gc.status === 'ready' ? `In contacts (${matches.size})` : 'In contacts', icon: <Contact size={15} />, onPick: pickContacts }] : []),
+    ...tags.map((t) => ({ key: `tag:${t}` as Tab, label: '#' + t })),
+  ];
+  // A view (Relatives, Lines) stays picked when tapped again; a filter toggles back to the start.
+  const pick = (c: (typeof chips)[number]) => {
+    if (tab === c.key) { if (filter) setTab(null); return; }
+    setTab(c.key);
+    c.onPick?.();
+  };
+
+  // What shows under the bar: search results across everyone, a filtered list, or a view.
+  const showList = !!q || !!filter || !me;
   const groups: [string, Person[]][] = [];
   if (sort === 'name' && !q) {
     for (const p of list) {
@@ -106,57 +131,10 @@ export function PeoplePage() {
     }
   } else groups.push(['', list]);
 
-  const chip = (f: Filter, label: string, onPick?: () => void) => (
-    <button key={f} onClick={() => { setFilter(filter === f ? 'all' : f); if (filter !== f) onPick?.(); }} aria-pressed={filter === f}
-      className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium transition ${
-        filter === f ? 'bg-stone-900 text-white dark:bg-white dark:text-stone-900' : 'bg-white text-stone-600 ring-1 ring-stone-200 hover:bg-stone-50 dark:bg-stone-900 dark:text-stone-300 dark:ring-stone-700'}`}>
-      {label}
-    </button>
-  );
-
-  const views: { key: View; label: string; icon: typeof Users }[] = [
-    { key: 'everyone', label: 'Everyone', icon: Users },
-    { key: 'relatives', label: `Relatives (${relatives.length})`, icon: List },
-    { key: 'lines', label: 'Lines', icon: ArrowDown },
-  ];
-  const viewTabs = me && (
-    <div className="mb-4 inline-flex max-w-full rounded-xl bg-stone-200/60 p-1 dark:bg-stone-800">
-      {views.map(({ key, label, icon: Icon }) => (
-        <button key={key} type="button" onClick={() => setView(key)} aria-pressed={view === key}
-          className={`flex min-h-[36px] items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-sm font-medium transition sm:px-3 ${view === key ? 'bg-white shadow-sm dark:bg-stone-700' : 'text-stone-500 dark:text-stone-400'}`}>
-          <Icon size={15} /> {label}
-        </button>
-      ))}
-    </div>
-  );
-  const addButton = canEdit && (
-    <Link to="/people/new" aria-label="Add person"
-      className="fixed bottom-24 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-900/20 transition hover:bg-brand-700 active:scale-95 md:bottom-8 md:right-8">
-      <Plus size={26} />
-    </Link>
-  );
-
-  if (me && view !== 'everyone') {
-    const egoName = isShared ? me.firstName : 'you';
-    return (
-      <div>
-        <Header count={people.length} />
-        <SpaceSwitcher className="mb-4 md:hidden" />
-        {viewTabs}
-        {view === 'relatives'
-          ? <RelativesList relatives={relatives} egoId={me.id} egoName={egoName}
-              onShowInTree={(id) => nav(`/family?focus=${encodeURIComponent(id)}&hl=${encodeURIComponent(id)}`)} />
-          : <><FamilyStats ego={me} relatives={relatives} /><Lines ego={me} /></>}
-        {addButton}
-      </div>
-    );
-  }
-
   return (
     <div>
       <Header count={people.length} />
       <SpaceSwitcher className="mb-4 md:hidden" />
-      {viewTabs}
 
       {!me && !isShared && (
         <Link to="/people/new?me=1" className="mb-4 flex items-center gap-3 rounded-2xl bg-brand-50 p-4 text-sm text-brand-800 ring-1 ring-brand-100 dark:bg-brand-900/30 dark:text-brand-200 dark:ring-brand-800">
@@ -179,28 +157,43 @@ export function PeoplePage() {
         </div>
       )}
 
-      <div className="sticky top-0 z-10 -mx-4 bg-stone-50/90 px-4 pb-3 pt-1 backdrop-blur dark:bg-stone-950/90 sm:-mx-6 sm:px-6">
+      <div className="sticky top-0 z-10 -mx-4 mb-3 bg-stone-50/90 px-4 pb-3 pt-1 backdrop-blur dark:bg-stone-950/90 sm:-mx-6 sm:px-6">
         <div className="relative">
           <Search size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
           <input className="input bg-white pl-10 pr-10 ring-1 ring-stone-200 dark:bg-stone-900 dark:ring-stone-800" placeholder="Search names, places, college, looks, anything…"
             value={q} onChange={(e) => setQ(e.target.value)} />
           {q && <button className="icon-btn absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2" onClick={() => setQ('')} aria-label="Clear"><X size={16} /></button>}
         </div>
-        <div className="no-scrollbar mt-3 flex items-center gap-2 overflow-x-auto">
-          {chip('all', 'All')}
-          {chip('thin', 'Needs details')}
-          {contactsOffered && chip('contacts', gc.status === 'ready' ? `In contacts (${matches.size})` : 'In contacts',
-            () => { if (gc.status !== 'ready' && gc.status !== 'loading') void (isNativeApp() ? loadNativeContacts() : loadGoogleContacts()); })}
-          {tags.map((t) => chip(`tag:${t}`, '#' + t))}
-          <select value={sort} onChange={(e) => setSort(e.target.value as 'name' | 'recent')}
-            className="ml-auto shrink-0 rounded-full border-0 bg-transparent py-1.5 pl-2 pr-7 text-sm text-stone-500 focus:ring-0">
-            <option value="name">A–Z</option>
-            <option value="recent">Recent</option>
-          </select>
+        <div className="no-scrollbar mt-3 flex items-center gap-2 overflow-x-auto" role="toolbar" aria-label="Views and filters">
+          {chips.map((c) => (
+            <button key={c.key} type="button" onClick={() => pick(c)} aria-pressed={tab === c.key}
+              className={`flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium transition ${
+                tab === c.key ? 'bg-stone-900 text-white dark:bg-white dark:text-stone-900' : 'bg-white text-stone-600 ring-1 ring-stone-200 hover:bg-stone-50 dark:bg-stone-900 dark:text-stone-300 dark:ring-stone-700'}`}>
+              {c.icon}{c.label}
+            </button>
+          ))}
+          {showList && (
+            <select value={sort} onChange={(e) => setSort(e.target.value as 'name' | 'recent')} aria-label="Sort"
+              className="ml-auto shrink-0 rounded-full border-0 bg-transparent py-1.5 pl-2 pr-7 text-sm text-stone-500 focus:ring-0">
+              <option value="name">A–Z</option>
+              <option value="recent">Recent</option>
+            </select>
+          )}
         </div>
       </div>
 
-      {filter === 'contacts' && gc.status !== 'ready' ? (
+      {!showList && me && tab === 'relatives' && (
+        <div className="card mb-4 p-1.5" aria-label="You">
+          <PersonRow person={me} to={`/people/${me.id}`} subtitle={isShared ? 'In this family' : 'You'} />
+        </div>
+      )}
+      {!showList && me && tab === 'relatives' && (
+        <RelativesList relatives={relatives} egoId={me.id} egoName={isShared ? me.firstName : 'you'} query=""
+          onShowInTree={(id) => nav(`/family?focus=${encodeURIComponent(id)}&hl=${encodeURIComponent(id)}`)} />
+      )}
+      {!showList && me && tab === 'lines' && <><FamilyStats ego={me} relatives={relatives} /><Lines ego={me} /></>}
+
+      {showList && (filter === 'contacts' && gc.status !== 'ready' ? (
         <div className="card flex items-center gap-3 p-4 text-sm text-stone-600 dark:text-stone-300">
           <Contact size={19} className="shrink-0 text-sky-600" />
           {gc.status === 'loading' ? 'Looking through your contacts…' : gc.error || 'Tap “In contacts” to look through your contacts. Nothing is saved.'}
@@ -208,7 +201,7 @@ export function PeoplePage() {
       ) : list.length === 0 && filter === 'contacts' ? (
         <div className="card"><Empty icon={<Contact size={24} />} title="No one found">No one in your tree is in your contacts yet.</Empty></div>
       ) : list.length === 0 ? (
-        <div className="card"><Empty icon={<Search size={24} />} title="No one matches">Try a different word — search looks through every detail you’ve saved.</Empty></div>
+        <div className="card"><Empty icon={<Search size={24} />} title="No one matches">{q ? 'Try a different word — search looks through every detail you’ve saved.' : 'No one here right now.'}</Empty></div>
       ) : (
         <div className="space-y-4">
           {groups.map(([letter, ps]) => (
@@ -220,7 +213,7 @@ export function PeoplePage() {
             </div>
           ))}
         </div>
-      )}
+      ))}
 
       {addButton}
     </div>
