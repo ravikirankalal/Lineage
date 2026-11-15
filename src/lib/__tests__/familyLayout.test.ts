@@ -787,3 +787,47 @@ describe('layoutFamily', () => {
     expect(per).toBeLessThan(30);
   });
 });
+
+describe('cross layout: empty cousins columns close up (not in Everyone)', () => {
+  const PC = CARD.w + 44;
+  // Me with a sister; Dad's brother and Mom's sister each have a child (cousins on both sides).
+  const f = family();
+  for (const [id, g, b] of [['me', 'male', '1985'], ['sis', 'female', '1988'], ['dad', 'male', '1955'], ['mom', 'female', '1958'],
+    ['gf', 'male', '1925'], ['gm', 'female', '1928'], ['mgf', 'male', '1926'], ['mgm', 'female', '1930'],
+    ['uncle', 'male', '1952'], ['cousinA', 'male', '1980'], ['aunt', 'female', '1960'], ['cousinB', 'female', '1990']] as const) f.add(id, g, b);
+  for (const k of ['me', 'sis']) { f.rel('dad', k, 'parent'); f.rel('mom', k, 'parent'); }
+  for (const k of ['dad', 'uncle']) { f.rel('gf', k, 'parent'); f.rel('gm', k, 'parent'); }
+  for (const k of ['mom', 'aunt']) { f.rel('mgf', k, 'parent'); f.rel('mgm', k, 'parent'); }
+  f.rel('dad', 'mom', 'spouse'); f.rel('uncle', 'cousinA', 'parent'); f.rel('aunt', 'cousinB', 'parent');
+  const G = f.graph();
+  const middle = (L: TreeLayout) => L.regions!.find((r) => r.side === 'middle')!;
+  const at = (L: TreeLayout, id: string) => L.nodes.find((n) => n.personId === id && !n.dupOf)!;
+
+  it('Extended with the cousins folded: no cousins columns, a one-column band, parents beside it', () => {
+    const L = lay(G, 'me', 'extended', [], false, 'cross');
+    checkGeometry(L, 'extended folded');
+    expect(L.nodes.some((n) => Math.abs(Math.abs(n.x) - PC) < 1 && n.generation === 0)).toBe(false);
+    const m = middle(L);
+    expect(m.x1 - m.x0).toBeLessThanOrEqual(PC + 1);
+    expect(Math.abs(at(L, 'dad').x)).toBe(PC);
+    expect(Math.abs(at(L, 'mom').x)).toBe(PC);
+  });
+
+  it('Extended with one family open: only that side keeps its cousins column', () => {
+    const L = lay(G, 'me', 'extended', ['uncle'], false, 'cross');
+    checkGeometry(L, 'extended uncle open');
+    const a = at(L, 'cousinA');
+    expect(a).toBeTruthy();
+    expect(Math.abs(a.x)).toBe(PC); // dad's side kept its cousins column
+    expect(Math.abs(at(L, 'dad').x)).toBe(2 * PC);
+    expect(Math.abs(at(L, 'mom').x)).toBe(PC); // mom's side closed up
+    expect(at(L, 'cousinB')).toBeUndefined();
+  });
+
+  it('Everyone keeps the fixed columns (stacked trees line up)', () => {
+    const L = lay(G, 'me', 'everyone', [], false, 'cross');
+    checkGeometry(L, 'everyone');
+    expect(Math.abs(at(L, 'dad').x)).toBe(2 * PC);
+    expect(Math.abs(at(L, 'mom').x)).toBe(2 * PC);
+  });
+});
