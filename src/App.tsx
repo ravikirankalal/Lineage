@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { HashRouter, Link, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { CloudNotice, GoogleButton, InviteBanner, SharedSpaceBanner, SpaceSwitcher } from './components/Cloud';
 import { Empty } from './components/Empty';
+import { useBottomTabsHidden } from './components/tree/bottomTabs';
 import { CloudProvider, useCanEdit, useCloud } from './lib/cloud/CloudProvider';
 import { DataProvider } from './lib/data';
 import { FamilyPage } from './pages/FamilyPage';
@@ -54,6 +55,7 @@ function OfflineBar() {
 function Shell() {
   // My Family is a full-bleed map of the tree: no page padding or width limit.
   const map = useLocation().pathname === '/family';
+  const tabsHidden = useBottomTabsHidden() && map;
   return (
     <div className="min-h-dvh md:flex">
       <ScrollTop />
@@ -96,7 +98,9 @@ function Shell() {
       </main>
 
       {/* Bottom tabs (phone) */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-stone-200/80 bg-white/90 pb-safe backdrop-blur-lg dark:border-stone-800 dark:bg-stone-900/90 md:hidden">
+      {/* On My Family they slide away when idle; a tap on the tree brings them back (bottomTabs.ts). */}
+      <nav inert={tabsHidden} aria-hidden={tabsHidden || undefined} data-hidden={tabsHidden || undefined}
+        className={`fixed inset-x-0 bottom-0 z-40 border-t border-stone-200/80 bg-white/90 pb-safe backdrop-blur-lg transition-transform duration-200 dark:border-stone-800 dark:bg-stone-900/90 md:hidden ${tabsHidden ? 'translate-y-full' : ''}`}>
         <div className="mx-auto flex max-w-lg">
           {NAV.map(({ to, label, icon: Icon, end }) => (
             <NavLink key={to} to={to} end={end}
