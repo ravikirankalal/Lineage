@@ -73,7 +73,7 @@
 - [x] "This is me" setup
 - [x] Interactive family tree (hourglass: ancestors above, descendants below,
       siblings beside), click any card to re-centre; works for any person
-- [x] Relatives list grouped by kinship, with side (paternal/maternal)
+- [x] Relatives list grouped by kinship, with side (paternal/maternal) — on the People page since 2026-11-15
 - [x] Direct paternal and maternal line views
 - [x] Stats: relatives known, generations known, earliest ancestor
 - [x] Friends are excluded by construction (only family edges are traversed)

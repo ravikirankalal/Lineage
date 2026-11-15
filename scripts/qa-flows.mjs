@@ -107,7 +107,7 @@ async function main(browser) {
     const yBro = (await page.getByText('Vijay K.').boundingBox()).y;
     check(Math.abs(yMe - yBro) < 5, `[1] brother not beside me in tree (y ${yMe} vs ${yBro})`);
     await shot(page, '1b-tree-brother');
-    await page.getByRole('button', { name: /Relatives \(/ }).click(); await page.getByPlaceholder('Search relatives').waitFor(); await page.waitForFunction(() => document.querySelectorAll('section h3').length > 0);
+    await page.goto(BASE + '#/people'); await page.getByRole('button', { name: /Relatives \(/ }).click(); await page.getByPlaceholder('Search relatives').waitFor(); await page.waitForFunction(() => document.querySelectorAll('section h3').length > 0);
     const rel = await body(page);
     check(/Vijay Kumar[\s\S]{0,40}Brother/.test(rel), '[1] Vijay not "Brother" in Relatives');
     await shot(page, '1c-relatives');
@@ -313,7 +313,7 @@ async function features(browser) {
     // or on two lines when there is no lifespan). Elsewhere it stays "Father · Pitaji".
     const card = (await page.locator('button[title*="Pitaji"]').first().innerText()).replace(/\s+/g, ' ');
     check(/Pitaji( ·)? Father/.test(card) && !/Father · Pitaji/.test(card), `[8] tree card not term-first: "${card}"`);
-    await page.getByRole('button', { name: /Relatives \(/ }).click(); await page.getByPlaceholder('Search relatives').waitFor(); await page.waitForFunction(() => document.querySelectorAll('section h3').length > 0);
+    await page.goto(BASE + '#/people'); await page.getByRole('button', { name: /Relatives \(/ }).click(); await page.getByPlaceholder('Search relatives').waitFor(); await page.waitForFunction(() => document.querySelectorAll('section h3').length > 0);
     const rl = await body(page);
     check(/Uncle · Mama · Mother's brother/.test(rl) && /Uncle · Chacha · Father's brother/.test(rl), '[8] Relatives list lacks terms');
     await shot(page, '8a-relatives-hindi');

@@ -265,3 +265,9 @@ Read this before changing code. Append new learnings at the bottom.
   emulator builds (the auth emulator accepts an unsigned Google ID token). `REUSE_EMULATORS=1` reuses running ones.
 - Tests use `src/lib/__tests__/memoryBackend.ts` (`freshSpace()` → `{ db, backend }`; `db` is a small Dexie-shaped
   view for seeding and checks; `backend.commits` records each batch).
+- **Page split (2026-11-15, owner's request):** My Family (`/family`) and `/people/:id/tree` show only the tree
+  (`LineageView` has no tabs; `useTreeParams` has no `tab`). Relatives and Lines live on the People page as views
+  (`?view=relatives|lines`, centred on "me"; components in `src/components/Relatives.tsx`). "Show in tree" goes to
+  `/family?focus=<id>&hl=<id>`. `FamilyPage` redirects old `?tab=relatives|lines` links to `/people?view=…`.
+- Smoke screenshots of segmented controls can show the previous selection: the buttons have a CSS transition and
+  the shot is taken right after the click.

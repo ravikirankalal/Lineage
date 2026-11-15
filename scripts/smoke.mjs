@@ -39,12 +39,22 @@ async function run(name, viewport) {
   await page.goto(BASE + '#/family');
   await page.getByText('Earliest ancestor').waitFor();
   await shot('2-tree');
-  await page.getByRole('button', { name: /Relatives \(/ }).click(); await page.getByPlaceholder('Search relatives').waitFor(); await page.waitForFunction(() => document.querySelectorAll('section h3').length > 0);
+  await page.goto(BASE + '#/people'); await page.getByRole('button', { name: /Relatives \(/ }).click(); await page.getByPlaceholder('Search relatives').waitFor(); await page.waitForFunction(() => document.querySelectorAll('section h3').length > 0);
   const rel = await body();
   for (const label of ['First cousin', 'Father-in-law', 'Aunt (by marriage)', "Father's brother's son"]) check(rel.includes(label), `[${name}] relatives missing "${label}"`);
   await shot('3-relatives');
   await page.getByRole('button', { name: /Lines/ }).click();
+  await page.getByText("Father's line").waitFor();
   await shot('4-lines');
+  // My Family is the tree only; old ?tab= links land on the People page.
+  await page.goto(BASE + '#/family');
+  await page.getByText('Earliest ancestor').waitFor();
+  check(!(await page.getByRole('button', { name: /Relatives \(/ }).count()), `[${name}] My Family still has a Relatives tab`);
+  await page.goto(BASE + '#/family?tab=relatives');
+  await page.getByPlaceholder('Search relatives').waitFor();
+  // Show in tree from the Relatives list opens My Family with that person highlighted.
+  await page.getByRole('button', { name: /Show .* in the tree/ }).first().click();
+  await page.getByRole('button', { name: 'Clear highlight' }).waitFor();
 
   await page.goto(BASE);
   await page.getByText('Ravi Rao').first().click();
