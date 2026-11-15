@@ -272,9 +272,14 @@ async function run(name, viewport) {
 
   await page.goto(BASE);
   await page.getByText('Ravi Rao').first().click();
-  await page.getByText('Immediate family').first().waitFor();
+  await page.waitForURL(/#\/people\/[^/]+$/);
+  await page.getByRole('heading', { level: 2, name: /^Family\b/ }).waitFor();
+  await page.getByText('Parents', { exact: true }).first().waitFor();
   const prof = await body();
-  for (const g of ['IMMEDIATE FAMILY', 'EXTENDED FAMILY']) check(prof.toUpperCase().includes(g), `[${name}] profile missing group ${g}`);
+  // Parents, spouse and children come first, before the details; then brothers and sisters and the rest.
+  const at = (t) => prof.toUpperCase().indexOf(t);
+  const order = ['PARENTS', 'SPOUSE', 'CHILDREN', 'BIRTHDAY', 'BROTHERS AND SISTERS', 'EXTENDED FAMILY'].map(at);
+  check(order.every((i, k) => i >= 0 && (k === 0 || i > order[k - 1])), `[${name}] profile order wrong (${order.join(', ')})`);
   for (const g of ['FRIENDS', 'COLLEAGUES', 'SAME CITY', 'STUDIED AT THE SAME PLACE', 'CONNECTIONS']) check(!prof.toUpperCase().includes(g), `[${name}] profile still shows ${g}`);
   await shot('5-profile');
 
