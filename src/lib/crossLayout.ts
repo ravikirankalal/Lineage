@@ -265,7 +265,9 @@ class Cross {
     }
     const xb = this.gapIn(dir, gen);
     const kidsX = this.colX(dir, gen - 1, gen - 1 <= 0 && origin >= 2);
-    this.childLines(id, n.y, partners, placed, dir, gen, xb, xb, true, kidsX + dir * W2);
+    // A child with only this parent recorded is drawn from the parent's own card, never from the
+    // marriage line: a spouse isn't assumed to be the other parent (owner).
+    this.childLines(id, n.y, partners, placed, dir, gen, xb, xb, false, kidsX + dir * W2);
     return n;
   }
 

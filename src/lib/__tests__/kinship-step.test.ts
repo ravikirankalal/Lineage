@@ -118,6 +118,22 @@ describe('step-siblings via a step-parent', () => {
     expect(kinship(G, 'me', 'ss')?.category).toBe('siblings');
     expect(kinship(G, 'me', 'ss')?.blood).toBe(false);
   });
+  it('two parents recorded: a parent\'s other spouse is never a step-parent, their child never a step-sibling', () => {
+    const f = family();
+    f.add('me', 'male'); f.add('dad', 'male'); f.add('mom', 'female'); f.add('dadsWife', 'female'); f.add('momsHusband', 'male');
+    f.add('herKid', 'female'); f.add('hisKid', 'male');
+    f.rel('dad', 'me', 'parent'); f.rel('mom', 'me', 'parent');
+    f.rel('dad', 'dadsWife', 'spouse'); f.rel('mom', 'momsHusband', 'spouse');
+    f.rel('dadsWife', 'herKid', 'parent'); f.rel('momsHusband', 'hisKid', 'parent');
+    const G = f.graph();
+    expect(kinship(G, 'me', 'dadsWife')?.label).toBe("Father's wife");
+    expect(kinship(G, 'me', 'momsHusband')?.label).toBe("Mother's husband");
+    for (const x of ['dadsWife', 'momsHusband', 'herKid', 'hisKid']) {
+      expect(kinship(G, 'me', x)?.label).not.toMatch(/step/i);
+      expect(kinship(G, x, 'me')?.label).not.toMatch(/step/i);
+    }
+  });
+  // Single parent recorded (only dad): his wife isn't my step-mother, nor my mother.
   it('never infers step relations from a marriage alone (owner): only a recorded step link counts', () => {
     const f = family();
     f.add('me', 'male'); f.add('dad', 'male'); f.add('dadsWife', 'female'); f.add('ss', 'female');
