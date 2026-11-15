@@ -36,9 +36,8 @@ export interface TreeParams {
  */
 export function useTreeParams(egoId: string, isValid: (id: string) => boolean) {
   const [sp, setSp] = useSearchParams();
-  // Default level is chosen once per visit: Immediate on phones, Extended on larger screens.
-  const [defaultLevel] = useState<TreeLevel>(() =>
-    typeof window !== 'undefined' && window.matchMedia?.(PHONE_QUERY).matches ? 'immediate' : 'extended');
+  // Default level: Extended, on every screen (owner, 2026-11-15).
+  const defaultLevel: TreeLevel = 'extended';
   // Default layout: the cross (father's side left, mother's right, brothers up, sisters down) on tall
   // screens (portrait phones), top to bottom otherwise.
   const [defaultOrient] = useState<TreeOrient>(() =>

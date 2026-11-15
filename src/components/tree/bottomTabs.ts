@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore, type RefObject } from 'react';
 
 /**
- * The phone's bottom tabs on My Family (map view): they slide away after a few seconds without
+ * The phone's bottom tabs on Family Tree (map view): they slide away after a few seconds without
  * touching the screen, so the tree gets the whole screen. Panning and zooming keep them hidden;
  * a tap on the tree brings them back, and that tap does nothing else (it doesn't open a card).
  */

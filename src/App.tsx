@@ -16,7 +16,7 @@ import { TreePage } from './pages/TreePage';
 
 const NAV = [
   { to: '/', label: 'People', icon: Users, end: true },
-  { to: '/family', label: 'My Family', icon: GitBranch },
+  { to: '/family', label: 'Family Tree', icon: GitBranch },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -53,7 +53,7 @@ function OfflineBar() {
 }
 
 function Shell() {
-  // My Family is a full-bleed map of the tree: no page padding or width limit.
+  // Family Tree is a full-bleed map of the tree: no page padding or width limit.
   const map = useLocation().pathname === '/family';
   const tabsHidden = useBottomTabsHidden() && map;
   return (
@@ -98,7 +98,7 @@ function Shell() {
       </main>
 
       {/* Bottom tabs (phone) */}
-      {/* On My Family they slide away when idle; a tap on the tree brings them back (bottomTabs.ts). */}
+      {/* On Family Tree they slide away when idle; a tap on the tree brings them back (bottomTabs.ts). */}
       <nav inert={tabsHidden} aria-hidden={tabsHidden || undefined} data-hidden={tabsHidden || undefined}
         className={`fixed inset-x-0 bottom-0 z-40 border-t border-stone-200/80 bg-white/90 pb-safe backdrop-blur-lg transition-transform duration-200 dark:border-stone-800 dark:bg-stone-900/90 md:hidden ${map ? 'map-glass' : ''} ${tabsHidden ? 'translate-y-full' : ''}`}>
         <div className="mx-auto flex max-w-lg">

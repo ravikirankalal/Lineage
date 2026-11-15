@@ -57,7 +57,7 @@ export function SettingsPage() {
       </section>
 
       <section className="card mt-4 divide-y divide-stone-100 dark:divide-stone-800">
-        {isOwner && people.length === 0 && <Row icon={<FlaskConical size={19} />} title="Try a sample family" desc="Loads a fictional family to explore the app" onClick={async () => { await loadDemo(); setMsg('Sample family loaded. Have a look at People and My Family.'); }} />}
+        {isOwner && people.length === 0 && <Row icon={<FlaskConical size={19} />} title="Try a sample family" desc="Loads a fictional family to explore the app" onClick={async () => { await loadDemo(); setMsg('Sample family loaded. Have a look at People and the Family Tree.'); }} />}
         {isOwner && canEdit && <Row icon={<Trash2 size={19} />} title="Delete all data" desc="Remove every person and relationship from your family tree" danger onClick={() => setConfirmClear(true)} />}
       </section>
       <Sheet open={confirmClear} onClose={() => setConfirmClear(false)} title="Delete all data?"

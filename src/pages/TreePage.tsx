@@ -4,7 +4,7 @@ import { LineageView } from '../components/LineageView';
 import { useData } from '../lib/data';
 import { displayName } from '../lib/person';
 
-/** Lineage for any person (same views as My Family, centred on them). */
+/** Lineage for any person (same views as Family Tree, centred on them). */
 export function TreePage() {
   const { id } = useParams();
   const nav = useNavigate();

@@ -10,7 +10,7 @@ import { useData } from '../lib/data';
 import { matchesQuery } from '../lib/person';
 
 /**
- * My Family: the family tree and nothing else, filling the screen like a map. (Relatives, lines and
+ * Family Tree: the family tree and nothing else, filling the screen like a map. (Relatives, lines and
  * stats are on the People page; sharing is in Settings.)
  */
 export function FamilyPage() {
@@ -25,7 +25,7 @@ export function FamilyPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 pt-4 sm:px-6 md:pt-8">
-      <h1 className="mb-4 text-2xl font-bold tracking-tight sm:text-3xl">My Family</h1>
+      <h1 className="mb-4 text-2xl font-bold tracking-tight sm:text-3xl">Family Tree</h1>
       {isShared ? (
         <div className="card">
           <Empty icon={<GitBranch size={26} />} title="This tree isn’t ready yet">
