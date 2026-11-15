@@ -1,7 +1,7 @@
 import { Contact } from 'lucide-react';
 import type { Person } from '../lib/types';
 
-/** Small round markers: † for someone who has died, a contact card for someone in your contacts. */
+/** Small round markers: ॐ (Om) for someone who has died, a contact card for someone in your contacts. */
 export function PersonMarkers({ person, inContacts, size = 16, className = '' }: { person: Person; inContacts?: boolean; size?: number; className?: string }) {
   if (!person.deceased && !inContacts) return null;
   const dot = 'flex shrink-0 items-center justify-center rounded-full ring-2 ring-white dark:ring-stone-900';
@@ -9,8 +9,8 @@ export function PersonMarkers({ person, inContacts, size = 16, className = '' }:
   return (
     <span className={`inline-flex items-center gap-1 ${className}`}>
       {person.deceased && (
-        <span role="img" aria-label="Deceased" title="Deceased" style={{ ...style, fontSize: size * 0.7 }}
-          className={`${dot} bg-stone-600 font-bold leading-none text-white dark:bg-stone-400 dark:text-stone-900`} data-marker="deceased">†</span>
+        <span role="img" aria-label="Deceased" title="Deceased" style={{ ...style, fontSize: size * 0.72 }}
+          className={`${dot} bg-orange-500 font-semibold leading-none text-white`} data-marker="deceased">ॐ</span>
       )}
       {inContacts && (
         <span role="img" aria-label="In your contacts" title="In your contacts" style={style}
