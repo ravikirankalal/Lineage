@@ -49,7 +49,7 @@ with the relatives you choose. The tree lives in your Google account (Firebase),
 without reinstalling; the app picks up a new version when you come back to it, or pull down to reload), with Android's own Google sign-in and **read-only** access to the phone's
 contacts, which show up as suggestions when adding a relative. Package `app.lineage.family`.
 Setup and signing: [FIREBASE_SETUP.md › Android app](FIREBASE_SETUP.md#11-android-app). Builds:
-`.github/workflows/android-apk.yml` (release **android-latest**), or locally with the Android SDK:
+`.github/workflows/android-apk.yml` (newest at https://github.com/ravikirankalal/Lineage/releases/latest/download/lineage.apk), or locally with the Android SDK:
 `npm run build && npx cap sync android && cd android && ./gradlew assembleRelease`.
 
 ## Run it
