@@ -4,6 +4,8 @@ _Last updated: 2026-11-15_
 
 ## Status: cloud only (2026-11-15) — sign-in required; the tree lives in Firestore, read live and written directly; no device copy, sync, offline editing, contacts import, GEDCOM or backups
 
+**Android app frozen at 1.0.13 (owner, 2026-11-15):** no app changes unless really needed; changes go through the website (see MEMORY.md).
+
 | Area | State | Verified by |
 | --- | --- | --- |
 | Cloud-only data layer: `store.ts` (live snapshot, transactions, one batch per change), `firestoreBackend.ts` (live listeners; owner reads all, members `scope == 'family'`; writes scope 'family'; owner deletes, editors soft-delete), `db.ts` helpers over it | ✅ done | `db.test.ts` (36, on an in-memory backend: batching, no partial writes, offline/viewer/signed-out refusal, merge, clean-ups); `npm run smoke` and `npm run qa` on the Auth + Firestore emulators (data survives reload; sharing flow 10: viewer read-only, editor change reaches owner and viewer live) |
