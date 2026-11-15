@@ -164,7 +164,7 @@ export function PeoplePage() {
             value={q} onChange={(e) => setQ(e.target.value)} />
           {q && <button className="icon-btn absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2" onClick={() => setQ('')} aria-label="Clear"><X size={16} /></button>}
         </div>
-        <div className="no-scrollbar mt-3 flex items-center gap-2 overflow-x-auto" role="toolbar" aria-label="Views and filters">
+        <div className="no-scrollbar -mx-1 mt-2 flex items-center gap-2 overflow-x-auto px-1 py-1" role="toolbar" aria-label="Views and filters">
           {chips.map((c) => (
             <button key={c.key} type="button" onClick={() => pick(c)} aria-pressed={tab === c.key}
               className={`flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium transition ${
@@ -224,8 +224,8 @@ function Header({ count }: { count: number }) {
   return (
     <div className="mb-4 flex items-end justify-between">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">People</h1>
-        <p className="text-sm text-stone-500">{count ? `${count} ${count === 1 ? 'person' : 'people'} in your life` : 'Everyone you want to remember'}</p>
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Family</h1>
+        <p className="text-sm text-stone-500">{count ? `${count} ${count === 1 ? 'person' : 'people'} in your family` : 'Everyone you want to remember'}</p>
       </div>
     </div>
   );

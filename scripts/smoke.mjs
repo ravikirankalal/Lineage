@@ -44,6 +44,16 @@ async function run(name, viewport) {
   check(!(await page.getByRole('button', { name: 'All', exact: true }).count()), `[${name}] People still has an "All" filter`);
   check(!(await page.getByRole('button', { name: /Needs details/ }).count()), `[${name}] People still has a "Needs details" filter`);
   check(await page.getByRole('toolbar', { name: 'Views and filters' }).getByRole('button', { name: /Lines/ }).count() === 1, `[${name}] views not in the one bar`);
+  // The pills' outlines aren't clipped by the scrolling bar (at least 1px clear above and below).
+  const clipped = await page.evaluate(() => {
+    const bar = document.querySelector('[role="toolbar"][aria-label="Views and filters"]').getBoundingClientRect();
+    return [...document.querySelectorAll('[aria-label="Views and filters"] button')].some((b) => {
+      const r = b.getBoundingClientRect();
+      return r.top - bar.top < 1 || bar.bottom - r.bottom < 1;
+    });
+  });
+  check(!clipped, `[${name}] filter pills are cropped by their bar`);
+  check(await page.getByRole('heading', { name: 'Family', exact: true }).count() === 1, `[${name}] the first page is not called Family`);
   const rel = await body();
   for (const label of ['First cousin', 'Father-in-law', 'Aunt (by marriage)', "Father's brother's son"]) check(rel.includes(label), `[${name}] relatives missing "${label}"`);
   await shot('3-relatives');
