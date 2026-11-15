@@ -328,7 +328,7 @@ class Builder {
         const blood = links.filter((l) => isBlood(l.sub));
         if (blood.length) for (const l of blood) shape.edges.push(this.edge('descent', pts.map((q) => [q[0], q[1]]), l.p, kid));
         else if (links.length) shape.edges.push(this.edge('step', pts, links[0].p, kid));
-        else shape.edges.push(this.edge(grp.stepKids ? 'step' : 'descent', pts, real[0] ?? '', kid));
+        else shape.edges.push(this.edge('descent', pts, real[0] ?? '', kid));
       }
       extend(shape.cont, kGap(gen), Math.min(ax, ...kidXs), Math.max(ax, ...kidXs));
     });
@@ -381,7 +381,8 @@ class Builder {
     // Partners already drawn elsewhere become stubs in assemble(); don't open their step-children then.
     const stubPartners = new Set(partners.filter((s) => this.elsewhere(s)));
     return this.assemble(gen, slots, origin, couples, specs.filter((s) => !(s.stepKids && stubPartners.has(s.parents[0]))), (id, kg, grp) =>
-      this.block(id, kg, b - 1, kidRole, kidRole, grp.stepKids || !isBlood(this.g.parentsOf(id).find((e) => e.id === p)?.subtype) && !grp.couple ? { step: true } : {}));
+      // "Step" only when the link is recorded as step/foster, never for a partner's own children (owner).
+      this.block(id, kg, b - 1, kidRole, kidRole, !isBlood(this.g.parentsOf(id).find((e) => e.id === p)?.subtype) && !grp.couple ? { step: true } : {}));
   }
 
   siblingBudget() {
@@ -477,9 +478,9 @@ class Builder {
 
     // The focus must be the primary card: build it before its siblings (assemble builds groups by anchor).
     const prebuilt = new Map<string, Shape>();
-    const shape = this.assemble(1, slots, ia, couples, specs, (id, kg, grp) => {
+    const shape = this.assemble(1, slots, ia, couples, specs, (id, kg) => {
       if (!prebuilt.size) prebuilt.set(f, this.focusOrSibling(f, kg));
-      return prebuilt.get(id) ?? this.focusOrSibling(id, kg, grp.stepKids);
+      return prebuilt.get(id) ?? this.focusOrSibling(id, kg);
     });
     return { shape, principals: real };
   }

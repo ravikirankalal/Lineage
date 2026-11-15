@@ -118,13 +118,22 @@ describe('step-siblings via a step-parent', () => {
     expect(kinship(G, 'me', 'ss')?.category).toBe('siblings');
     expect(kinship(G, 'me', 'ss')?.blood).toBe(false);
   });
-  it('works through the parent\'s marriage alone (no step-parent edge)', () => {
+  it('never infers step relations from a marriage alone (owner): only a recorded step link counts', () => {
     const f = family();
-    f.add('me', 'male'); f.add('dad', 'male'); f.add('stepMom', 'female'); f.add('ss', 'female');
-    f.rel('dad', 'me', 'parent'); f.rel('dad', 'stepMom', 'spouse'); f.rel('stepMom', 'ss', 'parent');
+    f.add('me', 'male'); f.add('dad', 'male'); f.add('dadsWife', 'female'); f.add('ss', 'female');
+    f.rel('dad', 'me', 'parent'); f.rel('dad', 'dadsWife', 'spouse'); f.rel('dadsWife', 'ss', 'parent');
     const G = f.graph();
-    expect(kinship(G, 'me', 'ss')?.label).toBe('Stepsister');
-    expect(kinship(G, 'ss', 'me')?.label).toBe('Stepbrother');
+    expect(kinship(G, 'me', 'dadsWife')?.label).toBe("Father's wife");
+    expect(kinship(G, 'dadsWife', 'me')?.label).toBe("Husband's son");
+    for (const [a, b] of [['me', 'ss'], ['ss', 'me'], ['me', 'dadsWife'], ['dadsWife', 'me']]) {
+      expect(kinship(G, a, b)?.label).not.toMatch(/step/i);
+    }
+    // Recorded as step: then it is a step-parent / stepson.
+    f.rel('dadsWife', 'me', 'parent', 'step');
+    const G2 = f.graph();
+    expect(kinship(G2, 'me', 'dadsWife')?.label).toBe('Stepmother');
+    expect(kinship(G2, 'dadsWife', 'me')?.label).toBe('Stepson');
+    expect(kinship(G2, 'me', 'ss')?.label).toBe('Stepsister');
   });
   it('does not call a half-sibling a step-sibling', () => {
     const f = family();
