@@ -7,7 +7,7 @@
 import { useSyncExternalStore } from 'react';
 import type { User } from 'firebase/auth';
 import type { AuthState, CloudUser } from './contract';
-import { cloudConfigured, getFirebaseAuth, usingEmulators } from './firebase';
+import { cloudConfigured, getFirebaseAuth, popupResolver, usingEmulators } from './firebase';
 import { GOOGLE_WEB_CLIENT_ID, isNativeApp } from '../native';
 
 interface Snapshot {
@@ -39,8 +39,9 @@ function start() {
     try {
       const auth = await getFirebaseAuth();
       const { onAuthStateChanged, getRedirectResult } = await import('firebase/auth');
-      // Completes a signInWithRedirect started on a previous page load (errors are non-fatal).
-      getRedirectResult(auth).catch((e) => console.warn('Sign-in redirect failed', e));
+      // Website: completes a signInWithRedirect started on a previous page load (errors are non-fatal).
+      // The app signs in natively and has no popup/redirect helper (see getFirebaseAuth).
+      if (!isNativeApp()) getRedirectResult(auth).catch((e) => console.warn('Sign-in redirect failed', e));
       onAuthStateChanged(auth, (u) => emit({ loading: false, user: u ? toCloudUser(u) : null }));
     } catch (e) {
       console.warn('Firebase Auth unavailable', e);
@@ -84,13 +85,15 @@ export async function signIn(): Promise<void> {
   const { GoogleAuthProvider, signInWithPopup, signInWithRedirect } = await import('firebase/auth');
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
-  if (preferRedirect()) return signInWithRedirect(auth, provider);
+  const resolver = await popupResolver();
+  const redirect = () => signInWithRedirect(auth, provider, resolver);
+  if (preferRedirect()) return redirect();
   try {
-    await signInWithPopup(auth, provider);
+    await signInWithPopup(auth, provider, resolver);
   } catch (e) {
     const code = (e as { code?: string }).code;
     if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') {
-      if (onAuthDomain() || usingEmulators()) return signInWithRedirect(auth, provider);
+      if (onAuthDomain() || usingEmulators()) return redirect();
       throw new Error('Your browser blocked the Google sign-in window. Allow pop-ups for this site, then tap Sign in again.');
     }
     if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return;
