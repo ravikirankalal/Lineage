@@ -223,9 +223,10 @@ Until both are done, the app shows "Google sign-in isn't set up for the app yet"
 "Developer console is not set up correctly").
 
 ### 11.3 Releasing the app through GitHub
-`.github/workflows/android-apk.yml` builds the signed APK and publishes it as the **android-latest**
-release, so the download link never changes:
-<https://github.com/ravikirankalal/Lineage/releases/download/android-latest/lineage.apk>
+`.github/workflows/android-apk.yml` builds the signed APK and publishes it as a new release
+(**android-1.0.N**) marked *latest*, so this download link always gets the newest app:
+<https://github.com/ravikirankalal/Lineage/releases/latest/download/lineage.apk>
+(Releases in this repository are immutable, so a release name can't be reused; each build gets its own.)
 
 One-time setup (repository **Settings → Secrets and variables → Actions → New repository secret**):
 - `ANDROID_KEYSTORE_BASE64`: the whole contents of `lineage-release.jks.base64.txt`

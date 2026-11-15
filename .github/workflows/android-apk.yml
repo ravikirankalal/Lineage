@@ -1,6 +1,8 @@
 name: Android app (APK)
 
-# Builds the signed Lineage Android app and publishes it as the "android-latest" release.
+# Builds the signed Lineage Android app and publishes it as a new release (android-1.0.N), marked latest,
+# so https://github.com/ravikirankalal/Lineage/releases/latest/download/lineage.apk always gets the newest.
+# Releases here are immutable: a tag can never be reused, so every build gets its own.
 # The app is a shell around the live site, so it only needs rebuilding when android/,
 # capacitor.config.ts or the native plugins change. Skips cleanly until the signing secrets exist:
 #   ANDROID_KEYSTORE_BASE64   base64 of the release .jks (alias "lineage")
@@ -76,12 +78,12 @@ jobs:
           name: lineage-apk
           path: ${{ runner.temp }}/lineage.apk
 
-      - name: Publish as the android-latest release
+      - name: Publish as a new release, marked latest
         if: steps.check.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           LINEAGE_VERSION_CODE=$((GITHUB_RUN_NUMBER + 1))
-          gh release delete android-latest --yes --cleanup-tag 2>/dev/null || true
-          gh release create android-latest "$RUNNER_TEMP/lineage.apk" --title "Lineage for Android" \
-            --notes "Install on Android: download lineage.apk and open it (allow installs from this source when asked). Version 1.0.${LINEAGE_VERSION_CODE}, built from ${GITHUB_SHA::7}." --latest=false
+          gh release create "android-1.0.${LINEAGE_VERSION_CODE}" "$RUNNER_TEMP/lineage.apk" --target "$GITHUB_SHA" \
+            --title "Lineage for Android 1.0.${LINEAGE_VERSION_CODE}" \
+            --notes "Install on Android: download lineage.apk and open it (allow installs from this source when asked). Built from ${GITHUB_SHA::7}." --latest
