@@ -838,3 +838,19 @@ describe('cross layout: empty cousins columns close up (not in Everyone)', () =>
     expect(Math.abs(at(L, 'mom').x)).toBe(2 * PC);
   });
 });
+
+describe('no inferred step badges (owner)', () => {
+  it("a partner's own children and a parent's spouse aren't marked Step unless the link says so", () => {
+    const f = family();
+    f.add('me', 'male'); f.add('dad', 'male'); f.add('mom', 'female'); f.add('dadsWife', 'female'); f.add('herKid', 'female');
+    f.add('wife', 'female'); f.add('wifesSon', 'male');
+    f.rel('dad', 'me', 'parent'); f.rel('mom', 'me', 'parent'); f.rel('dad', 'dadsWife', 'spouse'); f.rel('dadsWife', 'herKid', 'parent');
+    f.rel('me', 'wife', 'spouse'); f.rel('wife', 'wifesSon', 'parent');
+    const G = f.graph();
+    for (const orient of ['down', 'right', 'cross'] as const) for (const level of ['immediate', 'extended', 'everyone'] as const) {
+      const L = lay(G, 'me', level, [], false, orient);
+      const marked = L.nodes.filter((n) => n.step).map((n) => n.personId);
+      expect(marked, `${orient} ${level}`).toEqual([]);
+    }
+  });
+});

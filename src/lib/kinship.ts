@@ -538,15 +538,10 @@ function areFosterSiblings(graph: FamilyGraph, a: string, b: string): boolean {
   return false;
 }
 
-/** True when one of b's parents is a's step-parent or the (non-divorced) spouse of a's parent. */
+/** True when one of b's parents is recorded as a's step-parent (a parent's spouse alone doesn't count). */
 function areStepSiblings(graph: FamilyGraph, a: string, b: string): boolean {
   const aSide = new Set<string>();
-  for (const p of graph.parentsOf(a)) {
-    if (p.subtype === 'step') aSide.add(p.id);
-    else if (isBloodEdge(p.subtype)) {
-      for (const sp of graph.spousesOf(p.id)) if (sp.subtype !== 'divorced') aSide.add(sp.id);
-    }
-  }
+  for (const p of graph.parentsOf(a)) if (p.subtype === 'step') aSide.add(p.id);
   const aBlood = new Set(graph.bloodParents(a));
   for (const p of graph.parentsOf(b)) {
     if (!isBloodEdge(p.subtype)) continue;
@@ -569,11 +564,10 @@ function affinalLabel(graph: FamilyGraph, a: string, b: string, aAnc: ReturnType
     const spWord = g(graph.person(sp.id)?.gender, W.spouse);
     let lab: string;
     let cat: KinCategory = 'inlaws';
+    // A spouse's child isn't called a stepchild unless that link is recorded as step (owner):
+    // it stays "Wife's son" here; an explicit step link is labelled before this.
     if (category === 'parents' || category === 'siblings' || category === 'grandparents') lab = `${label}-in-law`;
-    else if (category === 'children') {
-      lab = 'Step' + label.toLowerCase();
-      cat = 'children';
-    } else lab = `${spWord}'s ${label.toLowerCase()}`;
+    else lab = `${spWord}'s ${label.toLowerCase()}`;
     return { label: lab, category: cat, generation: bl.up - bl.down, degree: bl.up + bl.down + 1 };
   }
 
@@ -597,14 +591,7 @@ function affinalLabel(graph: FamilyGraph, a: string, b: string, aAnc: ReturnType
       case 'grandchildren':
         lab = g(gender, W.grandchild) + '-in-law';
         break;
-      case 'parents':
-        lab = 'Step' + g(gender, W.parent).toLowerCase();
-        cat = 'parents';
-        break;
-      case 'grandparents':
-        lab = 'Step-grand' + g(gender, W.parent).toLowerCase();
-        cat = 'grandparents';
-        break;
+      // A parent's (or grandparent's) spouse is "Father's wife", never an inferred step-parent (owner).
       case 'uncles':
         // Match the blood uncle's greats: spouse of a great-uncle is a great-aunt (by marriage).
         lab = (bl.up > 2 ? greats(bl.up - 2) + g(gender, W.uncle).toLowerCase() : g(gender, W.uncle)) + ' (by marriage)';
