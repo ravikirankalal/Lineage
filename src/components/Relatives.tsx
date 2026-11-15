@@ -12,14 +12,17 @@ import { KinLabel } from './KinLabel';
 import { PersonRow } from './PersonRow';
 
 /** Every relative of one person, grouped by kind, with a search box and a side filter. */
-export function RelativesList({ relatives, egoId, egoName, onShowInTree }: {
+export function RelativesList({ relatives, egoId, egoName, onShowInTree, query }: {
   relatives: Relative[];
   egoId: string;
   egoName: string;
   onShowInTree: (id: string) => void;
+  /** Search text from the page's own search box (then this list shows no search box of its own). */
+  query?: string;
 }) {
   const [side, setSide] = useState<'all' | 'paternal' | 'maternal'>('all');
-  const [q, setQ] = useState('');
+  const [ownQ, setQ] = useState('');
+  const q = query ?? ownQ;
   const canEdit = useCanEdit();
   const filtered = relatives.filter((r) => (side === 'all' || r.kin.side === side || !r.kin.side) && matchesQuery(r.person, q));
   const groups = new Map<KinCategory, Relative[]>();
@@ -49,10 +52,10 @@ export function RelativesList({ relatives, egoId, egoName, onShowInTree }: {
   return (
     <div>
       <div className="mb-4 flex flex-col gap-2 sm:flex-row">
-        <div className="relative flex-1">
+        {query === undefined && <div className="relative flex-1">
           <Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
           <input className="input bg-white pl-9 ring-1 ring-stone-200 dark:bg-stone-900 dark:ring-stone-800" placeholder="Search relatives" value={q} onChange={(e) => setQ(e.target.value)} />
-        </div>
+        </div>}
         <div className="inline-flex rounded-xl bg-stone-200/60 p-1 dark:bg-stone-800">
           {(['all', 'paternal', 'maternal'] as const).map((s) => (
             <button key={s} type="button" onClick={() => setSide(s)} className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-medium ${side === s ? 'bg-white shadow-sm dark:bg-stone-700' : 'text-stone-500'}`}>

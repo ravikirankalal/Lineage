@@ -39,7 +39,11 @@ async function run(name, viewport) {
   await page.goto(BASE + '#/family');
   await page.getByPlaceholder('Find in tree').waitFor();
   await shot('2-tree');
-  await page.goto(BASE + '#/'); await page.getByRole('button', { name: /Relatives \(/ }).click(); await page.getByPlaceholder('Search relatives').waitFor(); await page.waitForFunction(() => document.querySelectorAll('section h3').length > 0);
+  await page.goto(BASE + '#/'); await page.getByRole('button', { name: /Relatives \(/ }).click(); await page.getByRole('button', { name: /Relatives \(/, pressed: true }).waitFor(); await page.waitForFunction(() => document.querySelectorAll('section h3').length > 0);
+  // One bar for views and filters; no "All" list (Relatives is the start).
+  check(!(await page.getByRole('button', { name: 'All', exact: true }).count()), `[${name}] People still has an "All" filter`);
+  check(!(await page.getByRole('button', { name: /Needs details/ }).count()), `[${name}] People still has a "Needs details" filter`);
+  check(await page.getByRole('toolbar', { name: 'Views and filters' }).getByRole('button', { name: /Lines/ }).count() === 1, `[${name}] views not in the one bar`);
   const rel = await body();
   for (const label of ['First cousin', 'Father-in-law', 'Aunt (by marriage)', "Father's brother's son"]) check(rel.includes(label), `[${name}] relatives missing "${label}"`);
   await shot('3-relatives');
@@ -233,7 +237,7 @@ async function run(name, viewport) {
     break;
   }
   await page.goto(BASE + '#/family?tab=relatives');
-  await page.getByPlaceholder('Search relatives').waitFor();
+  await page.getByRole('button', { name: /Relatives \(/, pressed: true }).waitFor();
   // Show in tree from the Relatives list opens Family Tree with that person highlighted.
   await page.getByRole('button', { name: /Show .* in the tree/ }).first().click();
   await page.getByRole('button', { name: 'Clear highlight' }).waitFor();
@@ -275,11 +279,12 @@ async function run(name, viewport) {
   await page.goto(BASE + '#/');
   check(await page.locator('[data-marker="deceased"]').count() > 0, `[${name}] no deceased marker in the People list`);
   await page.getByRole('button', { name: 'In contacts (1)' }).click();
+  await page.getByRole('button', { name: 'In contacts (1)', pressed: true }).waitFor();
   await page.locator('a', { hasText: 'Anjali Rao' }).first().waitFor();
   check(!(await page.getByText('Aarav Rao').count()), `[${name}] In contacts filter still shows people not in contacts`);
   check(await page.locator('a', { hasText: 'Anjali Rao' }).locator('[data-marker="contact"]').count() === 1, `[${name}] no contact marker on Anjali`);
   await shot('6b-in-contacts-filter');
-  await page.getByRole('button', { name: 'In contacts (1)' }).click(); // back to All
+  await page.getByRole('button', { name: 'In contacts (1)' }).click(); // back to Relatives
   await page.goto(BASE + '#/family');
   await page.waitForSelector('.tree-world [data-key]');
   check(await page.locator('.tree-world [data-marker="contact"]').count() > 0, `[${name}] no contact marker on tree cards`);
