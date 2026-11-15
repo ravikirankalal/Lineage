@@ -18,7 +18,13 @@
     </style>
 
 
+    <!-- Launch screen: the Lineage logo on green, in light and dark mode (without these Android paints
+         it in the system colour, black in dark mode). It stays until the page hides it (splash plugin). -->
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
+        <item name="windowSplashScreenBackground">@color/ic_launcher_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
+        <item name="android:windowBackground">@color/ic_launcher_background</item>
     </style>
 </resources>
