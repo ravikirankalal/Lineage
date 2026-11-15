@@ -98,6 +98,18 @@ async function run(name, viewport) {
       check(back.moved === 0 && back.lines === '1', `[${name}] ${lvl}: Explode did not restore the tree (${JSON.stringify(back)})`);
     }
   };
+  // Fully zoomed out, the background bands still fill the whole tree area (they reach far past the tree).
+  for (let i = 0; i < 12; i++) await page.getByRole('button', { name: 'Zoom out' }).click();
+  await page.waitForTimeout(500);
+  const cover = await page.evaluate(() => {
+    const v = document.querySelector('.tree-viewport').getBoundingClientRect();
+    const fills = [...document.querySelectorAll('.tree-bands > div')].map((e) => e.getBoundingClientRect());
+    return fills.some((r) => r.left <= v.left) && fills.some((r) => r.right >= v.right)
+      && fills.some((r) => r.top <= v.top) && fills.some((r) => r.bottom >= v.bottom);
+  });
+  check(cover, `[${name}] zoomed out, the background bands stop short of the screen edges`);
+  await page.getByRole('button', { name: 'Fit the whole tree' }).click();
+  await page.waitForTimeout(400);
   await implodeCheck('Everyone');
   await page.getByRole('radio', { name: 'Extended' }).click();
   await page.waitForTimeout(600);
