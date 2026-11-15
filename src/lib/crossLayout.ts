@@ -172,6 +172,30 @@ class Cross {
     if (gen <= 0) return dir * (distant ? 1 + extra : 1) * PC;
     return dir * (gen + 1 + extra) * PC;
   }
+  /**
+   * A side whose cousins column(s) have nobody in them (no cousins, or their families folded, as in
+   * Extended) closes up: that side's columns move in, so no empty cousins band shows (the owner's
+   * request). Everyone keeps the fixed columns, so its stacked trees line up. Returns how far each side
+   * moved in.
+   */
+  private closeEmptyCousins(): { left: number; right: number } {
+    const out = { left: 0, right: 0 };
+    if (this.opts.level === 'everyone') return out;
+    for (const dir of [-1, 1]) {
+      const inner = [this.colX(dir, 0), ...(this.split ? [this.colX(dir, 0, true)] : [])];
+      if (this.nodes.some((n) => inner.some((x) => Math.abs(n.x - x) < 1))) continue;
+      const by = inner.length * PC;
+      // Everything beyond the focus's column on this side: cards, and line points (the lines into the
+      // focus's column cross the empty cousins column, so their outer ends move in with the parents).
+      const beyond = (x: number) => dir * x > PC * 0.75;
+      for (const n of this.nodes) if (beyond(n.x)) n.x -= dir * by;
+      for (const e of this.edges) e.points = e.points.map(([x, y]) => [beyond(x) ? x - dir * by : x, y]);
+      if (dir < 0) out.left = by;
+      else out.right = by;
+    }
+    return out;
+  }
+
   /** x of the gap just inside generation `gen`'s column (where its lines to its children run). */
   private gapIn(dir: number, gen: number) {
     return this.colX(dir, gen) - (dir * PC) / 2;
@@ -479,8 +503,9 @@ class Cross {
     // ---- regions for the background: father's side | your generation | mother's side ----
     // Your generation's band (the owner's choice) takes in both sides' cousins columns, second cousins
     // too: it ends where the parents' columns start. Fixed column positions, so stacked trees line up.
-    const leftEdge = this.colX(-1, 1) + PC / 2;
-    const rightEdge = this.colX(1, 1) - PC / 2;
+    const shift = this.closeEmptyCousins();
+    const leftEdge = this.colX(-1, 1) + PC / 2 + shift.left;
+    const rightEdge = this.colX(1, 1) - PC / 2 - shift.right;
     const sideColumns = (keep: (x: number) => boolean) => {
       const gens = new Map<number, Map<number, number>>();
       for (const n of this.nodes) {
