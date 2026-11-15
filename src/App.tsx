@@ -18,7 +18,7 @@ import { SharingPage } from './pages/SharingPage';
 import { TreePage } from './pages/TreePage';
 
 const NAV = [
-  { to: '/', label: 'People', icon: Users, end: true },
+  { to: '/', label: 'Family', icon: Users, end: true },
   { to: '/family', label: 'Family Tree', icon: GitBranch },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
