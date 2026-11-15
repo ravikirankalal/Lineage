@@ -5,7 +5,7 @@ import { prefersReducedMotion, type View } from './usePanZoom';
 
 export type ImplodeState = 'open' | 'moving' | 'imploded';
 
-/** Phase timings (ms): lines fade, cards fall onto the row, columns slide together. */
+/** Phase timings (ms): lines fade, each column stacks flush, columns slide together. */
 const FADE = 250;
 const FALL = 650;
 const SLIDE = 550;
@@ -41,7 +41,6 @@ export function useImplode(opts: {
       const o = off.get(card.dataset.key!);
       card.style.transition = ms ? `transform ${ms}ms ${EASE}` : 'none';
       if (!o || phase === 0) { card.style.transform = ''; continue; }
-      card.style.zIndex = String(o.z);
       card.style.transform = `translate(${phase === 2 ? o.dx : 0}px, ${o.dy}px)`;
     }
   };
@@ -52,7 +51,7 @@ export function useImplode(opts: {
     }
   };
   const clean = () => {
-    for (const card of parts().cards) { card.style.transition = ''; card.style.transform = ''; card.style.zIndex = ''; }
+    for (const card of parts().cards) { card.style.transition = ''; card.style.transform = ''; }
     for (const l of parts().lines) { l.style.transition = ''; l.style.opacity = ''; }
   };
 
@@ -65,12 +64,20 @@ export function useImplode(opts: {
     later(quick ? 0 : FADE, () => place(1, quick ? 0 : FALL));
     later(quick ? 0 : FADE + FALL, () => {
       place(2, quick ? 0 : SLIDE);
-      // Bring the pile to the middle of the screen.
+      // Show the whole wall, in the middle of the screen.
       const b = box.current;
       if (b) {
-        const v = pz.get();
-        const k = Math.max(v.k, 0.7);
-        pz.set({ k, x: b.clientWidth / 2 - axis.x * k, y: b.clientHeight / 2 - (axis.y + CARD.h / 2) * k }, !quick);
+        let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+        const off = implodeOffsets(layout.nodes, axis);
+        for (const n of layout.nodes) {
+          const o = off.get(n.key);
+          if (!o) continue;
+          x0 = Math.min(x0, n.x + o.dx - CARD.w / 2); x1 = Math.max(x1, n.x + o.dx + CARD.w / 2);
+          y0 = Math.min(y0, n.y + o.dy); y1 = Math.max(y1, n.y + o.dy + CARD.h);
+        }
+        const pad = 48;
+        const k = Math.min(1, (b.clientWidth - pad) / (x1 - x0), (b.clientHeight - pad - 120) / (y1 - y0));
+        pz.set({ k, x: b.clientWidth / 2 - ((x0 + x1) / 2) * k, y: (b.clientHeight + 60) / 2 - ((y0 + y1) / 2) * k }, !quick);
       }
     });
     later(quick ? 0 : FADE + FALL + SLIDE, () => setState('imploded'));

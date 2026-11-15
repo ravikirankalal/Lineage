@@ -65,16 +65,26 @@ async function run(name, viewport) {
   // Everyone in the cross layout: Implode piles every card onto my row with no lines; Explode restores it.
   const impBtn = page.getByRole('button', { name: 'Implode' });
   if (await impBtn.count()) {
-    const before = await page.locator('.tree-world [data-key]').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().top));
     await impBtn.click();
     await page.waitForFunction(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Explode'); return b && !b.disabled; }, null, { timeout: 5000 });
     await page.waitForTimeout(300);
     const st = await page.evaluate(() => {
-      const tops = [...document.querySelectorAll('.tree-world [data-key]')].map((e) => e.getBoundingClientRect().top);
-      return { spread: Math.max(...tops) - Math.min(...tops), lines: getComputedStyle(document.querySelector('.tree-edges')).opacity };
+      const r = [...document.querySelectorAll('.tree-world [data-key]')].map((e) => e.getBoundingClientRect());
+      let overlaps = 0;
+      for (let i = 0; i < r.length; i++) for (let j = i + 1; j < r.length; j++) {
+        const ox = Math.min(r[i].right, r[j].right) - Math.max(r[i].left, r[j].left);
+        const oy = Math.min(r[i].bottom, r[j].bottom) - Math.max(r[i].top, r[j].top);
+        if (ox > 2 && oy > 2) overlaps++;
+      }
+      // Flush: every card touches another one (within 2px) on some side.
+      const touching = r.filter((a) => r.some((b) => b !== a && (
+        (Math.abs(a.bottom - b.top) < 2 || Math.abs(a.top - b.bottom) < 2) && Math.abs(a.left - b.left) < 2 ||
+        (Math.abs(a.right - b.left) < 2 || Math.abs(a.left - b.right) < 2) && Math.abs(a.top - b.top) < 2))).length;
+      return { n: r.length, overlaps, touching, lines: getComputedStyle(document.querySelector('.tree-edges')).opacity };
     });
     check(st.lines === '0', `[${name}] lines still showing after Implode`);
-    check(st.spread < Math.max(...before) - Math.min(...before) && st.spread < 120, `[${name}] cards did not collapse onto one row (spread ${st.spread})`);
+    check(st.overlaps === 0, `[${name}] cards overlap in the imploded wall (${st.overlaps})`);
+    check(st.touching === st.n, `[${name}] imploded cards are not stacked flush (${st.touching}/${st.n} touching)`);
     await shot('2d-imploded');
     await page.getByRole('button', { name: 'Explode' }).click();
     await page.waitForFunction(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Implode'); return b && !b.disabled; }, null, { timeout: 5000 });

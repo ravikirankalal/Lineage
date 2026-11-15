@@ -1,22 +1,24 @@
 /**
- * "Implode" (Everyone, cross layout): every card falls onto the focus's row, piling up per column
- * (stacked boxes), then the columns slide together. Explode plays it backwards. These are the offsets
- * from each card's real position; the layout itself never changes.
+ * "Implode" (Everyone, cross layout): the tree packs into a wall of cards, like bricks or containers.
+ * Phase 1: in each column the gaps close and the cards stack flush on top of one another, the card
+ * nearest the focus's row staying on that row (cards above settle down onto it, cards below rise up).
+ * Phase 2: the columns slide together until they touch, the column nearest the focus staying put.
+ * Explode plays it backwards. These are offsets from each card's real position; the layout never changes.
  */
-import type { TreeNode } from './graph/contract';
-
-/** Pixels each card in a pile sits above the one in front of it. */
-export const STACK_STEP = 6;
-/** How far the columns slide together: 0.3 keeps 30% of each column's distance from the focus. */
-export const SHRINK = 0.3;
+import { CARD, type TreeNode } from './graph/contract';
 
 export interface ImplodeOffset {
-  /** Phase 1, onto the row: move by (0, dy). */
+  /** Phase 1, stacked flush in its column: move by (0, dy). */
   dy: number;
-  /** Phase 2, columns together: move by (dx, dy). */
+  /** Phase 2, columns side by side: move by (dx, dy). */
   dx: number;
-  /** Stacking order: the card nearest the row is on top. */
-  z: number;
+}
+
+/** Index of the item whose value is nearest `v`. */
+function nearest(values: number[], v: number): number {
+  let best = 0;
+  values.forEach((x, i) => { if (Math.abs(x - v) < Math.abs(values[best] - v)) best = i; });
+  return best;
 }
 
 export function implodeOffsets(nodes: readonly TreeNode[], axis: { x: number; y: number }): Map<string, ImplodeOffset> {
@@ -26,15 +28,18 @@ export function implodeOffsets(nodes: readonly TreeNode[], axis: { x: number; y:
     if (!cols.has(k)) cols.set(k, []);
     cols.get(k)!.push(n);
   }
+  // Columns left to right; the one nearest the focus keeps its x, the others close up beside it.
+  const xs = [...cols.keys()].sort((a, b) => a - b);
+  const cx = nearest(xs, axis.x);
   const out = new Map<string, ImplodeOffset>();
-  for (const col of cols.values()) {
-    // Nearest to the row first: it lands in front, the rest pile up behind it.
-    col.sort((a, b) => Math.abs(a.y - axis.y) - Math.abs(b.y - axis.y) || a.y - b.y);
+  xs.forEach((x, j) => {
+    const targetX = xs[cx] + (j - cx) * CARD.w;
+    // Top to bottom; the card nearest the row lands on it, the rest stack flush above and below.
+    const col = cols.get(x)!.sort((a, b) => a.y - b.y);
+    const c = nearest(col.map((n) => n.y), axis.y);
     col.forEach((n, i) => {
-      const dy = axis.y - n.y - i * STACK_STEP;
-      const dx = axis.x + (n.x - axis.x) * SHRINK - n.x;
-      out.set(n.key, { dy, dx, z: col.length - i });
+      out.set(n.key, { dy: axis.y + (i - c) * CARD.h - n.y, dx: targetX - n.x });
     });
-  }
+  });
   return out;
 }
