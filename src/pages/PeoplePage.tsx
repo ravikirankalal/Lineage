@@ -1,4 +1,4 @@
-import { ArrowDown, Cake, FlaskConical, List, Plus, Search, UserPlus, Users, X } from 'lucide-react';
+import { ArrowDown, Cake, Contact, FlaskConical, List, Plus, Search, UserPlus, Users, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Avatar } from '../components/Avatar';
@@ -8,6 +8,9 @@ import { FamilyStats, Lines, RelativesList } from '../components/Relatives';
 import { SpaceSwitcher } from '../components/Cloud';
 import { usePermissions } from '../lib/cloud/CloudProvider';
 import { useData } from '../lib/data';
+import { googleContactsAvailable, loadGoogleContacts, loadNativeContacts, useGoogleContacts } from '../lib/cloud/googleContacts';
+import { useContactMatches } from '../lib/contactMatches';
+import { isNativeApp } from '../lib/native';
 import { loadDemo } from '../lib/demo';
 import { relativesOf } from '../lib/kinship';
 import { daysUntilBirthday, formatPlace, fullName, matchesQuery, missingDetails } from '../lib/person';
@@ -171,6 +174,8 @@ export function PeoplePage() {
         </div>
       )}
 
+      {!q && <FoundInContacts people={people} subtitle={subtitle} />}
+
       <div className="sticky top-0 z-10 -mx-4 bg-stone-50/90 px-4 pb-3 pt-1 backdrop-blur dark:bg-stone-950/90 sm:-mx-6 sm:px-6">
         <div className="relative">
           <Search size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
@@ -207,6 +212,47 @@ export function PeoplePage() {
 
       {addButton}
     </div>
+  );
+}
+
+/** People in the tree who are also in your contacts (Google contacts on the web, the phone's in the app). */
+function FoundInContacts({ people, subtitle }: { people: Person[]; subtitle: (p: Person) => string }) {
+  const gc = useGoogleContacts();
+  const matches = useContactMatches();
+  const [all, setAll] = useState(false);
+  const found = useMemo(() => people.filter((p) => matches.has(p.id)).sort((a, b) => fullName(a).localeCompare(fullName(b))), [people, matches]);
+  const canLoad = googleContactsAvailable() || isNativeApp();
+  const load = () => void (isNativeApp() ? loadNativeContacts() : loadGoogleContacts());
+
+  if (gc.status !== 'ready') {
+    if (!canLoad) return null;
+    return (
+      <section className="mb-4" aria-label="Found in your contacts">
+        <button type="button" onClick={load} disabled={gc.status === 'loading'}
+          className="card flex w-full items-center gap-3 p-3 text-left transition hover:bg-stone-50 dark:hover:bg-stone-800/60">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700 dark:bg-sky-900/50 dark:text-sky-200"><Contact size={19} /></span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-medium">{gc.status === 'loading' ? 'Looking through your contacts…' : 'Find family in your contacts'}</span>
+            <span className="block text-sm text-stone-500">{gc.error || 'See who in your tree is also in your contacts. Nothing is saved.'}</span>
+          </span>
+        </button>
+      </section>
+    );
+  }
+  const shown = all ? found : found.slice(0, 4);
+  return (
+    <section className="mb-4" aria-label="Found in your contacts">
+      <div className="mb-1 ml-2 flex items-center gap-1.5 section-title"><Contact size={13} /> Found in your contacts{found.length ? ` (${found.length})` : ''}</div>
+      <div className="card p-1.5">
+        {found.length === 0 && <p className="px-3 py-3 text-sm text-stone-500">No one in your tree is in your contacts yet.</p>}
+        {shown.map((p) => <PersonRow key={p.id} person={p} to={`/people/${p.id}`} subtitle={subtitle(p)} />)}
+        {found.length > 4 && (
+          <button type="button" className="w-full rounded-xl py-2 text-sm font-medium text-brand-700 hover:bg-stone-50 dark:text-brand-300 dark:hover:bg-stone-800/60" onClick={() => setAll(!all)}>
+            {all ? 'Show fewer' : `Show all ${found.length}`}
+          </button>
+        )}
+      </div>
+    </section>
   );
 }
 

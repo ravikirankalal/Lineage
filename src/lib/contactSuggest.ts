@@ -112,3 +112,24 @@ export function contactToPerson(c: ContactSuggestion, gender: Gender = 'unknown'
     emails: c.emails.map((value) => ({ label: 'email', value })),
   });
 }
+
+/**
+ * People in the tree who are also in the user's contacts: the same phone number (6+ digits), or exactly
+ * the same full name. Person id → the matching contact.
+ */
+export function matchContacts(people: readonly Person[], contacts: readonly ContactSuggestion[]): Map<string, ContactSuggestion> {
+  const out = new Map<string, ContactSuggestion>();
+  if (!contacts.length) return out;
+  const byPhone = new Map<string, ContactSuggestion>();
+  const byName = new Map<string, ContactSuggestion>();
+  for (const c of contacts) {
+    for (const ph of c.phones) { const k = phoneKey(ph); if (k.length >= 6 && !byPhone.has(k)) byPhone.set(k, c); }
+    const n = norm(contactName(c));
+    if (n && !byName.has(n)) byName.set(n, c);
+  }
+  for (const p of people) {
+    const hit = p.phones.map((x) => byPhone.get(phoneKey(x.value))).find(Boolean) ?? byName.get(norm(fullName(p)));
+    if (hit) out.set(p.id, hit);
+  }
+  return out;
+}

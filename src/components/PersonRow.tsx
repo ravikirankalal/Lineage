@@ -3,7 +3,9 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { displayName, lifespan } from '../lib/person';
 import type { Person } from '../lib/types';
+import { useContactMatches } from '../lib/contactMatches';
 import { Avatar } from './Avatar';
+import { PersonMarkers } from './PersonMarkers';
 
 export function PersonRow({ person, subtitle, right, to, onClick, size = 44 }: {
   person: Person;
@@ -13,6 +15,7 @@ export function PersonRow({ person, subtitle, right, to, onClick, size = 44 }: {
   onClick?: () => void;
   size?: number;
 }) {
+  const inContacts = useContactMatches().has(person.id);
   const body = (
     <>
       <Avatar person={person} size={size} />
@@ -20,7 +23,8 @@ export function PersonRow({ person, subtitle, right, to, onClick, size = 44 }: {
         <div className="flex items-baseline gap-2">
           <span className="truncate font-medium">{displayName(person)}</span>
           {person.nickname && <span className="truncate text-sm text-stone-400">“{person.nickname}”</span>}
-          {person.deceased && <span className="text-xs text-stone-400">{lifespan(person) || '†'}</span>}
+          {person.deceased && lifespan(person) && <span className="shrink-0 text-xs text-stone-400">{lifespan(person)}</span>}
+          <PersonMarkers person={person} inContacts={inContacts} className="shrink-0 self-center" />
         </div>
         {subtitle && <div className="truncate text-sm text-stone-500 dark:text-stone-400">{subtitle}</div>}
       </div>
