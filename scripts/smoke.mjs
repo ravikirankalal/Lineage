@@ -192,6 +192,9 @@ async function run(name, viewport) {
   await cardSheet.getByRole('button', { name: 'Centre the tree on Anjali' }).waitFor();
   check(await cardSheet.getByRole('button', { name: /How are we related/ }).count() === 1, `[${name}] card sheet lacks "How are we related?"`);
   check(!(await cardSheet.getByText(/Add a relative of/).count()), `[${name}] card sheet still has "Add a relative of"`);
+  // Anjali's father (Mohan) is in the tree: Father is off; Son stays available.
+  check(await cardSheet.getByRole('button', { name: /Anjali’s father is already Mohan/ }).isDisabled(), `[${name}] Father button not disabled when the father is already in the tree`);
+  check(await cardSheet.getByRole('button', { name: 'Add Anjali’s son' }).isEnabled(), `[${name}] Son button disabled`);
   await shot('2f-card-sheet');
   await cardSheet.getByRole('button', { name: 'Add Anjali’s son' }).click();
   await cardSheet.getByRole('heading', { name: 'Anjali’s son' }).waitFor();

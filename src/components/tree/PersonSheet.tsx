@@ -3,6 +3,8 @@ import { useState, type ReactNode } from 'react';
 import type { TreeNode } from '../../lib/graph/contract';
 import { displayName, formatPlace, lifespan } from '../../lib/person';
 import { ops } from '../../lib/db';
+import { useData } from '../../lib/data';
+import { birthParents } from '../../lib/kinship';
 import { write } from '../../lib/store';
 import type { Person } from '../../lib/types';
 import { AddRelationBody, FAMILY_CHOICES, type RelChoice } from '../AddRelationSheet';
@@ -33,6 +35,10 @@ export function PersonSheet({ person, node, label, path, term, isEgo, isFocus, e
 }) {
   const [adding, setAdding] = useState<RelChoice | undefined>();
   const [editing, setEditing] = useState(false);
+  const { graph, byId } = useData();
+  // Father / Mother can't be added twice: those buttons are off once the tree has them.
+  const assigned = birthParents(graph, byId, person.id);
+  const taken: Partial<Record<RelChoice, Person>> = { father: assigned.father, mother: assigned.mother };
   const span = lifespan(person);
   const place = formatPlace(person.address, true) || formatPlace(person.origin, true);
   const canExpand = !!node.expandable && (node.expandable.up || node.expandable.down || node.expandable.side);
@@ -107,10 +113,20 @@ export function PersonSheet({ person, node, label, path, term, isEgo, isFocus, e
         <div className="mt-5">
           <div className="section-title mb-2">Add to {first}’s family</div>
           <div className="grid grid-cols-3 gap-2">
-            {FAMILY_CHOICES.map((c) => (
-              <button key={c.key} type="button" className="btn-secondary" onClick={() => setAdding(c.key)}
-                aria-label={`Add ${first}’s ${c.label.toLowerCase()}`}>{c.label}</button>
-            ))}
+            {FAMILY_CHOICES.map((c) => {
+              const has = taken[c.key];
+              return has ? (
+                <button key={c.key} type="button" disabled title={`${first}’s ${c.label.toLowerCase()} is ${displayName(has)}`}
+                  aria-label={`${first}’s ${c.label.toLowerCase()} is already ${displayName(has)}`}
+                  className="btn-secondary flex-col gap-0 py-1.5 leading-tight">
+                  <span>{c.label}</span>
+                  <span className="max-w-full truncate text-[11px] font-normal text-stone-500">{has.firstName}</span>
+                </button>
+              ) : (
+                <button key={c.key} type="button" className="btn-secondary" onClick={() => setAdding(c.key)}
+                  aria-label={`Add ${first}’s ${c.label.toLowerCase()}`}>{c.label}</button>
+              );
+            })}
           </div>
         </div>
       )}
