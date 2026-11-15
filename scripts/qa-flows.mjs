@@ -258,7 +258,11 @@ async function features(browser) {
     await page.getByPlaceholder('Search people or type a new name').fill('Latha Rao');
     check(await page.getByRole('button', { name: /Add “Latha Rao”/ }).isDisabled(), '[7] daughter could be added without the other parent');
     await page.getByLabel("Other parent's name").fill('Sita Rao');
+    await shot(page, '7-other-parent-choosing');
     await page.getByText('Add “Sita Rao” as the other parent').click();
+    // Chosen: shown as a selected profile ("New person"), changeable.
+    check(await page.getByLabel('Selected: Sita Rao').isVisible(), '[7] chosen other parent not shown as selected');
+    await shot(page, '7-other-parent-chosen');
     await page.getByText('Add “Latha Rao”').click();
     await page.getByText('Latha Rao').first().waitFor();
     await page.goto(BASE + '#/');

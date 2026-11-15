@@ -1,4 +1,4 @@
-import { ArrowLeft, Contact, Search, Smartphone, UserPlus } from 'lucide-react';
+import { ArrowLeft, Check, Contact, Search, Smartphone, UserPlus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { ops } from '../lib/db';
 import { googleContactsAvailable, loadGoogleContacts, loadNativeContacts, phonePickerAvailable, pickPhoneContact, useGoogleContacts } from '../lib/cloud/googleContacts';
@@ -8,6 +8,7 @@ import { write } from '../lib/store';
 import { useData } from '../lib/data';
 import { emptyPerson, formatPlace, matchesQuery } from '../lib/person';
 import type { FamilyType, Gender, ParentSubtype, Person, Relationship, SpouseSubtype } from '../lib/types';
+import { Avatar } from './Avatar';
 import { PersonRow } from './PersonRow';
 import { Sheet } from './Sheet';
 
@@ -271,6 +272,7 @@ function AddRelationBody({ person, preset, onClose }: { person: Person; preset?:
             {candidates.length > 0 && <div className="section-title px-2 pb-1 pt-3">In your tree</div>}
           </div>
         )}
+        {isChild && candidates.length > 0 && !contactHits.length && <div className="section-title px-2 pb-1 pt-1">Or pick the {info.label} from your tree</div>}
         {candidates.map((p) => (
           <PersonRow key={p.id} person={p} onClick={() => !busy && (!isChild || other) && link(p)} subtitle={formatPlace(p.address, true) || p.occupation} />
         ))}
@@ -299,39 +301,57 @@ function OtherParentPicker({ person, spouses, exSpouseIds, other, setOther, pick
   showMarried: boolean;
 }) {
   const label = other?.person ? `${other.person.firstName}${other.person.lastName ? ' ' + other.person.lastName : ''}` : other?.name?.trim();
-  const chip = (active: boolean) => `chip ${active ? '!bg-brand-600 !text-white' : ''}`;
+  const spouseWord = (s: Person) => `${exSpouseIds.has(s.id) ? 'Former ' : ''}${s.gender === 'female' ? 'wife' : s.gender === 'male' ? 'husband' : 'spouse'}`;
+  const role = (p: Person) => {
+    const w = spouses.some((s) => s.id === p.id) ? spouseWord(p) : '';
+    return w ? `${person.firstName}’s ${w.toLowerCase()}` : formatPlace(p.address, true) || p.occupation || 'In your tree';
+  };
+  const choosing = picking || !other;
+  // Spouses not already chosen are offered as profiles to tap.
+  const offered = spouses.filter((s) => s.id !== other?.person?.id);
   return (
-    <div role="group" aria-label="Other parent" className="rounded-2xl bg-stone-50 p-3 ring-1 ring-stone-200 dark:bg-stone-800/60 dark:ring-stone-700">
-      <div className="mb-2 flex items-baseline justify-between gap-2">
-        <div className="text-sm font-semibold">Other parent <span className="font-normal text-red-600">*</span></div>
-        {label && !picking && <div className="truncate text-sm text-brand-700 dark:text-brand-300">{label}</div>}
+    <div role="group" aria-label="Other parent">
+      <div className="mb-1.5 flex items-center justify-between">
+        <div className="section-title">Other parent</div>
+        {other && picking && <button type="button" className="text-sm font-medium text-brand-700 dark:text-brand-300" onClick={() => { setPicking(false); setQ(''); }}>Cancel</button>}
       </div>
-      <div className="flex flex-wrap gap-1.5">
-        {spouses.map((s) => (
-          <button key={s.id} type="button" className={chip(other?.person?.id === s.id && !picking)} onClick={() => setOther({ person: s })}>
-            {s.firstName}{exSpouseIds.has(s.id) ? ' (former)' : ''}
-          </button>
-        ))}
-        <button type="button" className={chip(picking || (!!other && !spouses.some((s) => s.id === other.person?.id)))} onClick={() => setPicking(true)}>
-          {spouses.length ? 'Someone else' : 'Choose…'}
-        </button>
-      </div>
-      {picking && (
-        <div className="mt-2">
-          <input className="input" placeholder={`Name of ${person.firstName}’s partner`} aria-label="Other parent's name" value={q} onChange={(e) => setQ(e.target.value)} />
+      {other && !picking && (
+        <div className="flex items-center gap-3 rounded-2xl bg-brand-50 px-3 py-2.5 ring-1 ring-brand-200 dark:bg-brand-900/25 dark:ring-brand-800" aria-label={`Selected: ${label}`}>
+          <div className="relative shrink-0">
+            {other.person
+              ? <Avatar person={other.person} size={44} />
+              : <div className="flex h-11 w-11 items-center justify-center rounded-full bg-brand-100 text-brand-700 dark:bg-brand-900/60 dark:text-brand-200"><UserPlus size={20} /></div>}
+            <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-brand-600 text-white ring-2 ring-white dark:ring-stone-900"><Check size={12} strokeWidth={3} /></span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate font-medium">{label}</div>
+            <div className="truncate text-sm text-stone-500 dark:text-stone-400">{other.person ? role(other.person) : 'New person'}</div>
+          </div>
+          <button type="button" className="shrink-0 rounded-lg px-2.5 py-1.5 text-sm font-medium text-brand-700 hover:bg-brand-100 dark:text-brand-300 dark:hover:bg-brand-900/50" onClick={() => setPicking(true)}>Change</button>
+        </div>
+      )}
+      {choosing && (
+        <div className="space-y-1">
+          {offered.length > 0 && (
+            <div className="-mx-2">
+              {offered.map((s) => <PersonRow key={s.id} person={s} subtitle={role(s)} onClick={() => setOther({ person: s })} />)}
+            </div>
+          )}
+          <input className="input" placeholder={offered.length ? 'Someone else: type a name' : `Name of ${person.firstName}’s partner`} aria-label="Other parent's name" value={q} onChange={(e) => setQ(e.target.value)} />
           {q.trim() && (
-            <div className="-mx-1 mt-1 max-h-56 overflow-y-auto">
-              <button type="button" onClick={() => setOther({ name: q.trim() })} className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm hover:bg-brand-50 dark:hover:bg-brand-900/30">
-                <UserPlus size={16} className="text-brand-700 dark:text-brand-300" /> Add “{q.trim()}” as the other parent
+            <div className="-mx-2 max-h-56 overflow-y-auto">
+              <button type="button" onClick={() => setOther({ name: q.trim() })} className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left hover:bg-brand-50 dark:hover:bg-brand-900/30">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700 dark:bg-brand-900/60 dark:text-brand-200"><UserPlus size={20} /></div>
+                <div className="min-w-0 font-medium">Add “{q.trim()}” as the other parent</div>
               </button>
               {candidates.map((p) => (
-                <PersonRow key={p.id} person={p} onClick={() => setOther({ person: p })} />
+                <PersonRow key={p.id} person={p} subtitle={role(p)} onClick={() => setOther({ person: p })} />
               ))}
             </div>
           )}
+          {!other && <p className="px-0.5 pt-1 text-xs text-stone-500">Needed so brothers, sisters and step-family come out right.</p>}
         </div>
       )}
-      {!other && !picking && <p className="mt-2 text-xs text-stone-500">Needed so brothers, sisters and step-family come out right.</p>}
       {showMarried && !picking && (
         <label className="mt-2 flex items-center gap-2 text-sm text-stone-600 dark:text-stone-300">
           <input type="checkbox" checked={married} onChange={(e) => setMarried(e.target.checked)} className="h-4 w-4 accent-brand-600" />
