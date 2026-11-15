@@ -1,6 +1,6 @@
 import { Crosshair, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useCanEdit } from '../lib/cloud/CloudProvider';
 import { useData } from '../lib/data';
 import type { TreeNode } from '../lib/graph/contract';
@@ -13,6 +13,7 @@ import { KinLabel, useRegionalTerm } from './KinLabel';
 import { PersonSheet } from './tree/PersonSheet';
 import type { CardInfo } from './tree/TreeCard';
 import { useTreeParams } from './tree/useTreeParams';
+import { markVisited, wasVisited } from './tree/viewMemory';
 
 /** The family tree for any person. (Relatives and lines live on the People page.) */
 /**
@@ -26,11 +27,17 @@ export function LineageView({ ego, egoLabel = 'You', map = false }: { ego: Perso
   const termFor = useRegionalTerm();
   const family = useMemo(() => graph.familyComponent(ego.id), [graph, ego.id]);
   const isValid = useCallback((id: string) => family.has(id), [family]);
-  const [params, update] = useTreeParams(ego.id, isValid);
+  const viewScope = `${map ? 'map' : 'tree'}:${ego.id}`;
+  const [params, update] = useTreeParams(ego.id, isValid, viewScope);
   const { focus: focusId, level, hl, expanded, orient } = params;
   const [adding, setAdding] = useState<{ person: Person; preset?: RelChoice } | null>(null);
   const [sheet, setSheet] = useState<TreeNode | null>(null);
-  const [panTo, setPanTo] = useState<{ id: string; nonce: number } | undefined>(() => (hl ? { id: hl, nonce: 0 } : undefined));
+  // A highlight in the link ("Show in tree") pans to that person, the first time only: coming back to
+  // the same history entry (Back from a profile) keeps the view as it was left.
+  const loc = useLocation();
+  const [panTo, setPanTo] = useState<{ id: string; nonce: number } | undefined>(() =>
+    (hl && new URLSearchParams(loc.search).has('hl') && !wasVisited(loc.key) ? { id: hl, nonce: 0 } : undefined));
+  useEffect(() => { markVisited(loc.key); }, [loc.key]);
   const isMe = !!ego.isMe && egoLabel === 'You';
   const egoName = isMe ? 'you' : ego.firstName;
 
@@ -143,6 +150,7 @@ export function LineageView({ ego, egoLabel = 'You', map = false }: { ego: Perso
         banner={banner}
         exportTitle={isMe ? 'My family tree' : `${displayName(ego)}’s family tree`}
         map={map}
+        viewKey={viewScope}
       />
 
       {sheet && sheetPerson && (

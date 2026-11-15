@@ -89,7 +89,7 @@ async function main(browser) {
     await openProfile(page, 'Raj Kumar');
     await page.getByRole('button', { name: 'Add', exact: true }).click();
     await page.getByRole('button', { name: 'Son', exact: true }).click();
-    check(await page.getByRole('group', { name: 'Other parent' }).getByText('Lata Kumar').isVisible(), '[1] other parent not prefilled with Lata');
+    check(await page.getByRole('group', { name: 'Mother' }).getByText('Lata Kumar').isVisible(), '[1] other parent not prefilled with Lata');
     await addViaSheet(page, 'Vijay Kumar');
     await page.goto(BASE + '#/family');
     await page.getByText('Vijay K.').waitFor();
@@ -125,7 +125,7 @@ async function main(browser) {
     await profileAdd(page, 'Wife', 'Meena Kumar');
     await page.getByRole('button', { name: 'Add', exact: true }).click();
     await page.getByRole('button', { name: 'Son', exact: true }).click();
-    check(await page.getByRole('group', { name: 'Other parent' }).getByText('Meena Kumar').isVisible(), '[2] other parent not prefilled with Meena');
+    check(await page.getByRole('group', { name: 'Mother' }).getByText('Meena Kumar').isVisible(), '[2] other parent not prefilled with Meena');
     await addViaSheet(page, 'Rohan Kumar');
     await openProfile(page, 'Rohan Kumar');
     const rp = await body(page);
@@ -257,6 +257,7 @@ async function features(browser) {
     await page.getByRole('button', { name: 'Daughter', exact: true }).click();
     await page.getByPlaceholder('Search people or type a new name').fill('Latha Rao');
     check(await page.getByRole('button', { name: /Add “Latha Rao”/ }).isDisabled(), '[7] daughter could be added without the other parent');
+    // This Prakash was added without a gender, so it's "Other parent", not mother or father.
     await page.getByLabel("Other parent's name").fill('Sita Rao');
     await shot(page, '7-other-parent-choosing');
     await page.getByText('Add “Sita Rao” as the other parent').click();

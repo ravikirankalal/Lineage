@@ -14,6 +14,7 @@ import { detailFor, type Detail } from './tree/detail';
 /** The opening intro (imploded → exploded) plays once per app start. */
 let introPlayed = false;
 import { clampZoom, prefersReducedMotion, usePanZoom, type View } from './tree/usePanZoom';
+import { recallView, rememberView } from './tree/viewMemory';
 import { useAutoHideTabs, useBottomTabsHidden } from './tree/bottomTabs';
 
 const FIT_PAD = 20;
@@ -29,7 +30,7 @@ export interface FindCandidate { person: Person; label?: string }
  * It never computes kinship itself: the caller passes labels for the whole tree in `cardInfo`.
  */
 export function FamilyTree({
-  layout, focusId, centreId, centreLabel, cardInfo, path, pathEdges, panTo, level, onLevel, orient, onOrient, candidates, onFind,
+  viewKey, layout, focusId, centreId, centreLabel, cardInfo, path, pathEdges, panTo, level, onLevel, orient, onOrient, candidates, onFind,
   onTap, onToggle, onAddParent, onRecentre, banner, exportTitle, map = false,
 }: {
   layout: TreeLayout;
@@ -59,6 +60,8 @@ export function FamilyTree({
   exportTitle: string;
   /** Map view: fills the page edge to edge, with only Find, levels, layout and zoom (no save, no full screen). */
   map?: boolean;
+  /** Remember this tree's view (zoom and position) under this name, per level, layout and focus. */
+  viewKey?: string;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const world = useRef<HTMLDivElement>(null);
@@ -68,11 +71,22 @@ export function FamilyTree({
   // change of level re-renders them; panning and zooming within a level don't.
   const [detail, setDetail] = useState<Detail>(3);
   const detailRef = useRef<Detail>(3);
+  // Each level / layout / focus of this tree keeps its own view (viewMemory.ts).
+  const memKey = viewKey ? `${viewKey}|${level}|${orient}|${focusId}` : '';
+  const memKeyRef = useRef(memKey);
+  const restored = useRef(false);
   const onView = useCallback((v: View) => {
+    // Saved by the world point in the middle of the box, so it lines up whatever the box size then.
+    if (memKeyRef.current) {
+      const { w, h } = pzRef.current?.size() ?? { w: 0, h: 0 };
+      rememberView(memKeyRef.current, { x: (w / 2 - v.x) / v.k, y: (h / 2 - v.y) / v.k, k: v.k });
+    }
     const d = detailFor(v.k, detailRef.current);
     if (d !== detailRef.current) { detailRef.current = d; setDetail(d); }
   }, []);
   const pz = usePanZoom(box, world, onView);
+  const pzRef = useRef(pz);
+  pzRef.current = pz;
   // Registered after pan/zoom's click handler, so taps that ended a drag stay swallowed.
   useAutoHideTabs(map, box);
   const tabsHidden = useBottomTabsHidden();
@@ -132,12 +146,22 @@ export function FamilyTree({
       byPerson: new Map([...byPerson].map(([id, n]) => [id, { x: n.x, y: n.y }])),
       focus: focusId,
     };
+    // Back on a level / focus seen before (or on this page after visiting a profile): its own view.
+    const keyChanged = memKeyRef.current !== memKey;
+    memKeyRef.current = memKey;
+    const saved = memKey && (!before || keyChanged) ? recallView(memKey) : undefined;
+    if (saved) {
+      restored.current = true;
+      userMoved.current = true;
+      const { w, h } = pz.size();
+      pz.set({ k: saved.k, x: w / 2 - saved.x * saved.k, y: h / 2 - saved.y * saved.k });
+    }
     if (!before) {
-      pz.set(openingView());
+      if (!saved) pz.set(openingView());
       return;
     }
     // Keep a person who is on screen in both layouts at the same screen spot (new focus first).
-    const anchorId = [focusId, before.focus].find((id) => before.byPerson.has(id) && byPerson.has(id));
+    const anchorId = saved ? undefined : [focusId, before.focus].find((id) => before.byPerson.has(id) && byPerson.has(id));
     if (anchorId) {
       const o = before.byPerson.get(anchorId)!;
       const n = byPerson.get(anchorId)!;
@@ -181,7 +205,7 @@ export function FamilyTree({
         }
       });
     }
-    if (before.focus !== focusId) {
+    if (before.focus !== focusId && !saved) {
       const f = byPerson.get(focusId);
       if (f) pz.set(centreView(f, 0.6), true);
     }
@@ -192,6 +216,7 @@ export function FamilyTree({
   useLayoutEffect(() => {
     if (introPlayed || !map || !layout.nodes.length) return;
     introPlayed = true; // only the first view of the Family Tree, whatever level it opens at
+    if (restored.current) return; // coming back to a remembered view: no intro
     if (level !== 'extended' || !canImplode || (typeof navigator !== 'undefined' && navigator.webdriver)) return;
     imp.intro();
   }, [map, level, canImplode, layout, imp]);

@@ -130,6 +130,7 @@ async function run(name, viewport) {
     await page.addInitScript(() => { if (sessionStorage.getItem('smoke-intro')) Object.defineProperty(Navigator.prototype, 'webdriver', { get: () => false }); });
     await page.evaluate(() => sessionStorage.setItem('smoke-intro', '1'));
     const p2 = page; // already on the Family Tree
+    await p2.evaluate(() => sessionStorage.removeItem('lineage.treeViews')); // a remembered view skips the intro
     await p2.reload();
     await p2.waitForSelector('.tree-world [data-key]');
     const start = await p2.evaluate(() => ({
@@ -155,6 +156,34 @@ async function run(name, viewport) {
     check(!(await page.getByRole('dialog').count()), `[${name}] the tap that showed the tabs also opened a card`);
     await shot('2b-tabs-back');
   }
+  // Each level keeps its own zoom and position, and so does the page when you leave and come back.
+  const viewNow = () => page.evaluate(() => {
+    const m = document.querySelector('.tree-world').style.transform.match(/-?[\d.]+/g).map(Number);
+    return { x: m[0], y: m[1], k: m[3] };
+  });
+  const same = (a, b) => Math.abs(a.k - b.k) < 0.01 && Math.abs(a.x - b.x) < 2 && Math.abs(a.y - b.y) < 2;
+  for (let i = 0; i < 3; i++) { await page.getByRole('button', { name: 'Zoom in' }).click(); await page.waitForTimeout(150); }
+  await page.waitForTimeout(500);
+  const imm = await viewNow();
+  await page.getByRole('radio', { name: 'Extended' }).click();
+  await page.waitForTimeout(500);
+  for (let i = 0; i < 2; i++) { await page.getByRole('button', { name: 'Zoom out' }).click(); await page.waitForTimeout(150); }
+  await page.waitForTimeout(500);
+  const ext = await viewNow();
+  await page.getByRole('radio', { name: 'Immediate' }).click();
+  await page.waitForTimeout(500);
+  const imm2 = await viewNow();
+  check(same(imm, imm2), `[${name}] Immediate did not keep its view (${JSON.stringify(imm)} → ${JSON.stringify(imm2)})`);
+  await page.getByRole('radio', { name: 'Extended' }).click();
+  await page.waitForTimeout(500);
+  await page.goto(BASE + '#/');
+  await page.getByText('Ravi Rao').first().waitFor();
+  await page.goto(BASE + '#/family'); // as the Family Tree tab does
+  await page.waitForSelector('.tree-world [data-key]');
+  await page.waitForTimeout(500);
+  check(await page.getByRole('radio', { name: 'Extended', checked: true }).count() === 1, `[${name}] coming back, the tree lost its level`);
+  const ext2 = await viewNow();
+  check(same(ext, ext2), `[${name}] coming back, the tree lost its view (${JSON.stringify(ext)} → ${JSON.stringify(ext2)})`);
   await page.goto(BASE + '#/family?tab=relatives');
   await page.getByPlaceholder('Search relatives').waitFor();
   // Show in tree from the Relatives list opens Family Tree with that person highlighted.
@@ -174,7 +203,7 @@ async function run(name, viewport) {
   const sheet = await body();
   for (const w of ['Friend', 'Colleague', 'Classmate', 'Neighbour', 'Acquaintance', 'Social']) check(!sheet.includes(w), `[${name}] add sheet offers "${w}"`);
   await page.getByRole('button', { name: 'Son', exact: true }).click();
-  check(await page.getByRole('group', { name: 'Other parent' }).getByText('Anjali Rao').isVisible(), `[${name}] other parent not prefilled with the wife`);
+  check(await page.getByRole('group', { name: 'Mother' }).getByText('Anjali Rao').isVisible(), `[${name}] other parent not prefilled with the wife`);
   await shot('5b-add-son');
   // Contacts come up as suggestions (fictitious contacts loaded through the emulator-only hook).
   await page.evaluate(() => window.__lineageTestContacts([
