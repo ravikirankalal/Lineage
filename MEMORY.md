@@ -318,6 +318,6 @@ Read this before changing code. Append new learnings at the bottom.
   `--init-script` that swaps repo.maven.apache.org for https://maven-central.storage-download.googleapis.com/maven2/
   (don't commit it; CI is fine). Android SDK from dl.google.com (cmdline-tools → platforms;android-36,
   build-tools;36.0.0) into the scratchpad.
-- Android versioning: `LINEAGE_VERSION_CODE` env → versionCode and versionName 1.0.N (CI: run_number + 1; local
+- Android versioning: `LINEAGE_VERSION_CODE` env → versionCode and versionName 1.0.N (CI: $((GITHUB_RUN_NUMBER + 1)) in the shell, since workflow expressions have no arithmetic; local
   builds default to 1). Groovy gotcha: write `versionName("1.0." + x)` with parentheses; without them Groovy
   calls `versionName("1.0.")` and adds to its null result ("Value is null").
