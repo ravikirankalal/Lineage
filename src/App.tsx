@@ -60,7 +60,7 @@ function Shell() {
   const map = useLocation().pathname === '/family';
   const tabsHidden = useBottomTabsHidden() && map;
   return (
-    <div className="min-h-dvh md:flex">
+    <div className="min-h-[calc(100dvh-var(--sat))] md:flex">
       <ScrollTop />
       <PullToRefresh enabled={isNativeApp() && !map} />
       {/* Sidebar (tablet / desktop) */}
@@ -121,7 +121,7 @@ function Shell() {
 }
 
 function Centered({ children }: { children: ReactNode }) {
-  return <div className="flex min-h-dvh flex-col items-center justify-center px-6 py-10 text-center">{children}</div>;
+  return <div className="flex min-h-[calc(100dvh-var(--sat))] flex-col items-center justify-center px-6 py-10 text-center">{children}</div>;
 }
 
 /** While Lineage starts: the logo, like the launch screen and the sign-in screen, so nothing jumps. */

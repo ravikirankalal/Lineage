@@ -140,7 +140,7 @@ function Editor({ initial, isNew }: { initial: Person; isNew: boolean }) {
         <datalist key={k} id={'dl-' + k}>{vals.map((v) => <option key={v} value={v} />)}</datalist>
       ))}
 
-      <div className="sticky top-0 z-20 -mx-4 mb-4 flex items-center gap-2 bg-stone-50/90 px-4 py-2 backdrop-blur dark:bg-stone-950/90 sm:-mx-6 sm:px-6">
+      <div className="sticky top-safe z-20 -mx-4 mb-4 flex items-center gap-2 bg-stone-50/90 px-4 py-2 backdrop-blur dark:bg-stone-950/90 sm:-mx-6 sm:px-6">
         <button className="icon-btn -ml-2" onClick={() => nav(-1)} aria-label="Back"><ArrowLeft size={20} /></button>
         <h1 className="flex-1 truncate text-lg font-semibold">{isNew ? (p.isMe ? 'About you' : 'New person') : 'Edit details'}</h1>
         <button className="btn-primary" onClick={save}>Save</button>

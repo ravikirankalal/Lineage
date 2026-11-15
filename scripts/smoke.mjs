@@ -40,6 +40,24 @@ async function run(name, viewport) {
   await page.getByPlaceholder('Find in tree').waitFor();
   await shot('2-tree');
   await page.goto(BASE + '#/'); await page.getByRole('button', { name: /Relatives \(/ }).click(); await page.getByRole('button', { name: /Relatives \(/, pressed: true }).waitFor(); await page.waitForFunction(() => document.querySelectorAll('section h3').length > 0);
+  if (page.viewportSize().width < 768) {
+    // The Android app draws under the status bar and hands its height over as --safe-area-inset-top
+    // (and the gesture bar as -bottom): the page keeps clear of both.
+    await page.evaluate(() => { const s = document.documentElement.style; s.setProperty('--safe-area-inset-top', '30px'); s.setProperty('--safe-area-inset-bottom', '20px'); });
+    const head = await page.getByRole('heading', { name: 'Family', exact: true }).boundingBox();
+    check(head && head.y >= 30, `[${name}] the page starts under the status bar (${head?.y})`);
+    const tabsPad = await page.evaluate(() => getComputedStyle(document.querySelector('nav.fixed')).paddingBottom);
+    check(tabsPad === '20px', `[${name}] the bottom tabs don't clear the gesture bar (${tabsPad})`);
+    await page.goto(BASE + '#/family');
+    await page.waitForSelector('.tree-world [data-key]');
+    await page.waitForTimeout(300);
+    const fit = await page.evaluate(() => ({ top: document.querySelector('.tree-viewport').getBoundingClientRect().top, over: document.scrollingElement.scrollHeight - innerHeight }));
+    check(fit.top >= 30 && fit.over <= 1, `[${name}] the tree doesn't fit below the status bar (${JSON.stringify(fit)})`);
+    await shot('1b-status-bar');
+    await page.evaluate(() => { const s = document.documentElement.style; s.removeProperty('--safe-area-inset-top'); s.removeProperty('--safe-area-inset-bottom'); });
+    await page.goto(BASE + '#/');
+    await page.getByRole('heading', { name: 'Family', exact: true }).waitFor();
+  }
   // One bar for views and filters; no "All" list (Relatives is the start).
   check(!(await page.getByRole('button', { name: 'All', exact: true }).count()), `[${name}] People still has an "All" filter`);
   check(!(await page.getByRole('button', { name: /Needs details/ }).count()), `[${name}] People still has a "Needs details" filter`);

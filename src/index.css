@@ -3,8 +3,17 @@
 @tailwind utilities;
 
 @layer base {
+  /* Phone status bar and gesture bar. The Android app draws edge to edge and hands the page their
+     heights as --safe-area-inset-* (Capacitor SystemBars; env() is 0 there); browsers use env(). */
+  :root {
+    --sat: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+    --sab: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+    --sar: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+  }
   html { -webkit-tap-highlight-color: transparent; }
-  body { @apply bg-stone-50 text-stone-900 antialiased dark:bg-stone-950 dark:text-stone-100; }
+  body { @apply bg-stone-50 text-stone-900 antialiased dark:bg-stone-950 dark:text-stone-100; padding-top: var(--sat); }
+  /* A solid strip behind the status bar, so content scrolled up never shows under its icons. */
+  body::before { content: ''; position: fixed; inset: 0 0 auto 0; height: var(--sat); z-index: 70; pointer-events: none; @apply bg-stone-50 dark:bg-stone-950; }
   :focus-visible { @apply outline-none ring-2 ring-brand-500/60 ring-offset-2 ring-offset-transparent; }
 }
 
@@ -24,7 +33,8 @@
 
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }
-.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+.pb-safe { padding-bottom: var(--sab); }
+.top-safe { top: var(--sat); }
 
 /* Print: only the page title and the tree, fitted to one landscape page (FamilyTree sets
    --print-transform from the layout bounds). App chrome, controls and overlays are hidden. */

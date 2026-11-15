@@ -157,7 +157,7 @@ export function PeoplePage() {
         </div>
       )}
 
-      <div className="sticky top-0 z-10 -mx-4 mb-3 bg-stone-50/90 px-4 pb-3 pt-1 backdrop-blur dark:bg-stone-950/90 sm:-mx-6 sm:px-6">
+      <div className="sticky top-safe z-10 -mx-4 mb-3 bg-stone-50/90 px-4 pb-3 pt-1 backdrop-blur dark:bg-stone-950/90 sm:-mx-6 sm:px-6">
         <div className="relative">
           <Search size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
           <input className="input bg-white pl-10 pr-10 ring-1 ring-stone-200 dark:bg-stone-900 dark:ring-stone-800" placeholder="Search names, places, college, looks, anything…"
