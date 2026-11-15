@@ -152,6 +152,7 @@ async function run(name, viewport) {
   await page.goto(BASE + '#/settings');
   const st = await body();
   for (const w of ['Download backup', 'Restore from backup', 'Sync now']) check(!st.includes(w), `[${name}] Settings still offers "${w}"`);
+  check(st.includes('Reload Lineage'), `[${name}] Settings has no "Reload Lineage"`);
   await shot('9-settings');
   // Sign out: back to the sign-in screen, no family shown.
   await page.getByRole('button', { name: 'Sign out' }).click();
