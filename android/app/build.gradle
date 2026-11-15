@@ -7,8 +7,9 @@ android {
         applicationId "app.lineage.family"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // CI sets LINEAGE_VERSION_CODE (the workflow run number) so each release installs as an update.
+        versionCode((System.getenv('LINEAGE_VERSION_CODE') ?: '1').toInteger())
+        versionName("1.0." + (System.getenv('LINEAGE_VERSION_CODE') ?: '0'))
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

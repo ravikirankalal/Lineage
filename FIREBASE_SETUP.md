@@ -222,9 +222,23 @@ skipped: Project settings → Your apps → Lineage Android → **Add fingerprin
 Until both are done, the app shows "Google sign-in isn't set up for the app yet" (or Google's
 "Developer console is not set up correctly").
 
-### 11.3 Building the APK on GitHub (optional)
+### 11.3 Releasing the app through GitHub
 `.github/workflows/android-apk.yml` builds the signed APK and publishes it as the **android-latest**
-release. Add two repository secrets (Settings → Secrets and variables → Actions):
-`ANDROID_KEYSTORE_BASE64` (the release keystore, base64) and `ANDROID_KEYSTORE_PASSWORD`. Always use
-the same keystore: its SHA-1 is the one registered above. Keep a copy of it somewhere safe; if it's
-lost, a new key needs a new fingerprint in Firebase and everyone must reinstall the app.
+release, so the download link never changes:
+<https://github.com/ravikirankalal/Lineage/releases/download/android-latest/lineage.apk>
+
+One-time setup (repository **Settings → Secrets and variables → Actions → New repository secret**):
+- `ANDROID_KEYSTORE_BASE64`: the whole contents of `lineage-release.jks.base64.txt`
+- `ANDROID_KEYSTORE_PASSWORD`: the contents of `password.txt`
+
+It runs by itself when `android/`, `capacitor.config.ts`, `package-lock.json` or the workflow change on
+`master`, and on demand from **Actions → Android app (APK) → Run workflow**. Each run gets a higher
+version number (1.0.<run+1>), so phones install it as an update over the old app.
+
+The SHA-1 in 11.1 belongs to the signing key, not to a build: as long as every APK is signed with this
+same key, it never has to be updated. Keep a copy of the key somewhere safe; if it's lost, a new key
+needs a new fingerprint in Firebase and everyone must uninstall and reinstall. (Play Store later: Google
+re-signs apps with its own key, so its SHA-1 is added once, from Play Console → App integrity.)
+
+Most changes don't need a new APK at all: the app loads the live site, so website deploys reach it
+straight away.
