@@ -25,3 +25,8 @@ Read STATE.md + MEMORY.md → pick the next PLAN.md item → delegate or impleme
 - Only when the change touches import/export, editing, merging, backup/restore or data handling, or before a
   big release: also `npm run qa` (the browser flows take a few minutes).
 - Only when sharing or permissions change: also `npm run test:rules`.
+
+## Deploys (owner's rule, 2026-11-15)
+- GitHub deploys every merge to master. Don't deploy from the session.
+- After merging, run `scripts/wait-deploy.sh <merge sha> <live build before>`. It follows the deploy
+  run and checks the live site once; don't rebuild locally to compare.
