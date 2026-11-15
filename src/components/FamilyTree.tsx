@@ -383,7 +383,7 @@ export function FamilyTree({
 
       {/* Top: Find + level picker + save. */}
       <div ref={overlay} data-no-pan className="pointer-events-none absolute inset-x-2 top-2 z-10 flex flex-col gap-2 print:hidden"
-        style={full ? { top: 'calc(8px + env(safe-area-inset-top))' } : undefined}>
+        style={full ? { top: 'calc(8px + var(--sat))' } : undefined}>
         <div className="flex flex-wrap items-start gap-2">
           <FindInTree candidates={candidates} onFind={onFind} />
           <LevelPicker level={level} onLevel={onLevel} />
@@ -396,9 +396,9 @@ export function FamilyTree({
       {/* Bottom-right controls, clear of the centre and of the phone's home indicator. */}
       <div data-no-pan className="map-glass absolute z-10 flex flex-col gap-1 rounded-2xl bg-white/90 p-1 shadow-card ring-1 ring-stone-200 backdrop-blur dark:bg-stone-800/90 dark:ring-stone-700 print:hidden"
         style={{
-          right: 'calc(10px + env(safe-area-inset-right))',
+          right: 'calc(10px + var(--sar))',
           // Map view on phones: the tabs float over the tree, so sit above them while they show.
-          bottom: full || (map && phoneTabs) ? `calc(${map && phoneTabs && !tabsHidden ? 68 : 10}px + env(safe-area-inset-bottom))` : 10,
+          bottom: full || (map && phoneTabs) ? `calc(${map && phoneTabs && !tabsHidden ? 68 : 10}px + var(--sab))` : 10,
           transition: 'bottom 200ms ease',
         }}>
         {!map && (
@@ -501,7 +501,10 @@ function useFillHeight(box: React.RefObject<HTMLDivElement | null>, edge = false
     const measure = () => {
       const el = box.current;
       if (!el) return;
-      setTop(Math.round(el.getBoundingClientRect().top + window.scrollY));
+      // Measured below the status-bar padding, which is added back live in the CSS (the app can report
+      // the status bar's height after this runs).
+      const pad = parseFloat(getComputedStyle(document.body).paddingTop) || 0;
+      setTop(Math.round(el.getBoundingClientRect().top + window.scrollY - pad));
       setWide(!!window.matchMedia?.('(min-width: 768px)').matches);
     };
     measure();
@@ -510,8 +513,8 @@ function useFillHeight(box: React.RefObject<HTMLDivElement | null>, edge = false
   }, [box]);
   // Bottom tabs are ~58px plus the safe area on phones; desktop keeps a small margin. In map view the
   // tree runs to the bottom of the screen and the phone tabs float over it (and hide when idle).
-  const reserve = edge ? '0px' : wide ? '24px' : 'calc(70px + env(safe-area-inset-bottom))';
-  return `max(360px, calc(100dvh - ${top ?? 200}px - ${reserve}))`;
+  const reserve = edge ? '0px' : wide ? '24px' : 'calc(70px + var(--sab))';
+  return `max(360px, calc(100dvh - ${top ?? 200}px - var(--sat) - ${reserve}))`;
 }
 
 function LevelPicker({ level, onLevel }: { level: TreeLevel; onLevel: (l: TreeLevel) => void }) {

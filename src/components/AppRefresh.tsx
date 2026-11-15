@@ -11,7 +11,7 @@ export function UpdateBar() {
   const ready = useAppUpdate(loaded);
   if (!ready) return null;
   return (
-    <div role="status" className="fixed inset-x-0 top-0 z-[60] flex justify-center px-3 pt-[calc(8px+env(safe-area-inset-top))] print:hidden">
+    <div role="status" className="fixed inset-x-0 top-0 z-[60] flex justify-center px-3 pt-[calc(8px+var(--sat))] print:hidden">
       <div className="flex items-center gap-3 rounded-full bg-stone-900 py-1.5 pl-4 pr-1.5 text-sm text-white shadow-lg dark:bg-stone-100 dark:text-stone-900">
         <span>A new version of Lineage is ready</span>
         <button type="button" onClick={reloadApp} className="rounded-full bg-brand-600 px-3 py-1.5 font-semibold text-white hover:bg-brand-700">Reload</button>
@@ -63,7 +63,7 @@ export function PullToRefresh({ enabled }: { enabled: boolean }) {
   if (!enabled || pull < 8) return null;
   const armed = pull >= PULL;
   return (
-    <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 z-[60] flex justify-center" style={{ transform: `translateY(${pull - 40}px)` }}>
+    <div aria-hidden className="pointer-events-none fixed inset-x-0 top-safe z-[60] flex justify-center" style={{ transform: `translateY(${pull - 40}px)` }}>
       <div className={`flex h-10 items-center gap-2 rounded-full px-3 text-sm font-medium shadow-lg ring-1 ${armed ? 'bg-brand-600 text-white ring-brand-600' : 'bg-white text-stone-600 ring-stone-200 dark:bg-stone-800 dark:text-stone-200 dark:ring-stone-700'}`}>
         <RotateCw size={18} style={{ transform: `rotate(${pull * 3}deg)` }} />
         {armed ? 'Release to reload' : 'Pull to reload'}
