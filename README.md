@@ -46,7 +46,7 @@ with the relatives you choose. The tree lives in your Google account (Firebase),
 ## Android app
 
 `android/` is a Capacitor app: a native shell around the live site (so website updates reach it
-without reinstalling), with Android's own Google sign-in and **read-only** access to the phone's
+without reinstalling; the app picks up a new version when you come back to it, or pull down to reload), with Android's own Google sign-in and **read-only** access to the phone's
 contacts, which show up as suggestions when adding a relative. Package `app.lineage.family`.
 Setup and signing: [FIREBASE_SETUP.md › Android app](FIREBASE_SETUP.md#11-android-app). Builds:
 `.github/workflows/android-apk.yml` (release **android-latest**), or locally with the Android SDK:

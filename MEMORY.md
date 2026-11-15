@@ -330,3 +330,9 @@ Read this before changing code. Append new learnings at the bottom.
   (fade lines 250 → stack 650 → slide 550 ms), fits the wall in view, and
   `.tree-edges, .tree-bands` opacity. While not 'open', `.tree-world` has pointer-events none (panning still works).
   A layout change clears the inline styles. Print CSS already forces transforms off.
+
+## App updates (2026-11-15)
+- The Android WebView never reloads by itself, so new deploys only reach a running app through `useAppUpdate` (lib/appUpdate.ts): it compares the running `assets/index-*.js` with the one in a fresh, no-store fetch of `./`. Hosting already serves index.html with `no-cache`.
+- It's mounted in `App` above `Gate`, so it also runs on the sign-in screen.
+- Never auto-reload while editing (`busyEditing`: `/edit` or `/new` route, or any `[role="dialog"]`); show the bar instead.
+- Pull to refresh is native-only and off on `/family` (dragging pans the tree). It's passive touch listeners on window, so it never blocks scrolling.

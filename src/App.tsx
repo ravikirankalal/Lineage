@@ -3,6 +3,8 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { HashRouter, Link, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { CloudNotice, GoogleButton, InviteBanner, SharedSpaceBanner, SpaceSwitcher } from './components/Cloud';
 import { Empty } from './components/Empty';
+import { PullToRefresh, UpdateBar } from './components/AppRefresh';
+import { isNativeApp } from './lib/native';
 import { useBottomTabsHidden } from './components/tree/bottomTabs';
 import { CloudProvider, useCanEdit, useCloud } from './lib/cloud/CloudProvider';
 import { DataProvider } from './lib/data';
@@ -59,6 +61,7 @@ function Shell() {
   return (
     <div className="min-h-dvh md:flex">
       <ScrollTop />
+      <PullToRefresh enabled={isNativeApp() && !map} />
       {/* Sidebar (tablet / desktop) */}
       <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-stone-200/70 bg-white/60 px-3 py-5 backdrop-blur dark:border-stone-800 dark:bg-stone-900/40 md:flex">
         <div className="mb-6 flex items-center gap-2.5 px-3">
@@ -156,6 +159,7 @@ export function App() {
     <CloudProvider>
       <DataProvider>
         <HashRouter>
+          <UpdateBar />
           <Gate />
         </HashRouter>
       </DataProvider>

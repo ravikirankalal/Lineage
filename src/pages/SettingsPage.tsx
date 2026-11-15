@@ -1,9 +1,10 @@
-import { FlaskConical, Languages, ShieldCheck } from 'lucide-react';
+import { FlaskConical, Languages, RotateCw, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
 import { AccountCard } from '../components/AccountCard';
 import { useCloud, usePermissions } from '../lib/cloud/CloudProvider';
 import { useData } from '../lib/data';
 import { loadDemo } from '../lib/demo';
+import { reloadApp, runningBuild } from '../lib/appUpdate';
 import { KIN_LANGUAGES } from '../lib/kinshipTerms';
 import { useKinLang } from '../lib/prefs';
 
@@ -53,6 +54,9 @@ export function SettingsPage() {
         </div>
       </section>
 
+      <section className="card mt-4">
+        <Row icon={<RotateCw size={19} />} title="Reload Lineage" desc={`Gets the latest version${runningBuild() ? ` · build ${runningBuild()!.slice(6)}` : ''}`} onClick={reloadApp} />
+      </section>
       {isOwner && canEdit && people.length === 0 && (
         <section className="card mt-4">
           <Row icon={<FlaskConical size={19} />} title="Try a sample family" desc="Loads a fictional family to explore the app" onClick={async () => { await loadDemo(); setMsg('Sample family loaded. Have a look at People and the Family Tree.'); }} />
