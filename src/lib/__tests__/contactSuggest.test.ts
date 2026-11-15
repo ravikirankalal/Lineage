@@ -42,3 +42,19 @@ describe('contact suggestions', () => {
     expect(p).toMatchObject({ firstName: 'Kiran', lastName: 'Das', gender: 'male', source: 'manual', phones: [{ label: 'mobile', value: '90000 44444' }] });
   });
 });
+
+describe('people found in contacts', () => {
+  it('matches by phone number or exact full name', async () => {
+    const { matchContacts } = await import('../contactSuggest');
+    const c = (first: string, last: string, phones: string[] = []): ContactSuggestion =>
+      ({ key: first, firstName: first, lastName: last, phones, emails: [], gender: 'unknown', from: 'google' });
+    const people = [
+      emptyPerson({ id: 'a', firstName: 'Asha', lastName: 'Rao', phones: [{ label: 'mobile', value: '+91 98765 43210' }] }),
+      emptyPerson({ id: 'b', firstName: 'Bala', lastName: 'Rao' }),
+      emptyPerson({ id: 'c', firstName: 'Chitra', lastName: 'Rao' }),
+    ];
+    const m = matchContacts(people, [c('Ash', 'R', ['98765 43210']), c('bala', 'rao'), c('Chitra', 'Reddy')]);
+    expect([...m.keys()].sort()).toEqual(['a', 'b']);
+    expect(matchContacts(people, []).size).toBe(0);
+  });
+});

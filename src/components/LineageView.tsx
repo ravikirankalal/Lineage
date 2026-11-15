@@ -13,6 +13,7 @@ import { KinLabel, useRegionalTerm } from './KinLabel';
 import { PersonSheet } from './tree/PersonSheet';
 import type { CardInfo } from './tree/TreeCard';
 import { useTreeParams } from './tree/useTreeParams';
+import { useContactMatches } from '../lib/contactMatches';
 import { markVisited, wasVisited } from './tree/viewMemory';
 
 /** The family tree for any person. (Relatives and lines live on the People page.) */
@@ -52,6 +53,7 @@ export function LineageView({ ego, egoLabel = 'You', map = false }: { ego: Perso
   const path = useMemo(() => (pathIds ? new Set(pathIds) : undefined), [pathIds]);
   const pathEdges = useMemo(() => (pathIds ? pathEdgeKeys(layout.edges, pathIds) : undefined), [pathIds, layout]);
 
+  const inContacts = useContactMatches();
   // Card text for every node, computed once per layout/labels (cards are memoised on it).
   const infos = useMemo(() => {
     const m = new Map<string, CardInfo>();
@@ -62,11 +64,11 @@ export function LineageView({ ego, egoLabel = 'You', map = false }: { ego: Perso
       const label = isEgo ? egoLabel : labels.get(p.id)?.label;
       m.set(n.key, {
         person: p, label, term: isEgo ? undefined : termFor(ego.id, p.id, label),
-        isFocus: n.role === 'focus' && !n.dupOf, isMe: !!me && p.id === me.id,
+        isFocus: n.role === 'focus' && !n.dupOf, isMe: !!me && p.id === me.id, inContacts: inContacts.has(p.id),
       });
     }
     return m;
-  }, [layout, byId, labels, ego.id, egoLabel, termFor, me]);
+  }, [layout, byId, labels, ego.id, egoLabel, termFor, me, inContacts]);
   const cardInfo = useCallback((n: TreeNode) => infos.get(n.key), [infos]);
 
   const candidates = useMemo<FindCandidate[]>(() => {

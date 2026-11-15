@@ -4,6 +4,7 @@ import { CARD, type TreeNode } from '../../lib/graph/contract';
 import { age, formatPlace, fullName, lifespan } from '../../lib/person';
 import type { Person } from '../../lib/types';
 import { Avatar } from '../Avatar';
+import { PersonMarkers } from '../PersonMarkers';
 import type { Detail } from './detail';
 
 /** Short name for a card: nickname (if short) or first name, plus last initial. "Ravi R." */
@@ -20,6 +21,8 @@ export interface CardInfo {
   isMe: boolean;
   /** Highlight state: in the "how are we related" path, dimmed (not in it), or neutral. */
   mark?: 'path' | 'dim';
+  /** Also in the user's contacts (marker on the card). */
+  inContacts?: boolean;
 }
 
 /** One person card at CARD size, positioned in layout units. Keyed by node.key for FLIP. */
@@ -91,6 +94,7 @@ export const TreeCard = memo(function TreeCard({ node, info, onTap, onToggle, de
           Me
         </span>
       )}
+      <PersonMarkers person={p} inContacts={info.inContacts} size={20} className="pointer-events-none absolute -bottom-2.5 left-3" />
       {badge && (
         <span className={`pointer-events-none absolute -bottom-2 right-3 rounded-full px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide ring-2 ring-stone-100 dark:ring-stone-900 ${focus ? 'bg-brand-800 text-white' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200'}`}>
           {badge}

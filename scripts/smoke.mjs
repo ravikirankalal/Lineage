@@ -270,6 +270,21 @@ async function run(name, viewport) {
   await page.getByText('Smoke Tester').first().waitFor();
   await shot('6-added');
 
+  // People page: "Found in your contacts" (Anjali is one of the test contacts), with markers for
+  // people in your contacts and for those who have died; the tree cards carry the same markers.
+  await page.goto(BASE + '#/');
+  const found = page.getByRole('region', { name: 'Found in your contacts' });
+  await found.getByText('Anjali Rao').waitFor();
+  check(await found.locator('[data-marker="contact"]').count() > 0, `[${name}] no contact marker in Found in your contacts`);
+  check(await page.locator('[data-marker="deceased"]').count() > 0, `[${name}] no deceased marker in the People list`);
+  await shot('6b-found-in-contacts');
+  await page.goto(BASE + '#/family');
+  await page.waitForSelector('.tree-world [data-key]');
+  check(await page.locator('.tree-world [data-marker="contact"]').count() > 0, `[${name}] no contact marker on tree cards`);
+  check(await page.locator('.tree-world [data-marker="deceased"]').count() > 0, `[${name}] no deceased marker on tree cards`);
+  await shot('6c-tree-markers');
+  await page.goto(BASE + '#/');
+
   // Saved in the cloud, not the page: still there after a reload.
   await page.reload();
   await page.getByText('Smoke Tester').first().waitFor();
