@@ -296,7 +296,7 @@ export function FamilyTree({
   return (
     <div
       ref={box}
-      className={`tree-viewport touch-none select-none overflow-hidden ${full
+      className={`tree-viewport touch-none select-none overflow-hidden ${map ? 'tree-map ' : ''}${full
         ? 'fixed inset-0 z-[45] bg-stone-100 dark:bg-stone-900'
         : map ? 'relative bg-stone-100/70 dark:bg-stone-900/60'
         : 'relative rounded-2xl bg-stone-100/70 ring-1 ring-stone-200/70 dark:bg-stone-900/60 dark:ring-stone-800'}`}
@@ -333,7 +333,7 @@ export function FamilyTree({
       </div>
 
       {/* Bottom-right controls, clear of the centre and of the phone's home indicator. */}
-      <div data-no-pan className="absolute z-10 flex flex-col gap-1 rounded-2xl bg-white/90 p-1 shadow-card ring-1 ring-stone-200 backdrop-blur dark:bg-stone-800/90 dark:ring-stone-700 print:hidden"
+      <div data-no-pan className="map-glass absolute z-10 flex flex-col gap-1 rounded-2xl bg-white/90 p-1 shadow-card ring-1 ring-stone-200 backdrop-blur dark:bg-stone-800/90 dark:ring-stone-700 print:hidden"
         style={{
           right: 'calc(10px + env(safe-area-inset-right))',
           // Map view on phones: the tabs float over the tree, so sit above them while they show.
@@ -453,7 +453,7 @@ function LevelPicker({ level, onLevel }: { level: TreeLevel; onLevel: (l: TreeLe
   ];
   return (
     <div role="radiogroup" aria-label="How much of the family to show"
-      className="pointer-events-auto order-last inline-flex w-full rounded-xl bg-white/95 p-1 shadow-card ring-1 ring-stone-200 backdrop-blur dark:bg-stone-800/95 dark:ring-stone-700 sm:order-none sm:w-auto">
+      className="map-glass pointer-events-auto order-last inline-flex w-full rounded-xl bg-white/95 p-1 shadow-card ring-1 ring-stone-200 backdrop-blur dark:bg-stone-800/95 dark:ring-stone-700 sm:order-none sm:w-auto">
       {opts.map((o) => (
         <button key={o.key} type="button" role="radio" aria-checked={level === o.key} title={o.hint} onClick={() => onLevel(o.key)}
           className={`min-h-[34px] flex-1 rounded-lg px-3 text-[13px] font-medium transition sm:flex-none ${
@@ -518,7 +518,7 @@ function OrientButton({ orient, onOrient }: { orient: TreeOrient; onOrient: (o: 
   const label = `${ORIENT_LABEL[next]} (now: ${ORIENT_LABEL[orient].replace('Layout: ', '')})`;
   return (
     <button type="button" data-orient={orient}
-      className="icon-btn pointer-events-auto bg-white/95 shadow-card ring-1 ring-stone-200 dark:bg-stone-800/95 dark:ring-stone-700"
+      className="map-glass icon-btn pointer-events-auto bg-white/95 shadow-card ring-1 ring-stone-200 dark:bg-stone-800/95 dark:ring-stone-700"
       aria-label={label} title={label} onClick={() => onOrient(next)}>
       {next === 'right' ? <ArrowRightFromLine size={18} /> : next === 'down' ? <ArrowDownFromLine size={18} /> : <Move size={18} />}
     </button>
@@ -571,7 +571,7 @@ function FindInTree({ candidates, onFind }: { candidates: FindCandidate[]; onFin
   return (
     <div className="pointer-events-auto relative z-20 min-w-0 flex-1 sm:max-w-xs">
       <input
-        className="input h-10 bg-white/95 py-2 pl-9 pr-9 shadow-card ring-1 ring-stone-200 backdrop-blur dark:bg-stone-800/95 dark:ring-stone-700"
+        className="map-glass input h-10 bg-white/95 py-2 pl-9 pr-9 shadow-card ring-1 ring-stone-200 backdrop-blur dark:bg-stone-800/95 dark:ring-stone-700"
         placeholder="Find in tree" aria-label="Find a person in the tree" value={q}
         onChange={(e) => { setQ(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}

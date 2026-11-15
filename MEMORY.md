@@ -166,7 +166,7 @@ Read this before changing code. Append new learnings at the bottom.
   one column further in (first kid level with the parent), recursively down to the focus's column (there:
   partners below them, as for siblings — owner: every spouse of someone in your generation is in that band; no kids). Line ancestors are centred on their children's group and the row range grows to fit them.
   Grandmothers' siblings stay out of the main tree (owner): only the father's line continues, as before.
-- (2026-11-14) **Couples' children collapsed by default** (owner; "for now only ancestors"): in the cross layout
+- (2026-11-14) **Couples' children collapsed by default** (owner; "for now only ancestors"; since 2026-11-15 NOT in Everyone, see below): in the cross layout
   every ancestor's brother/sister (and their descendants down to the focus's column) with children gets a
   +/- button; children start hidden at EVERY level, the person id in `expanded` (URL `open=`) opens them.
   Line ancestors' children always show. Collapsed people come back as `TreeLayout.hidden`; Everyone's
@@ -283,3 +283,10 @@ Read this before changing code. Append new learnings at the bottom.
   drag's trailing click doesn't count. Leaving the page shows them again. In map view the tree is full height and the
   zoom controls move up while the tabs show. Browser tests that tap tree cards on phones after 3 s idle must expect
   the first tap to only show the tabs.
+- **Everyone is never folded (2026-11-15, owner):** crossLayout `kidsOpen(id)` = level 'everyone' or opened; used by
+  both `bandRows` and `placeBand` (they must agree, or rows overlap). `completeEveryone` ends with `allOpen()`, which
+  strips `expandable`/`expanded` from every card, because the stacked extra trees' "+" only pointed at people
+  already drawn elsewhere. Extended/Immediate still start folded.
+- **See-through map controls (2026-11-15, owner):** add `map-glass` to a control and it turns 30% transparent, without
+  blur or shadow, but only inside `.tree-map` (FamilyTree `map`) or on `nav.map-glass` (App's tabs on /family). Dark
+  mode is `media`, so the dark rule is a `prefers-color-scheme` media query.

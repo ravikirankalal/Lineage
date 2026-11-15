@@ -46,3 +46,19 @@
   .tree-card .tree-text > div:first-child { color: #1c1917 !important; }
   .tree-card-focus { box-shadow: 0 0 0 3px #266955 !important; }
 }
+
+/* My Family map: the controls and tabs are see-through, so the tree shows behind them (owner, 2026-11-15).
+   Text gets a soft halo so it stays readable over cards and lines. */
+.tree-map .map-glass, nav.map-glass {
+  background-color: rgb(255 255 255 / 0.3) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+  text-shadow: 0 0 3px rgb(255 255 255 / 0.95), 0 0 1px rgb(255 255 255);
+}
+@media (prefers-color-scheme: dark) {
+  .tree-map .map-glass, nav.map-glass {
+    background-color: rgb(28 25 23 / 0.3) !important;
+    text-shadow: 0 0 3px rgb(0 0 0 / 0.9), 0 0 1px rgb(0 0 0);
+  }
+}

@@ -472,19 +472,17 @@ describe('layoutFamily', () => {
     }
     fam('dgf', 'dgm', 'dad'); fam('mgf', 'mgm', 'mom');
     const G = f.graph();
-    // Collapsed at first: the grandfathers' brothers and sisters show, their children don't.
-    const shut = lay(G, 'me', 'everyone', [], false, 'cross');
-    checkGeometry(shut, 'great-uncles shut');
-    expect(shut.nodes.some((n) => n.personId === 'dgfBroKid' || n.personId === 'mgfSisKid')).toBe(false);
-    expect(shut.nodes.find((n) => n.personId === 'dgfBro' && !n.dupOf)?.expandable?.down).toBe(true);
+    // Everyone opens every family by itself (owner, 2026-11-15): nothing to expand.
+    const all = lay(G, 'me', 'everyone', [], false, 'cross');
+    checkGeometry(all, 'great-uncles, nothing opened');
+    for (const id of ['dgfBroKid', 'dgfBroGk', 'mgfSisKid']) expect(all.nodes.some((n) => n.personId === id), id).toBe(true);
+    expect(all.nodes.find((n) => n.personId === 'dgfBro' && !n.dupOf)?.expandable?.down).toBeFalsy();
+    expect(all.hidden ?? []).toEqual([]);
     const open = ['dgfBro', 'dgfBroKid', 'dgfSis', 'mgfBro', 'mgfBroKid', 'mgfSis'];
     const L = lay(G, 'me', 'everyone', open, false, 'cross');
     checkGeometry(L, 'great-uncles');
-    // Opening a great-uncle shows his children; each child with children has its own button.
-    const half = lay(G, 'me', 'everyone', ['dgfBro'], false, 'cross');
-    expect(half.nodes.some((n) => n.personId === 'dgfBroKid')).toBe(true);
-    expect(half.nodes.some((n) => n.personId === 'dgfBroGk')).toBe(false);
-    expect(half.nodes.find((n) => n.personId === 'dgfBroKid')?.expandable?.down).toBe(true);
+    // In Everyone, opening cards changes nothing: the layout is the same.
+    expect(L.nodes.map((n) => n.key).sort()).toEqual(all.nodes.map((n) => n.key).sort());
     const main = (id: string) => L.nodes.find((n) => n.personId === id && !n.dupOf && !n.key.includes('/'));
     for (const [gf, dir] of [['dgf', -1], ['mgf', 1]] as const) {
       const at = (id: string) => main(gf + id)!;
@@ -605,6 +603,17 @@ describe('layoutFamily', () => {
     expect(L.nodes.filter((n) => n.personId === 'me' && !n.dupOf)[0].key.includes('/')).toBe(false); // I stay main in the main tree
   });
 
+  it('Everyone has no folded cards: no card offers to show or hide more, in every layout', () => {
+    for (const seed of [1, 3, 7]) {
+      const G = generatedFamily(150, seed);
+      for (const focus of ['p13', 'p40', 'p90']) for (const orient of ['cross', 'down', 'right'] as const) {
+        const L = lay(G, focus, 'everyone', [], false, orient);
+        expect(L.nodes.filter((n) => n.expandable || n.expanded).map((n) => n.key), `seed ${seed} ${focus} ${orient}`).toEqual([]);
+        expect(L.hidden ?? [], `seed ${seed} ${focus} ${orient}`).toEqual([]);
+      }
+    }
+  });
+
   it('Everyone draws every person in the family, in every layout', () => {
     for (const seed of [1, 3, 7, 11]) {
       const G = generatedFamily(150, seed);
@@ -656,10 +665,13 @@ describe('layoutFamily', () => {
     kids('cousin', null, 'cousinKid');
     kids('greatUncle', null, 'dadsCousin');
     const G = f.graph();
-    // Collapsed: the uncle's and great-uncle's children aren't drawn, not even in the trees below.
-    const shut = lay(G, 'me', 'everyone', [], false, 'cross');
-    checkGeometry(shut, 'everyone shut');
-    for (const id of ['cousin', 'dadsCousin']) expect(shut.nodes.some((n) => n.personId === id), id).toBe(false);
+    // Everyone: the uncle's and great-uncle's children are drawn without opening anything.
+    const all = lay(G, 'me', 'everyone', [], false, 'cross');
+    checkGeometry(all, 'everyone, nothing opened');
+    for (const id of ['cousin', 'dadsCousin']) expect(all.nodes.some((n) => n.personId === id), id).toBe(true);
+    // Other levels still start with those families folded.
+    const folded = lay(G, 'me', 'extended', [], false, 'cross');
+    expect(folded.nodes.some((n) => n.personId === 'cousin'), 'extended folds the cousin').toBe(false);
     const L = lay(G, 'me', 'everyone', ['uncle', 'greatUncle'], false, 'cross');
     checkGeometry(L, 'everyone trees');
     expect(new Set(L.nodes.map((n) => n.key)).size).toBe(L.nodes.length); // keys stay unique

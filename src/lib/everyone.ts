@@ -93,11 +93,11 @@ export function completeEveryone(graph: FamilyGraph, opts: TreeOptions, main: Tr
     L.regions = [{ side: 'middle', x0: L.bounds.minX - SIDE, x1: L.bounds.maxX + SIDE, columns: [], label: kin ? `${name(x)} · ${kin}` : `${name(x)}’s family` }];
     add(L, x);
   }
-  if (parts.length === 1) return main;
+  if (parts.length === 1) return allOpen(main);
   const out = stack(parts);
   if (parts.some((p) => p.layout.secondCousins)) out.secondCousins = true;
   const left = [...hidden].filter((id) => !shown.has(id));
-  return left.length ? { ...out, hidden: left } : out;
+  return allOpen(left.length ? { ...out, hidden: left } : out);
 
   function scan(i: number) {
     if (!cross) return;
@@ -241,4 +241,12 @@ export function everyoneIds(graph: FamilyGraph, focus: string, cross: boolean, k
     }
   }
   return order;
+}
+
+/**
+ * Everyone draws the whole family, so no card offers to open or close more (owner, 2026-11-15): the
+ * extra trees' own "+" buttons would only point at people already drawn elsewhere.
+ */
+function allOpen(L: TreeLayout): TreeLayout {
+  return { ...L, nodes: L.nodes.map((n) => (n.expandable || n.expanded ? { ...n, expandable: undefined, expanded: undefined } : n)) };
 }
