@@ -5,7 +5,8 @@ import { Avatar } from '../components/Avatar';
 import { savePerson } from '../lib/db';
 import { usePermissions } from '../lib/cloud/CloudProvider';
 import { useData } from '../lib/data';
-import { emptyPerson } from '../lib/person';
+import { emptyPerson, phoneKey } from '../lib/person';
+import { ContactNumberPicker } from '../components/ContactNumberPicker';
 import type { Gender, Person, Place } from '../lib/types';
 
 export function PersonEditPage() {
@@ -214,7 +215,13 @@ function Editor({ initial, isNew }: { initial: Person; isNew: boolean }) {
         </Section>
 
         <Section title="Contact">
-          <LVList label="Phone" items={p.phones} onChange={(v) => set('phones', v)} type="tel" defaultLabel="mobile" />
+          <LVList label="Phone" items={p.phones} onChange={(v) => set('phones', v)} type="tel" defaultLabel="mobile"
+            extra={<ContactNumberPicker name={[p.firstName, p.lastName].filter(Boolean).join(' ')} onPick={(n) => {
+              // Fill the first empty row, else add one; a number already listed isn't added twice.
+              if (p.phones.some((x) => x.value.trim() && phoneKey(x.value) === phoneKey(n))) return;
+              const empty = p.phones.findIndex((x) => !x.value.trim());
+              set('phones', empty >= 0 ? p.phones.map((x, i) => (i === empty ? { ...x, value: n } : x)) : [...p.phones, { label: 'mobile', value: n }]);
+            }} />} />
           <LVList label="Email" items={p.emails} onChange={(v) => set('emails', v)} type="email" defaultLabel="personal" />
         </Section>
 
@@ -305,7 +312,9 @@ function AddBtn({ onClick, children }: { onClick: () => void; children: ReactNod
   );
 }
 
-function LVList({ label, items, onChange, type, defaultLabel }: {
+function LVList({ label, items, onChange, type, defaultLabel, extra }: {
+  /** Shown beside "Add …" (e.g. From contacts). */
+  extra?: ReactNode;
   label: string;
   items: { label: string; value: string }[];
   onChange: (v: { label: string; value: string }[]) => void;
@@ -321,7 +330,10 @@ function LVList({ label, items, onChange, type, defaultLabel }: {
           <button className="icon-btn shrink-0 text-stone-400 hover:text-red-600" onClick={() => onChange(items.filter((_, j) => j !== i))} aria-label="Remove"><Trash2 size={17} /></button>
         </div>
       ))}
-      <AddBtn onClick={() => onChange([...items, { label: defaultLabel, value: '' }])}>Add {label.toLowerCase()}</AddBtn>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <AddBtn onClick={() => onChange([...items, { label: defaultLabel, value: '' }])}>Add {label.toLowerCase()}</AddBtn>
+        {extra}
+      </div>
     </div>
   );
 }
