@@ -61,6 +61,7 @@ async function run(name, viewport) {
   // One bar for views and filters; no "All" list (Relatives is the start).
   check(!(await page.getByRole('button', { name: 'All', exact: true }).count()), `[${name}] People still has an "All" filter`);
   check(!(await page.getByRole('button', { name: /Needs details/ }).count()), `[${name}] People still has a "Needs details" filter`);
+  check(!(await page.getByLabel('Add person').count()), `[${name}] Family page still offers adding an unconnected person`);
   check(await page.getByRole('toolbar', { name: 'Views and filters' }).getByRole('button', { name: /Lines/ }).count() === 1, `[${name}] views not in the one bar`);
   // The pills' outlines aren't clipped by the scrolling bar (at least 1px clear above and below).
   const clipped = await page.evaluate(() => {
@@ -281,6 +282,7 @@ async function run(name, viewport) {
   const order = ['PARENTS', 'SPOUSE', 'CHILDREN', 'BIRTHDAY', 'BROTHERS AND SISTERS', 'EXTENDED FAMILY'].map(at);
   check(order.every((i, k) => i >= 0 && (k === 0 || i > order[k - 1])), `[${name}] profile order wrong (${order.join(', ')})`);
   for (const g of ['FRIENDS', 'COLLEAGUES', 'SAME CITY', 'STUDIED AT THE SAME PLACE', 'CONNECTIONS']) check(!prof.toUpperCase().includes(g), `[${name}] profile still shows ${g}`);
+  check(!(await page.getByRole('link', { name: /^(Call|Text)$/ }).count()), `[${name}] profile still has Call / Text buttons`);
   await shot('5-profile');
 
   // Add a relative through the sheet (family choices only).

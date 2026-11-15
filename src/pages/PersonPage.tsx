@@ -1,5 +1,5 @@
 import {
-  ArrowLeft, Briefcase, Cake, GitBranch, GraduationCap, Home, Mail, MapPin, Merge, MessageCircle, Pencil, Phone, Plus,
+  ArrowLeft, Briefcase, Cake, GitBranch, GraduationCap, Home, Mail, MapPin, Merge, Pencil, Phone, Plus,
   Sparkles, Trash2, Users, X,
 } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
@@ -43,7 +43,6 @@ export function PersonPage() {
 
   const a = age(p);
   const missing = missingDetails(p);
-  const phone = p.phones[0]?.value;
   const total = groups.reduce((s, g) => s + g.items.length, 0);
 
   return (
@@ -70,8 +69,6 @@ export function PersonPage() {
         {toMe?.path && <div className="mt-1 text-sm text-stone-500">{toMe.path}</div>}
 
         <div className="mt-5 flex gap-2">
-          {phone && <a href={`tel:${phone}`} className="btn-secondary"><Phone size={16} /> Call</a>}
-          {phone && <a href={`sms:${phone}`} className="btn-secondary"><MessageCircle size={16} /> Text</a>}
           {hasFamily
             ? <Link to={`/people/${p.id}/tree`} className="btn-secondary"><GitBranch size={16} /> Family tree</Link>
             : canEdit && <button type="button" className="btn-ghost text-stone-500 dark:text-stone-400" onClick={() => setAdding(true)}><Plus size={16} /> Add family</button>}

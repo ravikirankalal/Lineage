@@ -1,4 +1,4 @@
-import { ArrowDown, Cake, Contact, FlaskConical, List, Plus, Search, UserPlus, Users, X } from 'lucide-react';
+import { ArrowDown, Cake, Contact, FlaskConical, List, Search, UserPlus, Users, X } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Avatar } from '../components/Avatar';
@@ -22,7 +22,7 @@ type Tab = 'relatives' | 'lines' | 'contacts' | `tag:${string}`;
 export function PeoplePage() {
   const { people, graph, me, loaded } = useData();
   const nav = useNavigate();
-  const { canEdit, isOwner, isShared } = usePermissions();
+  const { isOwner, isShared } = usePermissions();
   const [q, setQ] = useState('');
   const [sort, setSort] = useState<'name' | 'recent'>('name');
   // The tab lives in the URL (?view=relatives|lines|contacts|tag:x), so Back returns to it.
@@ -78,9 +78,8 @@ export function PeoplePage() {
         <SpaceSwitcher className="mb-4 md:hidden" />
         <div className="card">
           {isShared ? (
-            <Empty icon={<Users size={26} />} title="No one here yet"
-              action={canEdit ? <Link to="/people/new" className="btn-primary"><UserPlus size={18} /> Add a relative</Link> : undefined}>
-              {canEdit ? 'This shared family is empty so far. Add the first relative.' : 'The family shared with you is empty so far. People appear here as soon as the owner adds them.'}
+            <Empty icon={<Users size={26} />} title="No one here yet">
+              The family shared with you is empty so far. People appear here as soon as the owner adds them.
             </Empty>
           ) : <Empty icon={<Users size={26} />} title="Start with the people you know"
             action={
@@ -95,13 +94,6 @@ export function PeoplePage() {
       </div>
     );
   }
-
-  const addButton = canEdit && (
-    <Link to="/people/new" aria-label="Add person"
-      className="fixed bottom-24 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-900/20 transition hover:bg-brand-700 active:scale-95 md:bottom-8 md:right-8">
-      <Plus size={26} />
-    </Link>
-  );
 
   const pickContacts = () => { if (gc.status !== 'ready' && gc.status !== 'loading') void (isNativeApp() ? loadNativeContacts() : loadGoogleContacts()); };
   const chips: { key: Tab; label: string; icon?: ReactNode; onPick?: () => void }[] = [
@@ -137,9 +129,9 @@ export function PeoplePage() {
       <SpaceSwitcher className="mb-4 md:hidden" />
 
       {!me && !isShared && (
-        <Link to="/people/new?me=1" className="mb-4 flex items-center gap-3 rounded-2xl bg-brand-50 p-4 text-sm text-brand-800 ring-1 ring-brand-100 dark:bg-brand-900/30 dark:text-brand-200 dark:ring-brand-800">
+        <Link to="/family" className="mb-4 flex items-center gap-3 rounded-2xl bg-brand-50 p-4 text-sm text-brand-800 ring-1 ring-brand-100 dark:bg-brand-900/30 dark:text-brand-200 dark:ring-brand-800">
           <UserPlus size={20} className="shrink-0" />
-          <span><b>Add yourself</b> so Lineage can show how everyone is related to you.</span>
+          <span><b>Show which one is you</b> so Lineage can show how everyone is related to you.</span>
         </Link>
       )}
 
@@ -215,7 +207,6 @@ export function PeoplePage() {
         </div>
       ))}
 
-      {addButton}
     </div>
   );
 }
