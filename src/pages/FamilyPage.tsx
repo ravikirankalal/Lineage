@@ -1,6 +1,6 @@
 import { GitBranch, UserPlus } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { ShareLink, SpaceSwitcher } from '../components/Cloud';
 import { Empty } from '../components/Empty';
 import { LineageView } from '../components/LineageView';
@@ -18,6 +18,10 @@ export function FamilyPage() {
   const { activeSpace } = useCloud();
   const stats = useMemo(() => (me ? lineageStats(graph, me.id, relativesOf(graph, me.id)) : undefined), [graph, me]);
   const phone = useIsPhone();
+  // Relatives and Lines moved to the People page: send old links there.
+  const [sp] = useSearchParams();
+  const oldTab = sp.get('tab');
+  if (oldTab === 'relatives' || oldTab === 'lines') return <Navigate to={`/people?view=${oldTab}`} replace />;
   if (!loaded) return null;
 
   return (

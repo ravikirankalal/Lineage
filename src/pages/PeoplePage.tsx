@@ -1,9 +1,10 @@
-import { Cake, FlaskConical, Plus, Search, UserPlus, Users, X } from 'lucide-react';
+import { ArrowDown, Cake, FlaskConical, List, Plus, Search, UserPlus, Users, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Avatar } from '../components/Avatar';
 import { Empty } from '../components/Empty';
 import { PersonRow } from '../components/PersonRow';
+import { Lines, RelativesList } from '../components/Relatives';
 import { usePermissions } from '../lib/cloud/CloudProvider';
 import { useData } from '../lib/data';
 import { loadDemo } from '../lib/demo';
@@ -12,6 +13,7 @@ import { daysUntilBirthday, formatPlace, fullName, matchesQuery, missingDetails 
 import type { Person } from '../lib/types';
 
 type Filter = 'all' | 'thin' | `tag:${string}`;
+type View = 'everyone' | 'relatives' | 'lines';
 
 export function PeoplePage() {
   const { people, graph, me, loaded } = useData();
@@ -20,14 +22,19 @@ export function PeoplePage() {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [sort, setSort] = useState<'name' | 'recent'>('name');
+  // Everyone A–Z, every relative of "me" by kind, or the direct lines (?view=relatives|lines).
+  const [sp, setSp] = useSearchParams();
+  const v = sp.get('view');
+  const view: View = me && (v === 'relatives' || v === 'lines') ? v : 'everyone';
+  const setView = (next: View) => setSp((prev) => {
+    const p = new URLSearchParams(prev);
+    if (next === 'everyone') p.delete('view'); else p.set('view', next);
+    return p;
+  }, { replace: true });
 
-  // How each person relates to me — shown as the subtitle.
-  const relToMe = useMemo(() => {
-    const m = new Map<string, string>();
-    if (!me) return m;
-    for (const r of relativesOf(graph, me.id)) m.set(r.person.id, r.kin.label);
-    return m;
-  }, [graph, me]);
+  // How each person relates to me — shown as the subtitle, and the Relatives view.
+  const relatives = useMemo(() => (me ? relativesOf(graph, me.id) : []), [graph, me]);
+  const relToMe = useMemo(() => new Map(relatives.map((r) => [r.person.id, r.kin.label])), [relatives]);
 
   const tags = useMemo(() => [...new Set(people.flatMap((p) => p.tags))].sort(), [people]);
 
@@ -97,9 +104,47 @@ export function PeoplePage() {
     </button>
   );
 
+  const views: { key: View; label: string; icon: typeof Users }[] = [
+    { key: 'everyone', label: 'Everyone', icon: Users },
+    { key: 'relatives', label: `Relatives (${relatives.length})`, icon: List },
+    { key: 'lines', label: 'Lines', icon: ArrowDown },
+  ];
+  const viewTabs = me && (
+    <div className="mb-4 inline-flex max-w-full rounded-xl bg-stone-200/60 p-1 dark:bg-stone-800">
+      {views.map(({ key, label, icon: Icon }) => (
+        <button key={key} type="button" onClick={() => setView(key)} aria-pressed={view === key}
+          className={`flex min-h-[36px] items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-sm font-medium transition sm:px-3 ${view === key ? 'bg-white shadow-sm dark:bg-stone-700' : 'text-stone-500 dark:text-stone-400'}`}>
+          <Icon size={15} /> {label}
+        </button>
+      ))}
+    </div>
+  );
+  const addButton = canEdit && (
+    <Link to="/people/new" aria-label="Add person"
+      className="fixed bottom-24 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-900/20 transition hover:bg-brand-700 active:scale-95 md:bottom-8 md:right-8">
+      <Plus size={26} />
+    </Link>
+  );
+
+  if (me && view !== 'everyone') {
+    const egoName = isShared ? me.firstName : 'you';
+    return (
+      <div>
+        <Header count={people.length} />
+        {viewTabs}
+        {view === 'relatives'
+          ? <RelativesList relatives={relatives} egoId={me.id} egoName={egoName}
+              onShowInTree={(id) => nav(`/family?focus=${encodeURIComponent(id)}&hl=${encodeURIComponent(id)}`)} />
+          : <Lines ego={me} />}
+        {addButton}
+      </div>
+    );
+  }
+
   return (
     <div>
       <Header count={people.length} />
+      {viewTabs}
 
       {!me && !isShared && (
         <Link to="/people/new?me=1" className="mb-4 flex items-center gap-3 rounded-2xl bg-brand-50 p-4 text-sm text-brand-800 ring-1 ring-brand-100 dark:bg-brand-900/30 dark:text-brand-200 dark:ring-brand-800">
@@ -156,10 +201,7 @@ export function PeoplePage() {
         </div>
       )}
 
-      {canEdit && <Link to="/people/new" aria-label="Add person"
-        className="fixed bottom-24 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-900/20 transition hover:bg-brand-700 active:scale-95 md:bottom-8 md:right-8">
-        <Plus size={26} />
-      </Link>}
+      {addButton}
     </div>
   );
 }

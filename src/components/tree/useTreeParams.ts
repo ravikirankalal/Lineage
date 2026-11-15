@@ -2,9 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { TreeLevel, TreeOrient } from '../../lib/graph/contract';
 
-export type LineageTab = 'tree' | 'relatives' | 'lines';
 const LEVELS: TreeLevel[] = ['immediate', 'extended', 'everyone'];
-const TABS: LineageTab[] = ['tree', 'relatives', 'lines'];
 
 const PHONE_QUERY = '(max-width: 639px)';
 
@@ -22,7 +20,6 @@ export function useIsPhone(): boolean {
 }
 
 export interface TreeParams {
-  tab: LineageTab;
   focus: string;
   level: TreeLevel;
   /** Person whose path from the ego is highlighted ("How are we related?", Find, Show in tree). */
@@ -35,7 +32,7 @@ export interface TreeParams {
 /**
  * The tree's view state lives in the hash query (#/family?focus=<id>&level=extended&hl=<id>), so
  * Back/forward step through focus changes and returning from a profile restores the view.
- * Focus and highlight changes push a history entry; tab, level and expand/collapse replace it.
+ * Focus and highlight changes push a history entry; level and expand/collapse replace it.
  */
 export function useTreeParams(egoId: string, isValid: (id: string) => boolean) {
   const [sp, setSp] = useSearchParams();
@@ -55,11 +52,9 @@ export function useTreeParams(egoId: string, isValid: (id: string) => boolean) {
   const params = useMemo<TreeParams>(() => {
     const f = sp.get('focus');
     const l = sp.get('level') as TreeLevel | null;
-    const t = sp.get('tab') as LineageTab | null;
     const hl = sp.get('hl');
     const dir = sp.get('dir');
     return {
-      tab: t && TABS.includes(t) ? t : 'tree',
       focus: f && isValid(f) ? f : egoId,
       level: l && LEVELS.includes(l) ? l : defaultLevel,
       hl: hl && isValid(hl) && hl !== egoId ? hl : undefined,
@@ -68,11 +63,10 @@ export function useTreeParams(egoId: string, isValid: (id: string) => boolean) {
     };
   }, [sp, egoId, isValid, defaultLevel, defaultOrient, expanded]);
 
-  const update = useCallback((patch: Partial<{ tab: LineageTab; focus: string; level: TreeLevel; hl: string | null; expanded: ReadonlySet<string>; orient: TreeOrient }>, opts: { push?: boolean } = {}) => {
+  const update = useCallback((patch: Partial<{ focus: string; level: TreeLevel; hl: string | null; expanded: ReadonlySet<string>; orient: TreeOrient }>, opts: { push?: boolean } = {}) => {
     setSp((prev) => {
       const next = new URLSearchParams(prev);
       const put = (k: string, v: string | null | undefined) => (v ? next.set(k, v) : next.delete(k));
-      if (patch.tab !== undefined) put('tab', patch.tab === 'tree' ? null : patch.tab);
       if (patch.focus !== undefined) put('focus', patch.focus === egoId ? null : patch.focus);
       if (patch.level !== undefined) put('level', patch.level);
       if (patch.hl !== undefined) put('hl', patch.hl);
