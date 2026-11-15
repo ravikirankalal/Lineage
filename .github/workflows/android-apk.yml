@@ -57,6 +57,8 @@ jobs:
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           LINEAGE_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          # Grows with every run (the first local build was 1), so phones accept each APK as an update.
+          LINEAGE_VERSION_CODE: ${{ github.run_number + 1 }}
         run: |
           npm ci
           npm run build
@@ -78,7 +80,8 @@ jobs:
         if: steps.check.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LINEAGE_VERSION_CODE: ${{ github.run_number + 1 }}
         run: |
           gh release delete android-latest --yes --cleanup-tag 2>/dev/null || true
           gh release create android-latest "$RUNNER_TEMP/lineage.apk" --title "Lineage for Android" \
-            --notes "Install on Android: download lineage.apk and open it (allow installs from this source when asked). Built from ${GITHUB_SHA::7}." --latest=false
+            --notes "Install on Android: download lineage.apk and open it (allow installs from this source when asked). Version 1.0.${LINEAGE_VERSION_CODE}, built from ${GITHUB_SHA::7}." --latest=false
