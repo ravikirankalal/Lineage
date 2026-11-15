@@ -62,3 +62,14 @@
     text-shadow: 0 0 3px rgb(0 0 0 / 0.9), 0 0 1px rgb(0 0 0);
   }
 }
+
+/* Arriving at a card from its "shown elsewhere" copy: a yellow ring pulses after the pan. */
+@keyframes tree-flash {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(250 204 21 / 0); }
+  20%, 60% { box-shadow: 0 0 0 6px rgb(250 204 21 / 0.95), 0 0 18px 6px rgb(250 204 21 / 0.45); }
+  40%, 80% { box-shadow: 0 0 0 4px rgb(250 204 21 / 0.55); }
+}
+.tree-card.tree-flash { animation: tree-flash 1.6s ease-in-out 0.45s 1 both; }
+@media (prefers-reduced-motion: reduce) {
+  .tree-card.tree-flash { animation-duration: 1.2s; animation-delay: 0s; }
+}
