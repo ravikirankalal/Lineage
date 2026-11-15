@@ -1,14 +1,20 @@
 import { FlaskConical, Languages, RotateCw, ShieldCheck } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AccountCard } from '../components/AccountCard';
 import { useCloud, usePermissions } from '../lib/cloud/CloudProvider';
 import { useData } from '../lib/data';
 import { loadDemo } from '../lib/demo';
 import { reloadApp, runningBuild } from '../lib/appUpdate';
+import { isNativeApp, nativeAppVersion } from '../lib/native';
 import { KIN_LANGUAGES } from '../lib/kinshipTerms';
 import { useKinLang } from '../lib/prefs';
 
 export function SettingsPage() {
+  // Android app: which APK is installed (apps before 1.0.11 can't tell, which says it's an old one).
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+  useEffect(() => { void nativeAppVersion().then(setAppVersion); }, []);
+  const build = runningBuild();
+  const versionText = [build && `build ${build.slice(6)}`, isNativeApp() && `app ${appVersion ?? 'before 1.0.11'}`].filter(Boolean).join(' · ');
   const { people, rels } = useData();
   const [msg, setMsg] = useState('');
   const [kinLang, setKinLang] = useKinLang();
@@ -55,7 +61,7 @@ export function SettingsPage() {
       </section>
 
       <section className="card mt-4">
-        <Row icon={<RotateCw size={19} />} title="Reload Lineage" desc={`Gets the latest version${runningBuild() ? ` · build ${runningBuild()!.slice(6)}` : ''}`} onClick={reloadApp} />
+        <Row icon={<RotateCw size={19} />} title="Reload Lineage" desc={`Gets the latest version${versionText ? ` · ${versionText}` : ''}`} onClick={reloadApp} />
       </section>
       {isOwner && canEdit && people.length === 0 && (
         <section className="card mt-4">
