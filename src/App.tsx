@@ -122,6 +122,16 @@ function Centered({ children }: { children: ReactNode }) {
   return <div className="flex min-h-dvh flex-col items-center justify-center px-6 py-10 text-center">{children}</div>;
 }
 
+/** While Lineage starts: the logo, like the launch screen and the sign-in screen, so nothing jumps. */
+function Starting({ text }: { text: string }) {
+  return (
+    <Centered>
+      <img src="./icon.svg" alt="" className="h-14 w-14" />
+      <p className="mt-4 text-stone-500">{text}</p>
+    </Centered>
+  );
+}
+
 /** Sign-in is required: the family tree lives in your Google account, not on this device. */
 function SignIn() {
   const { auth } = useCloud();
@@ -135,7 +145,9 @@ function SignIn() {
       <GoogleButton className="mt-8" busy={busy} onClick={async () => {
         setBusy(true);
         setErr('');
+        document.body.dataset.signingIn = '1'; // no update reload while Google's sign-in is open
         try { await auth.signIn(); } catch (e) { setErr('Sign-in didn’t finish. ' + ((e as Error).message ?? '')); }
+        delete document.body.dataset.signingIn;
         setBusy(false);
       }} />
       {err && <p className="mt-3 max-w-sm text-sm text-red-600">{err}</p>}
@@ -149,10 +161,10 @@ function Gate() {
   // The app's launch screen stays until sign-in is known (the sign-in screen, or the tree opening).
   useEffect(() => { if (!auth.loading) hideSplash(); }, [auth.loading]);
   if (!configured) return <Centered><p className="text-stone-500">Lineage isn’t set up correctly (no Firebase settings in this build).</p></Centered>;
-  if (auth.loading) return <Centered><p className="text-stone-500">Loading…</p></Centered>;
+  if (auth.loading) return <Starting text="Loading…" />;
   if (!auth.user) return <SignIn />;
   if (state === 'error') return <Centered><p className="max-w-sm text-stone-600 dark:text-stone-300">{error}</p><button className="btn-primary mt-6" onClick={() => location.reload()}>Try again</button></Centered>;
-  if (state === 'loading') return <Centered><p className="text-stone-500">{online ? 'Opening your family tree…' : 'You’re offline. Lineage needs the internet.'}</p></Centered>;
+  if (state === 'loading') return <Starting text={online ? 'Opening your family tree…' : 'You’re offline. Lineage needs the internet.'} />;
   return <Shell />;
 }
 
