@@ -1,10 +1,14 @@
 import { RotateCw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { reloadApp, useAppUpdate } from '../lib/appUpdate';
+import { useCloud } from '../lib/cloud/CloudProvider';
 
 /** "A new version is ready" bar (see appUpdate.ts). */
 export function UpdateBar() {
-  const ready = useAppUpdate();
+  const { configured, auth, state } = useCloud();
+  // Fully loaded: the sign-in screen is up, or the family tree has opened (or failed to).
+  const loaded = !configured || (!auth.loading && (!auth.user || state !== 'loading'));
+  const ready = useAppUpdate(loaded);
   if (!ready) return null;
   return (
     <div role="status" className="fixed inset-x-0 top-0 z-[60] flex justify-center px-3 pt-[calc(8px+env(safe-area-inset-top))] print:hidden">

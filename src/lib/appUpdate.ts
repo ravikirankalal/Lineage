@@ -34,27 +34,44 @@ export async function liveBuild(): Promise<string | null> {
 /** Editing something right now: an edit/new page, or a sheet or dialog open. Never reload then. */
 export function busyEditing(): boolean {
   if (typeof document === 'undefined') return false;
-  return /\/(edit|new)(\?|$)/.test(location.hash) || !!document.querySelector('[role="dialog"]');
+  return /\/(edit|new)(\?|$)/.test(location.hash) || !!document.querySelector('[role="dialog"]') || document.body.dataset.signingIn === '1';
 }
 
 export function reloadApp(): void {
   location.reload();
 }
 
-/** True when a newer build is live and the page should offer "Reload". */
-export function useAppUpdate(): boolean {
+/**
+ * True when a newer build is live and the page should offer "Reload". Nothing is checked until
+ * `loaded` (the whole app is up: the sign-in screen, or the family tree opened), so a reload never
+ * interrupts the start. Then: one check at once (reloads if newer and nothing is being edited), on
+ * coming back to the app, and every 5 minutes.
+ */
+export function useAppUpdate(loaded: boolean): boolean {
   const [ready, setReady] = useState(false);
   useEffect(() => {
+    if (!loaded) return;
     const mine = runningBuild();
     if (!mine) return; // dev server: nothing to compare
     let stopped = false;
+    // Reload by itself only after Lineage was away a while: a quick system sheet (Google sign-in,
+    // the contact picker, a permission prompt) also hides the page, and a reload then would flash.
+    const AWAY_MS = 60_000;
+    let hiddenAt = 0;
+    const onHidden = () => { if (document.visibilityState === 'hidden' && !hiddenAt) hiddenAt = Date.now(); };
     const check = async (comingBack: boolean) => {
       const live = await liveBuild();
       if (stopped || !live || live === mine) return;
       if (comingBack && !busyEditing()) reloadApp();
       else setReady(true);
     };
-    const onVisible = () => { if (document.visibilityState === 'visible') void check(true); };
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return onHidden();
+      const away = hiddenAt ? Date.now() - hiddenAt : 0;
+      hiddenAt = 0;
+      void check(away >= AWAY_MS);
+    };
+    void check(true); // the app has just finished loading
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onVisible);
     const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void check(false); }, CHECK_EVERY_MS);
@@ -64,6 +81,6 @@ export function useAppUpdate(): boolean {
       window.removeEventListener('focus', onVisible);
       clearInterval(timer);
     };
-  }, []);
+  }, [loaded]);
   return ready;
 }
