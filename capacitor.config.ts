@@ -21,9 +21,6 @@ const config: CapacitorConfig = {
   backgroundColor: '#266955',
   android: { allowMixedContent: false },
   plugins: {
-    // The launch screen stays until the page hides it (hideSplash in src/lib/native.ts), at most 10 s, so
-    // the app never shows an empty window while the site loads.
-    SplashScreen: { launchShowDuration: 10000, launchAutoHide: true, launchFadeOutDuration: 200, backgroundColor: '#266955', showSpinner: false },
     SocialLogin: { providers: { google: true, facebook: false, apple: false, twitter: false } },
   },
 };
