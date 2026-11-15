@@ -196,3 +196,35 @@ npm run test:rules     # starts the Firestore emulator, runs tests/rules, stops 
 Copy `.env.example` to `.env.local` and fill in the values from step 4. `.env.local` is
 gitignored. To use the Firebase CLI by hand, copy `.firebaserc.example` to `.firebaserc`, put
 your project ID in it, then run `npx firebase login`.
+
+## 11. Android app
+The Android app (`android/`, Capacitor) is a shell around the live site, with native Google sign-in
+and read-only access to the phone's contacts. Google sign-in in the app needs two one-time steps.
+
+### 11.1 Register the app in Firebase
+1. Open <https://console.firebase.google.com/project/lineage-d575c/settings/general> and click
+   **Add app → Android**.
+2. Package name: **`app.lineage.family`**. Nickname: Lineage Android.
+3. Debug signing certificate SHA-1 (it is the release key's; the field accepts it):
+   **`03:0F:E3:93:E8:F9:B6:29:B8:ED:36:11:44:8A:6C:59:A0:F5:3A:AD`**
+4. Click **Register app**. You can skip downloading `google-services.json` and the SDK steps.
+
+This creates the Android OAuth client Google checks when the app signs in. (If the SHA-1 field was
+skipped: Project settings → Your apps → Lineage Android → **Add fingerprint**.)
+
+### 11.2 Give the website the web client ID
+1. Open <https://console.cloud.google.com/apis/credentials?project=lineage-d575c>.
+2. Under **OAuth 2.0 Client IDs**, copy the Client ID of **Web client (auto created by Google Service)**
+   (it ends in `.apps.googleusercontent.com`; it is public, not a secret).
+3. Add it to `.env.production` as `VITE_GOOGLE_WEB_CLIENT_ID=…` and push (or send it to Claude). The
+   app picks it up from the website; no new APK is needed.
+
+Until both are done, the app shows "Google sign-in isn't set up for the app yet" (or Google's
+"Developer console is not set up correctly").
+
+### 11.3 Building the APK on GitHub (optional)
+`.github/workflows/android-apk.yml` builds the signed APK and publishes it as the **android-latest**
+release. Add two repository secrets (Settings → Secrets and variables → Actions):
+`ANDROID_KEYSTORE_BASE64` (the release keystore, base64) and `ANDROID_KEYSTORE_PASSWORD`. Always use
+the same keystore: its SHA-1 is the one registered above. Keep a copy of it somewhere safe; if it's
+lost, a new key needs a new fingerprint in Firebase and everyone must reinstall the app.

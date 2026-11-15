@@ -306,3 +306,15 @@ Read this before changing code. Append new learnings at the bottom.
   source 'manual' on purpose, so `purgeLooseContacts` never deletes it later. Emulator builds expose
   `window.__lineageTestContacts(list)` to load fictitious contacts; Google itself can't run on the emulators.
   Needs the People API enabled and the scope on the consent screen (FIREBASE_SETUP.md §10).
+- **Android app (2026-11-15):** `capacitor.config.ts` uses `server.url` = the live site, so the APK is a shell and
+  web deploys update it; rebuild the APK only for android/, plugin or config changes. `src/lib/native.ts`:
+  `isNativeApp()`, `ContactsReader` (our Java plugin, READ_CONTACTS only; the community contacts plugin was
+  dropped because its permission alias also demands WRITE_CONTACTS). Sign-in in the app can't use the web popup
+  (Google blocks embedded browsers): `auth.ts nativeSignIn()` → Credential Manager idToken → Firebase
+  `signInWithCredential`; needs `VITE_GOOGLE_WEB_CLIENT_ID` (public) and the Android app + release SHA-1 in
+  Firebase. Release key: alias `lineage`, never committed; `LINEAGE_KEYSTORE`/`LINEAGE_KEYSTORE_PASSWORD` env
+  (CI secrets `ANDROID_KEYSTORE_BASE64`/`ANDROID_KEYSTORE_PASSWORD`). Losing it means a new SHA-1 and reinstalling.
+- Building Android in the cloud container: Maven Central answers Gradle's user agent with 404 here; pass an
+  `--init-script` that swaps repo.maven.apache.org for https://maven-central.storage-download.googleapis.com/maven2/
+  (don't commit it; CI is fine). Android SDK from dl.google.com (cmdline-tools → platforms;android-36,
+  build-tools;36.0.0) into the scratchpad.

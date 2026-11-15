@@ -1,0 +1,84 @@
+name: Android app (APK)
+
+# Builds the signed Lineage Android app and publishes it as the "android-latest" release.
+# The app is a shell around the live site, so it only needs rebuilding when android/,
+# capacitor.config.ts or the native plugins change. Skips cleanly until the signing secrets exist:
+#   ANDROID_KEYSTORE_BASE64   base64 of the release .jks (alias "lineage")
+#   ANDROID_KEYSTORE_PASSWORD its password
+# The key's SHA-1 is registered in Firebase for Google sign-in, so always sign with this same key.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths: ['android/**', 'capacitor.config.ts', 'package-lock.json', '.github/workflows/android-apk.yml']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-apk
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check signing secrets
+        id: check
+        env:
+          HAS_KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' }}
+        run: |
+          if [ "$HAS_KEY" != "true" ]; then
+            echo "::notice::ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD not set; skipping the Android build (see FIREBASE_SETUP.md › Android app)."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.enabled == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.enabled == 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        if: steps.check.outputs.enabled == 'true'
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Build the signed APK
+        if: steps.check.outputs.enabled == 'true'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          LINEAGE_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          npm ci
+          npm run build
+          npx cap sync android
+          export LINEAGE_KEYSTORE="$RUNNER_TEMP/lineage-release.jks"
+          trap 'rm -f "$LINEAGE_KEYSTORE"' EXIT
+          umask 077
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$LINEAGE_KEYSTORE"
+          (cd android && ./gradlew --no-daemon assembleRelease)
+          cp android/app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/lineage.apk"
+
+      - uses: actions/upload-artifact@v4
+        if: steps.check.outputs.enabled == 'true'
+        with:
+          name: lineage-apk
+          path: ${{ runner.temp }}/lineage.apk
+
+      - name: Publish as the android-latest release
+        if: steps.check.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete android-latest --yes --cleanup-tag 2>/dev/null || true
+          gh release create android-latest "$RUNNER_TEMP/lineage.apk" --title "Lineage for Android" \
+            --notes "Install on Android: download lineage.apk and open it (allow installs from this source when asked). Built from ${GITHUB_SHA::7}." --latest=false

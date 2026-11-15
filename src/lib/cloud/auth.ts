@@ -8,6 +8,7 @@ import { useSyncExternalStore } from 'react';
 import type { User } from 'firebase/auth';
 import type { AuthState, CloudUser } from './contract';
 import { cloudConfigured, getFirebaseAuth, usingEmulators } from './firebase';
+import { GOOGLE_WEB_CLIENT_ID, isNativeApp } from '../native';
 
 interface Snapshot {
   loading: boolean;
@@ -78,6 +79,7 @@ function onAuthDomain(): boolean {
 
 export async function signIn(): Promise<void> {
   if (!cloudConfigured()) throw new Error('Cloud sign-in is not configured.');
+  if (isNativeApp()) return nativeSignIn();
   const auth = await getFirebaseAuth();
   const { GoogleAuthProvider, signInWithPopup, signInWithRedirect } = await import('firebase/auth');
   const provider = new GoogleAuthProvider();
@@ -101,6 +103,33 @@ export async function signOut(): Promise<void> {
   const auth = await getFirebaseAuth();
   const { signOut: fbSignOut } = await import('firebase/auth');
   await fbSignOut(auth);
+  // In the app, also forget the Google account choice so the next sign-in asks again.
+  if (isNativeApp()) await import('@capgo/capacitor-social-login').then(({ SocialLogin }) => SocialLogin.logout({ provider: 'google' })).catch(() => undefined);
+}
+
+/**
+ * Android app: Google refuses its sign-in page inside embedded browsers, so sign in through Android's
+ * own account picker (Credential Manager) and hand the Google ID token to Firebase.
+ */
+let nativeReady: Promise<void> | null = null;
+async function nativeSignIn(): Promise<void> {
+  if (!GOOGLE_WEB_CLIENT_ID) throw new Error('Google sign-in isn’t set up for the app yet (FIREBASE_SETUP.md › Android app).');
+  const { SocialLogin } = await import('@capgo/capacitor-social-login');
+  nativeReady ??= SocialLogin.initialize({ google: { webClientId: GOOGLE_WEB_CLIENT_ID, skipAuthOnlyAuthorizationAfterSignIn: true } });
+  await nativeReady;
+  let idToken: string | null | undefined;
+  try {
+    const res = await SocialLogin.login({ provider: 'google', options: {} });
+    idToken = 'idToken' in res.result ? res.result.idToken : undefined;
+  } catch (e) {
+    const msg = String((e as Error)?.message ?? e);
+    if (/cancel/i.test(msg)) return;
+    throw new Error(`Google sign-in didn’t work: ${msg}`);
+  }
+  if (!idToken) throw new Error('Google didn’t return a sign-in token. Try again.');
+  const auth = await getFirebaseAuth();
+  const { GoogleAuthProvider, signInWithCredential } = await import('firebase/auth');
+  await signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
 }
 
 const getSnapshot = () => snapshot;

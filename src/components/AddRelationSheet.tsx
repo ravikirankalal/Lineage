@@ -1,7 +1,8 @@
 import { ArrowLeft, Contact, Search, Smartphone, UserPlus } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ops } from '../lib/db';
-import { googleContactsAvailable, loadGoogleContacts, phonePickerAvailable, pickPhoneContact, useGoogleContacts } from '../lib/cloud/googleContacts';
+import { googleContactsAvailable, loadGoogleContacts, loadNativeContacts, phonePickerAvailable, pickPhoneContact, useGoogleContacts } from '../lib/cloud/googleContacts';
+import { isNativeApp } from '../lib/native';
 import { contactName, contactToPerson, fromPicked, suggestContacts, type ContactSuggestion } from '../lib/contactSuggest';
 import { write } from '../lib/store';
 import { useData } from '../lib/data';
@@ -92,6 +93,8 @@ function AddRelationBody({ person, preset, onClose }: { person: Person; preset?:
 
   // Contacts as suggestions while typing (Google Contacts, downloaded once per visit into memory).
   const gc = useGoogleContacts();
+  // In the Android app the phone's contacts load as soon as you add someone (Android asks once).
+  useEffect(() => { void loadNativeContacts(); }, []);
   const contactHits = useMemo(() => suggestContacts(gc.contacts, q, people, 5), [gc.contacts, q, people]);
   const addContact = (c: ContactSuggestion) => !busy && link(contactToPerson(c, info?.gender ?? 'unknown'), true);
   const [pickErr, setPickErr] = useState('');
@@ -221,8 +224,13 @@ function AddRelationBody({ person, preset, onClose }: { person: Person; preset?:
           picking={picking || !other} setPicking={setPicking} q={otherQ} setQ={setOtherQ} candidates={otherCandidates}
           married={married} setMarried={setMarried} showMarried={!!other && !otherIsSpouse} />
       )}
-      {(googleContactsAvailable() && gc.status !== 'ready') || phonePickerAvailable() ? (
+      {(googleContactsAvailable() && gc.status !== 'ready') || phonePickerAvailable() || (isNativeApp() && gc.status === 'error') ? (
         <div className="flex flex-wrap items-center gap-1.5">
+          {isNativeApp() && gc.status === 'error' && (
+            <button type="button" className="chip" onClick={() => void loadNativeContacts()}>
+              <Contact size={14} className="mr-1 inline" />Use my phone’s contacts
+            </button>
+          )}
           {googleContactsAvailable() && gc.status !== 'ready' && (
             <button type="button" className="chip" disabled={gc.status === 'loading'} onClick={() => void loadGoogleContacts()}>
               <Contact size={14} className="mr-1 inline" />{gc.status === 'loading' ? 'Loading your contacts…' : 'Suggest from my Google contacts'}

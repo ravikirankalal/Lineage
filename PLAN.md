@@ -138,6 +138,8 @@
 - [ ] Live on https://lineage-d575c.web.app (on merge)
 
 ### Backlog / ideas
+- [ ] iPhone app (Capacitor iOS): needs an Apple developer account ($99/yr) and a Mac to build.
+- [ ] Android app: test sign-in and contacts on a real phone after FIREBASE_SETUP §11; consider Play Store.
 - [x] Cloud only: sign-in required, no device copy, no sync or offline editing; contacts import,
       GEDCOM and backups removed; imported contacts never linked to the family deleted (2026-11-15)
 - [ ] Split family notes into shared and private (members currently see a family person's full record)
