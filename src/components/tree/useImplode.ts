@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { CARD, type TreeLayout } from '../../lib/graph/contract';
-import { implodeOffsets } from '../../lib/implode';
+import { implodeOffsets, treeOf } from '../../lib/implode';
 import { prefersReducedMotion, type View } from './usePanZoom';
 
 export type ImplodeState = 'open' | 'moving' | 'imploded';
@@ -64,20 +64,27 @@ export function useImplode(opts: {
     later(quick ? 0 : FADE, () => place(1, quick ? 0 : FALL));
     later(quick ? 0 : FADE + FALL, () => {
       place(2, quick ? 0 : SLIDE);
-      // Show the whole wall, in the middle of the screen.
+      // Zoom to the main tree's wall (the focus's), in the middle of the screen. In Everyone the other
+      // trees' walls stay at their own trees' rows below it, a pan away; fitting them all made it tiny.
       const b = box.current;
       if (b) {
         let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
         const off = implodeOffsets(layout.nodes, axis);
         for (const n of layout.nodes) {
+          if (treeOf(n.key)) continue;
           const o = off.get(n.key);
           if (!o) continue;
           x0 = Math.min(x0, n.x + o.dx - CARD.w / 2); x1 = Math.max(x1, n.x + o.dx + CARD.w / 2);
           y0 = Math.min(y0, n.y + o.dy); y1 = Math.max(y1, n.y + o.dy + CARD.h);
         }
         const pad = 48;
-        const k = Math.min(1, (b.clientWidth - pad) / (x1 - x0), (b.clientHeight - pad - 120) / (y1 - y0));
-        pz.set({ k, x: b.clientWidth / 2 - ((x0 + x1) / 2) * k, y: (b.clientHeight + 60) / 2 - ((y0 + y1) / 2) * k }, !quick);
+        const fit = Math.min(1, (b.clientWidth - pad) / (x1 - x0), (b.clientHeight - pad - 120) / (y1 - y0));
+        // Too wide to read when fitted (a big family on a phone): readable size, centred on the focus card,
+        // which stays on its row in the wall.
+        const READABLE = 0.45;
+        const k = Math.max(fit, READABLE);
+        const [cx, cy] = fit >= READABLE ? [(x0 + x1) / 2, (y0 + y1) / 2] : [axis.x, axis.y + CARD.h / 2];
+        pz.set({ k, x: b.clientWidth / 2 - cx * k, y: (b.clientHeight + 60) / 2 - cy * k }, !quick);
       }
     });
     later(quick ? 0 : FADE + FALL + SLIDE, () => setState('imploded'));
