@@ -2,7 +2,7 @@ import { ArrowLeft, Search, UserPlus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { addRelationship, db, ensureRelationship, findRelationship, savePerson } from '../lib/db';
 import { useData } from '../lib/data';
-import { emptyPerson, formatPlace, matchesQuery } from '../lib/person';
+import { emptyPerson, familyLinkedIds, formatPlace, inFamilyList, matchesQuery } from '../lib/person';
 import type { FamilyType, Gender, ParentSubtype, Person, Relationship, SpouseSubtype } from '../lib/types';
 import { PersonRow } from './PersonRow';
 import { Sheet } from './Sheet';
@@ -50,7 +50,7 @@ export function AddRelationSheet({ person, open, onClose, preset }: {
 }
 
 function AddRelationBody({ person, preset, onClose }: { person: Person; preset?: RelChoice; onClose: () => void }) {
-  const { people, graph, byId } = useData();
+  const { people, rels, graph, byId } = useData();
   const [choice, setChoice] = useState<RelChoice | undefined>(preset);
   const [q, setQ] = useState('');
   const [subtype, setSubtype] = useState<string>('');
@@ -70,11 +70,14 @@ function AddRelationBody({ person, preset, onClose }: { person: Person; preset?:
   const coParent = info?.dir === 'out' && spouses.length === 1 && subtype !== 'step' && subtype !== 'foster' ? spouses[0] : undefined;
   const [alsoCoParent, setAlsoCoParent] = useState(true);
 
+  // Family first; imported contacts are only suggested once you type a name.
+  const linked = useMemo(() => familyLinkedIds(rels), [rels]);
   const candidates = useMemo(() => {
-    const list = people.filter((p) => p.id !== person.id && matchesQuery(p, q));
-    if (info?.gender) list.sort((a, b) => Number(b.gender === info.gender) - Number(a.gender === info.gender));
+    const list = people.filter((p) => p.id !== person.id && (q.trim() || inFamilyList(p, linked)) && matchesQuery(p, q));
+    const rank = (p: Person) => (inFamilyList(p, linked) ? 0 : 2) + (info?.gender && p.gender !== info.gender ? 1 : 0);
+    list.sort((a, b) => rank(a) - rank(b));
     return list.slice(0, 50);
-  }, [people, person.id, q, info?.gender]);
+  }, [people, person.id, q, info?.gender, linked]);
 
   /** Writes every edge for linking `other`, inside one transaction (optionally creating them first). */
   async function link(other: Person, create = false) {
@@ -190,7 +193,7 @@ function AddRelationBody({ person, preset, onClose }: { person: Person; preset?:
           </button>
         )}
         {candidates.map((p) => (
-          <PersonRow key={p.id} person={p} onClick={() => !busy && link(p)} subtitle={formatPlace(p.address, true) || p.occupation} />
+          <PersonRow key={p.id} person={p} onClick={() => !busy && link(p)} subtitle={inFamilyList(p, linked) ? formatPlace(p.address, true) || p.occupation : ['From your contacts', p.phones[0]?.value].filter(Boolean).join(' · ')} />
         ))}
         {!candidates.length && !q && <p className="px-2 py-6 text-center text-sm text-stone-500">Type a name to add someone new.</p>}
       </div>

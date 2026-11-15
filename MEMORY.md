@@ -235,3 +235,8 @@ Read this before changing code. Append new learnings at the bottom.
   only `importBackup` filters them out. The people at the other end of those links are kept.
 - (2026-11-14) `scripts/qa-cloud.mjs` relies on the old sample friends (Sandeep, Farhan, …) for its privacy checks.
   It needs rework (e.g. an unlinked person) before it is run again.
+- (2026-11-15) The People page shows `inFamilyList` people only: isMe, anyone with a family link, or a non-contact
+  source (manual or GEDCOM, which writes 'manual'). Contacts (`source` vcard/csv/picker/google) with no family
+  link stay hidden until linked. The add sheet shows family only until you type; then contacts follow family,
+  labelled "From your contacts". The merge sheet still searches everyone, so a contact can be merged into a
+  relative.

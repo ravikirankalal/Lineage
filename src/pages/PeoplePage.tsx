@@ -8,13 +8,16 @@ import { usePermissions } from '../lib/cloud/CloudProvider';
 import { useData } from '../lib/data';
 import { loadDemo } from '../lib/demo';
 import { relativesOf } from '../lib/kinship';
-import { daysUntilBirthday, formatPlace, fullName, matchesQuery, missingDetails } from '../lib/person';
+import { daysUntilBirthday, familyLinkedIds, formatPlace, fullName, inFamilyList, matchesQuery, missingDetails } from '../lib/person';
 import type { Person } from '../lib/types';
 
-type Filter = 'all' | 'family' | 'thin' | `tag:${string}`;
+type Filter = 'all' | 'thin' | `tag:${string}`;
 
 export function PeoplePage() {
-  const { people, graph, me, loaded } = useData();
+  const { people: everyone, rels, graph, me, loaded } = useData();
+  // Family only: imported contacts wait in the background (suggestions when adding a relative).
+  const people = useMemo(() => { const linked = familyLinkedIds(rels); return everyone.filter((p) => inFamilyList(p, linked)); }, [everyone, rels]);
+  const hiddenContacts = everyone.length - people.length;
   const nav = useNavigate();
   const { canEdit, isOwner, isShared } = usePermissions();
   const [q, setQ] = useState('');
@@ -33,8 +36,7 @@ export function PeoplePage() {
 
   const list = useMemo(() => {
     let l = people.filter((p) => matchesQuery(p, q));
-    if (filter === 'family') l = l.filter((p) => p.isMe || relToMe.has(p.id));
-    else if (filter === 'thin') l = l.filter((p) => !p.isMe && missingDetails(p).length >= 3);
+    if (filter === 'thin') l = l.filter((p) => !p.isMe && missingDetails(p).length >= 3);
     else if (filter.startsWith('tag:')) l = l.filter((p) => p.tags.includes(filter.slice(4)));
     if (sort === 'name') l.sort((a, b) => fullName(a).localeCompare(fullName(b)));
     else l.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -74,6 +76,7 @@ export function PeoplePage() {
               </div>
             }>
             Add yourself, then your parents, partner, children and the rest of your family — or bring relatives in from your phone’s contacts. Everything stays on this device.
+            {hiddenContacts > 0 && <span className="mt-2 block"><ContactsNote n={hiddenContacts} /></span>}
           </Empty>}
         </div>
       </div>
@@ -133,7 +136,6 @@ export function PeoplePage() {
         </div>
         <div className="no-scrollbar mt-3 flex items-center gap-2 overflow-x-auto">
           {chip('all', 'All')}
-          {me && chip('family', 'Family')}
           {chip('thin', 'Needs details')}
           {tags.map((t) => chip(`tag:${t}`, '#' + t))}
           <select value={sort} onChange={(e) => setSort(e.target.value as 'name' | 'recent')}
@@ -159,6 +161,8 @@ export function PeoplePage() {
         </div>
       )}
 
+      {hiddenContacts > 0 && !isShared && <p className="mt-6 px-2 text-center text-sm text-stone-500"><ContactsNote n={hiddenContacts} /></p>}
+
       {canEdit && <Link to="/people/new" aria-label="Add person"
         className="fixed bottom-24 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-900/20 transition hover:bg-brand-700 active:scale-95 md:bottom-8 md:right-8">
         <Plus size={26} />
@@ -176,4 +180,8 @@ function Header({ count }: { count: number }) {
       </div>
     </div>
   );
+}
+
+function ContactsNote({ n }: { n: number }) {
+  return <>{n.toLocaleString()} imported {n === 1 ? 'contact isn’t' : 'contacts aren’t'} listed here. {n === 1 ? 'It is' : 'They are'} suggested when you add a relative, and {n === 1 ? 'appears' : 'appear'} here once linked to the family.</>;
 }

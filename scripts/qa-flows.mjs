@@ -225,9 +225,19 @@ async function main(browser) {
     await openProfile(page, 'Vijay Kumar');
     const vj = await body(page);
     check(vj.includes('vijay@example.com') && vj.includes('Infosys'), '[3] CSV did not fill gaps for Vijay');
-    await openProfile(page, 'Anil Gupta');
-    const an = await body(page);
-    check(an.includes('555-0100') && an.includes('555 0199'), '[3] ::: multi-phone not split');
+    // Loose imported contacts stay off the People page, but are suggested when adding a relative.
+    await page.goto(BASE + '#/');
+    await page.getByPlaceholder(/Search names/).fill('Anil Gupta');
+    const pl = await body(page);
+    check(await page.locator('a[href*="/people/"]', { hasText: 'Anil Gupta' }).count() === 0, '[3] loose contact listed on the People page');
+    check(/imported contacts? aren’t listed here/.test(pl), '[3] People page lacks the hidden-contacts note');
+    await openProfile(page, 'Vijay Kumar');
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    await page.getByRole('button', { name: 'Son', exact: true }).click();
+    await page.getByPlaceholder('Search people or type a new name').fill('Anil');
+    await page.getByText('From your contacts').first().waitFor();
+    check(/Anil Gupta/.test(await body(page)), '[3] contact not suggested in the add sheet');
+    await page.keyboard.press('Escape');
   });
 
   await flow('4 edit, unlink, delete', async () => {
