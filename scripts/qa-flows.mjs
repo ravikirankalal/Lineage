@@ -404,6 +404,23 @@ async function sharing(browser) {
     const vlive = await viewer.goto(BASE + '#/').then(() => viewer.getByText('Shared Kid').first().waitFor({ timeout: 15_000 })).then(() => true, () => false);
     check(vlive, '[10] editor\'s new relative did not reach the viewer');
     await shot(owner, '10c-owner-sees-editor-change');
+
+    // Admin page (owner only): the editor's new relative is counted against them.
+    await owner.goto(BASE + '#/settings');
+    await owner.getByRole('button', { name: /^Admin/ }).click();
+    await owner.getByRole('heading', { name: 'Admin' }).waitFor();
+    const row = owner.locator('[data-member="other"]').filter({ hasText: 'Kiran Rao' });
+    const counted = await row.filter({ hasText: /1\s*New people/ }).waitFor({ timeout: 10_000 }).then(() => true, () => false);
+    check(counted, '[10] admin page does not count the editor\'s new person: ' + (await body(owner)).slice(0, 500).replace(/\n/g, ' | '));
+    check(/Kiran Rao\s*added 1 person, added \d+ relationships?/.test(await body(owner)), '[10] admin recent changes missing the editor\'s save');
+    await shot(owner, '10d-owner-admin');
+    for (const [p, who] of [[editor, 'editor'], [viewer, 'viewer']]) {
+      await p.goto(BASE + '#/settings');
+      await p.getByRole('heading', { name: 'Settings' }).waitFor();
+      check(!(await p.getByRole('button', { name: /^Admin/ }).count()), `[10] ${who} offered the Admin link`);
+      await p.goto(BASE + '#/admin');
+      await p.getByText('Only the family’s owner can see this page.').waitFor();
+    }
   });
   await Promise.all([oc.close(), vc.close(), ec.close()]);
 }

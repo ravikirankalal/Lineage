@@ -1,4 +1,5 @@
-import { FlaskConical, Languages, RotateCw, ShieldCheck } from 'lucide-react';
+import { Activity, FlaskConical, Languages, RotateCw, ShieldCheck } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { AccountCard } from '../components/AccountCard';
 import { useCloud, usePermissions } from '../lib/cloud/CloudProvider';
@@ -20,6 +21,7 @@ export function SettingsPage() {
   const [kinLang, setKinLang] = useKinLang();
   const { canEdit, isOwner } = usePermissions();
   const cloud = useCloud();
+  const nav = useNavigate();
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -59,6 +61,12 @@ export function SettingsPage() {
           </div>
         </div>
       </section>
+
+      {isOwner && (
+        <section className="card mt-4">
+          <Row icon={<Activity size={19} />} title="Admin" desc="How many people editors have added and how many edits they made" onClick={() => nav('/admin')} />
+        </section>
+      )}
 
       <section className="card mt-4">
         <Row icon={<RotateCw size={19} />} title="Reload Lineage" desc={`Gets the latest version${versionText ? ` · ${versionText}` : ''}`} onClick={reloadApp} />

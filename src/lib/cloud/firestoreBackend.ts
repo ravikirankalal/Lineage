@@ -12,6 +12,7 @@ import { normalisePerson, validRelationship } from '../db';
 import type { Backend, Collection, Write } from '../store';
 import type { CloudRecord, Role } from './contract';
 import { getDb } from './firebase';
+import { logActivity, summarise } from './activity';
 
 const BATCH_LIMIT = 400;
 
@@ -90,6 +91,7 @@ export function firestoreBackend(spaceId: string, uid: string, role: Role): Back
     async commit(writes: Write[]) {
       const db = await getDb();
       const { doc, writeBatch } = await import('firebase/firestore');
+      const summary = role === 'viewer' ? null : summarise(writes, (w) => seen.has(key(w.coll, w.id)));
       for (let i = 0; i < writes.length; i += BATCH_LIMIT) {
         const batch = writeBatch(db);
         for (const w of writes.slice(i, i + BATCH_LIMIT)) {
@@ -111,6 +113,8 @@ export function firestoreBackend(spaceId: string, uid: string, role: Role): Back
           throw friendly(e, role);
         }
       }
+      // For the owner's admin page; best-effort so logging can never fail an edit.
+      if (summary) void logActivity(spaceId, uid, summary).catch((e) => console.warn('[cloud] activity log failed', e));
     },
   };
 }

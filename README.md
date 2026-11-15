@@ -41,7 +41,8 @@ with the relatives you choose. The tree lives in your Google account (Firebase),
   the internet: nothing is kept on the device, and nothing can be changed offline.
 - **Sharing** — invite relatives by email as viewers, or as editors (an editor must already be in
   your tree with a phone number). Who can read or write what is enforced on the server by
-  Firestore security rules. Light & dark mode.
+  Firestore security rules. The owner's **Admin** page (Settings → Admin) shows how many people
+  each editor has added and how many edits they've made. Light & dark mode.
 
 ## Android app
 

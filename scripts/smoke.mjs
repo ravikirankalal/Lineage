@@ -203,6 +203,11 @@ async function run(name, viewport) {
   for (const w of ['Download backup', 'Restore from backup', 'Sync now']) check(!st.includes(w), `[${name}] Settings still offers "${w}"`);
   check(st.includes('Reload Lineage'), `[${name}] Settings has no "Reload Lineage"`);
   await shot('9-settings');
+  await page.getByRole('button', { name: /^Admin/ }).click();
+  await page.getByRole('heading', { name: 'Admin' }).waitFor();
+  await page.locator('[data-member="me"]').getByText('New people').waitFor();
+  await page.goBack();
+  await page.getByRole('heading', { name: 'Settings' }).waitFor();
   // Sign out: back to the sign-in screen, no family shown.
   await page.getByRole('button', { name: 'Sign out' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Sign out' }).click();

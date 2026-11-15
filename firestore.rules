@@ -229,6 +229,24 @@ service cloud.firestore {
           && d.createdAt is number;
       }
 
+      // Activity log for the owner's admin page: one entry per saved change. Owners and editors add
+      // entries for their own changes; only the owner reads them; entries can't be changed or removed.
+      function validCount(n) { return n is int && n >= 0 && n <= 100000; }
+      function validActivity(d) {
+        return d.keys().hasOnly(['by', 'at', 'peopleAdded', 'peopleEdited', 'peopleRemoved', 'linksAdded', 'linksChanged', 'linksRemoved'])
+          && d.keys().hasAll(['by', 'at'])
+          && d.by == request.auth.uid
+          && d.at is int && d.at <= maxUpdatedAt()
+          && validCount(d.get('peopleAdded', 0)) && validCount(d.get('peopleEdited', 0))
+          && validCount(d.get('peopleRemoved', 0)) && validCount(d.get('linksAdded', 0))
+          && validCount(d.get('linksChanged', 0)) && validCount(d.get('linksRemoved', 0));
+      }
+      match /activity/{aid} {
+        allow read: if isOwner(spaceId);
+        allow create: if canEdit(spaceId) && validActivity(request.resource.data);
+        allow update, delete: if false;
+      }
+
       match /invites/{emailId} {
         allow read: if isOwner(spaceId)
           || (verifiedEmail() && myEmail() == emailId);
