@@ -102,6 +102,26 @@ async function run(name, viewport) {
   await page.getByRole('radio', { name: 'Extended' }).click();
   await page.waitForTimeout(600);
   await implodeCheck('Extended');
+  if (page.viewportSize().width < 768) {
+    // Opening intro (phones, cross layout): the first Family Tree view starts imploded and explodes into
+    // the tree.
+    // The app skips it under automation; this one reload pretends not to be automated.
+    await page.addInitScript(() => { if (sessionStorage.getItem('smoke-intro')) Object.defineProperty(Navigator.prototype, 'webdriver', { get: () => false }); });
+    await page.evaluate(() => sessionStorage.setItem('smoke-intro', '1'));
+    const p2 = page; // already on the Family Tree
+    await p2.reload();
+    await p2.waitForSelector('.tree-world [data-key]');
+    const start = await p2.evaluate(() => ({
+      moved: [...document.querySelectorAll('.tree-world [data-key]')].filter((e) => e.style.transform).length,
+      lines: document.querySelector('.tree-edges')?.style.opacity,
+    }));
+    check(start.moved > 0 && start.lines === '0', `[${name}] Family Tree did not open imploded (${JSON.stringify(start)})`);
+    check(await p2.getByRole('radio', { name: 'Extended', checked: true }).count() === 1, `[${name}] Family Tree did not open at Extended`);
+    const ok = await p2.waitForFunction(() => [...document.querySelectorAll('.tree-world [data-key]')].every((e) => !e.style.transform)
+      && document.querySelector('.tree-edges').style.opacity === '', null, { timeout: 6000 }).then(() => true, () => false);
+    check(ok, `[${name}] the opening intro did not explode into the tree`);
+    await page.evaluate(() => sessionStorage.removeItem('smoke-intro')); // later reloads are automated again
+  }
   await page.getByRole('radio', { name: 'Immediate' }).click();
   if (vw < 768) {
     // Phone: the bottom tabs slide away when idle; a tap on the tree only brings them back.

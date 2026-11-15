@@ -9,6 +9,9 @@ import { avatarColors, renderTreePng, shareOrDownload } from './tree/exportImage
 import { cardName, GhostCard, TreeCard, type CardInfo } from './tree/TreeCard';
 import { TreeEdges } from './tree/TreeEdges';
 import { useImplode } from './tree/useImplode';
+
+/** The opening intro (imploded → exploded) plays once per app start. */
+let introPlayed = false;
 import { clampZoom, prefersReducedMotion, usePanZoom, type View } from './tree/usePanZoom';
 import { useAutoHideTabs, useBottomTabsHidden } from './tree/bottomTabs';
 
@@ -174,6 +177,15 @@ export function FamilyTree({
       if (f) pz.set(centreView(f, 0.6), true);
     }
   }, [layout]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The Family Tree opens imploded at Extended and explodes into the tree, once per app start
+  // (owner's request). Skipped under automation (tests tap cards at once) and with reduced motion.
+  useLayoutEffect(() => {
+    if (introPlayed || !map || !layout.nodes.length) return;
+    introPlayed = true; // only the first view of the Family Tree, whatever level it opens at
+    if (level !== 'extended' || !canImplode || (typeof navigator !== 'undefined' && navigator.webdriver)) return;
+    imp.intro();
+  }, [map, level, canImplode, layout, imp]);
 
   // When the box changes size (rotation, the height settling, full screen): re-fit until the user moves
   // the tree; after that keep the same point in the middle.
