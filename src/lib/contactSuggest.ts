@@ -65,6 +65,20 @@ export function fromPicked(c: { name?: string[]; tel?: string[]; email?: string[
   return { key: `p:${i}:${display}:${phones[0] ?? ''}`, firstName: firstName || phones[0], lastName, phones, emails: (c.email ?? []).map(clean).filter(Boolean), gender: 'unknown', from: 'phone' };
 }
 
+/** A contact read from the phone by the Android app. */
+export function fromNative(c: { id: string; display?: string; given?: string; family?: string; nickname?: string; phones?: string[]; emails?: string[] }): ContactSuggestion | null {
+  let firstName = clean(c.given);
+  let lastName: string | undefined = clean(c.family) || undefined;
+  if (!firstName) ({ firstName, lastName } = splitName(clean(c.display)));
+  if (!firstName) return null;
+  return {
+    key: 'n:' + c.id, firstName, lastName, nickname: clean(c.nickname) || undefined,
+    phones: [...new Set((c.phones ?? []).map(clean).filter(Boolean))],
+    emails: [...new Set((c.emails ?? []).map(clean).filter(Boolean))],
+    gender: 'unknown', from: 'phone',
+  };
+}
+
 export const contactName = (c: ContactSuggestion) => [c.firstName, c.lastName].filter(Boolean).join(' ');
 
 /**

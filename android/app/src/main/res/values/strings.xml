@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Lineage</string>
+    <string name="title_activity_main">Lineage</string>
+    <string name="package_name">app.lineage.family</string>
+    <string name="custom_url_scheme">app.lineage.family</string>
+</resources>

@@ -15,6 +15,9 @@
     "test:rules": "firebase emulators:exec --config firebase.rules-test.json --only firestore --project demo-lineage 'vitest run --config vitest.rules.config.ts'"
   },
   "dependencies": {
+    "@capacitor/android": "^8.6.2",
+    "@capacitor/core": "^8.6.2",
+    "@capgo/capacitor-social-login": "^8.7.11",
     "firebase": "^13.3.0",
     "lucide-react": "^1.72.0",
     "react": "^19.3.1",
@@ -22,6 +25,7 @@
     "react-router-dom": "^7.18.5"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.6.2",
     "@firebase/rules-unit-testing": "^6.0.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contactToPerson, fromGooglePerson, fromPicked, suggestContacts, type ContactSuggestion } from '../contactSuggest';
+import { contactToPerson, fromGooglePerson, fromNative, fromPicked, suggestContacts, type ContactSuggestion } from '../contactSuggest';
 import { emptyPerson } from '../person';
 
 // Fictitious contacts only.
@@ -14,6 +14,13 @@ describe('contact suggestions', () => {
     })!;
     expect(c).toMatchObject({ firstName: 'Asha', lastName: 'Verma', nickname: 'Ashu', phones: ['+91 90000 11111'], emails: ['asha@example.com'], gender: 'female', from: 'google' });
     expect(fromGooglePerson({ resourceName: 'people/c2', phoneNumbers: [{ value: '12345' }] })).toBeNull();
+  });
+
+  it('maps a contact read by the Android app', () => {
+    expect(fromNative({ id: '7', given: 'Lalitha', family: 'Menon', nickname: 'Lalli', phones: ['90000 66666', '90000 66666'], emails: [] }))
+      .toMatchObject({ key: 'n:7', firstName: 'Lalitha', lastName: 'Menon', nickname: 'Lalli', phones: ['90000 66666'], from: 'phone' });
+    expect(fromNative({ id: '8', display: 'Gopal Krishna Iyer', phones: [] })).toMatchObject({ firstName: 'Gopal Krishna', lastName: 'Iyer' });
+    expect(fromNative({ id: '9', phones: ['12345'] })).toBeNull();
   });
 
   it('maps a picked phone contact', () => {

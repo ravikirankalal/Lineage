@@ -9,7 +9,8 @@
  * - Without real Firebase config, or with the emulators, it is unavailable and touches no network.
  */
 import { useSyncExternalStore } from 'react';
-import { fromGooglePerson, type ContactSuggestion, type GooglePersonLite } from '../contactSuggest';
+import { fromGooglePerson, fromNative, type ContactSuggestion, type GooglePersonLite } from '../contactSuggest';
+import { ContactsReader, isNativeApp } from '../native';
 import { cloudConfigured, getFirebaseAuth, usingEmulators } from './firebase';
 
 const SCOPE = 'https://www.googleapis.com/auth/contacts.readonly';
@@ -29,8 +30,22 @@ function set(next: GoogleContactsState) {
   subs.forEach((f) => f());
 }
 
+/** Google Contacts through the web popup: browsers only (the Android app reads the phone instead). */
 export function googleContactsAvailable(): boolean {
-  return cloudConfigured() && !usingEmulators();
+  return cloudConfigured() && !usingEmulators() && !isNativeApp();
+}
+
+/** Android app: the phone's own contacts, read once per visit (asks for permission the first time). */
+export async function loadNativeContacts(): Promise<void> {
+  if (!isNativeApp() || state.status === 'loading' || state.status === 'ready') return;
+  set({ ...state, status: 'loading', error: undefined });
+  try {
+    const { contacts } = await ContactsReader.read();
+    set({ status: 'ready', contacts: contacts.map(fromNative).filter((c): c is ContactSuggestion => !!c) });
+  } catch (e) {
+    const denied = /allowed|denied/i.test(String((e as Error)?.message));
+    set({ status: 'error', contacts: [], error: denied ? 'Lineage can’t see your contacts. Tap to allow, or turn it on in Android Settings › Apps › Lineage › Permissions.' : 'Couldn’t read your contacts.' });
+  }
 }
 
 export function useGoogleContacts(): GoogleContactsState {
@@ -101,7 +116,7 @@ type ContactsManager = {
 };
 
 export function phonePickerAvailable(): boolean {
-  return typeof window !== 'undefined' && 'contacts' in navigator && 'ContactsManager' in window;
+  return typeof window !== 'undefined' && !isNativeApp() && 'contacts' in navigator && 'ContactsManager' in window;
 }
 
 /** Opens the phone's contact list (from a tap); resolves with the chosen contact, or undefined. */
