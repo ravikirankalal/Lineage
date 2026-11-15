@@ -105,26 +105,24 @@ Until the `FIREBASE_SERVICE_ACCOUNT` secret exists, the Firebase workflow skips 
 3. They only ever receive the family part of your tree. Friends, colleagues and notes about
    non-family people stay in your account; the server refuses to send them.
 
-## 10. Google Contacts import
-Optional. Lets **Import → Google Contacts** read the signed-in user's Google Contacts directly
-(instead of exporting a .vcf/.csv by hand). Steps for project **`lineage-d575c`**; for another
+## 10. Google Contacts suggestions
+Optional. When adding a relative, **Suggest from my Google contacts** offers matching people from
+the signed-in user's Google Contacts as they type. Steps for project **`lineage-d575c`**; for another
 project, replace the ID in the links.
 
-How it works and what is shared: when you click the import button, a Google window asks for
-**read-only** access to your contacts (`contacts.readonly`, nothing else). Lineage gets a
-short-lived access token (about 1 hour) that is kept in memory only. It is never saved on the
-device, in Firestore or in logs. The browser then downloads your contacts straight from
-`people.googleapis.com` and shows them for you to pick from. Nothing goes to any other server. If you're
-already signed in to Lineage, you must pick the **same** Google account; otherwise the import also
-signs you in.
+How it works and what is shared: on that tap, a Google window asks the **same** signed-in account
+for **read-only** access to its contacts (`contacts.readonly`, nothing else). The browser downloads
+the contacts straight from `people.googleapis.com` and keeps them in memory for that visit only. They
+are never saved on the device, in Firestore or in logs, and the access token is dropped after the
+download. Only a contact you pick becomes a person in your tree. (On Android, Chrome also offers
+**Pick from phone contacts**, which uses the phone's own contact picker and needs no setup.)
 
 ### 10.1 Turn on the People API
 1. Open <https://console.cloud.google.com/apis/library/people.googleapis.com?project=lineage-d575c>
    (signed in as the project owner; check the project picker at the top says `lineage-d575c`).
 2. Click **Enable**. It takes a minute to take effect.
 
-Without this, the import shows "Turn on the People API for this project (see FIREBASE_SETUP.md ›
-Google Contacts)".
+Without this, the suggestions show "Google Contacts isn’t switched on for Lineage yet".
 
 ### 10.2 Add the contacts scope to the consent screen
 Google renamed the old **APIs & Services → OAuth consent screen** page to **Google Auth Platform**,
