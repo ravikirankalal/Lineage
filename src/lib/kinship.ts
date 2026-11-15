@@ -690,3 +690,19 @@ export function lineageStats(graph: FamilyGraph, ego: string, relatives = relati
   }
   return { relatives: relatives.length, ancestors: anc, descendants: desc, generationsUp: up, generationsDown: down, earliest };
 }
+
+/**
+ * A person's father and mother as far as the tree knows (birth or adoptive; step and foster parents
+ * don't count). A birth parent with no gender saved takes whichever of the two is still free.
+ */
+export function birthParents(g: FamilyGraph, byId: Map<string, Person>, id: string): { father?: Person; mother?: Person } {
+  const ps = g.parentsOf(id).filter((e) => isBloodEdge(e.subtype)).map((e) => byId.get(e.id)).filter((p): p is Person => !!p);
+  let father = ps.find((p) => p.gender === 'male');
+  let mother = ps.find((p) => p.gender === 'female');
+  for (const p of ps) {
+    if (p === father || p === mother) continue;
+    if (!father) father = p;
+    else if (!mother) mother = p;
+  }
+  return { father, mother };
+}
