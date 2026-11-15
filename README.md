@@ -24,7 +24,8 @@ with the relatives you choose. The tree lives in your Google account (Firebase),
   descendants below; drag, zoom, Find, and tap a card to move around or add a relative ("Add father
   / Add mother" placeholders grow it upward). On phones the bottom tabs slide away when you
   stop touching the screen; tap the tree to bring them back. The controls are see-through, and
-  *Everyone* shows the whole family with nothing folded. "Family tree" on any profile shows theirs (with save
+  *Everyone* shows the whole family with nothing folded; in the cross layout, **Implode**
+  collapses it into stacked cards on your row and **Explode** animates it back. "Family tree" on any profile shows theirs (with save
   as image and full screen).
 - **People → Relatives / Lines** — next to the full list (Everyone):
   - every relative with a precise label and path — *First cousin once removed · Father's brother's

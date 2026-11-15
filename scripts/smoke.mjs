@@ -62,6 +62,28 @@ async function run(name, viewport) {
   await page.waitForTimeout(600);
   check(!(await page.locator('.tree-viewport button[aria-label^="Show "][aria-label$="children"], .tree-viewport button[aria-label^="Show "][aria-label$="relatives"]').count()), `[${name}] Everyone still has folded cards`);
   await shot('2c-everyone');
+  // Everyone in the cross layout: Implode piles every card onto my row with no lines; Explode restores it.
+  const impBtn = page.getByRole('button', { name: 'Implode' });
+  if (await impBtn.count()) {
+    const before = await page.locator('.tree-world [data-key]').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().top));
+    await impBtn.click();
+    await page.waitForFunction(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Explode'); return b && !b.disabled; }, null, { timeout: 5000 });
+    await page.waitForTimeout(300);
+    const st = await page.evaluate(() => {
+      const tops = [...document.querySelectorAll('.tree-world [data-key]')].map((e) => e.getBoundingClientRect().top);
+      return { spread: Math.max(...tops) - Math.min(...tops), lines: getComputedStyle(document.querySelector('.tree-edges')).opacity };
+    });
+    check(st.lines === '0', `[${name}] lines still showing after Implode`);
+    check(st.spread < Math.max(...before) - Math.min(...before) && st.spread < 120, `[${name}] cards did not collapse onto one row (spread ${st.spread})`);
+    await shot('2d-imploded');
+    await page.getByRole('button', { name: 'Explode' }).click();
+    await page.waitForFunction(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Implode'); return b && !b.disabled; }, null, { timeout: 5000 });
+    const back = await page.evaluate(() => ({
+      moved: [...document.querySelectorAll('.tree-world [data-key]')].filter((e) => e.style.transform).length,
+      lines: getComputedStyle(document.querySelector('.tree-edges')).opacity,
+    }));
+    check(back.moved === 0 && back.lines === '1', `[${name}] Explode did not restore the tree (${JSON.stringify(back)})`);
+  }
   await page.getByRole('radio', { name: 'Immediate' }).click();
   if (vw < 768) {
     // Phone: the bottom tabs slide away when idle; a tap on the tree only brings them back.

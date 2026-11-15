@@ -1,4 +1,4 @@
-import { ArrowDownFromLine, ArrowRightFromLine, Crosshair, Move, Download, Maximize, Maximize2, Minimize2, Minus, Plus, Printer, Search, Share2, X } from 'lucide-react';
+import { ArrowDownFromLine, ArrowRightFromLine, Crosshair, Expand, Move, Shrink, Download, Maximize, Maximize2, Minimize2, Minus, Plus, Printer, Search, Share2, X } from 'lucide-react';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { CARD, type TreeLayout, type TreeLevel, type TreeNode, type TreeOrient } from '../lib/graph/contract';
 import { generationBands, type GenBand } from '../lib/generationBands';
@@ -8,6 +8,7 @@ import { Avatar } from './Avatar';
 import { avatarColors, renderTreePng, shareOrDownload } from './tree/exportImage';
 import { cardName, GhostCard, TreeCard, type CardInfo } from './tree/TreeCard';
 import { TreeEdges } from './tree/TreeEdges';
+import { useImplode } from './tree/useImplode';
 import { clampZoom, prefersReducedMotion, usePanZoom, type View } from './tree/usePanZoom';
 import { useAutoHideTabs, useBottomTabsHidden } from './tree/bottomTabs';
 
@@ -104,6 +105,11 @@ export function FamilyTree({
     const fit = fitView();
     return fit.k >= 0.75 || !f ? fit : centreView(f, READABLE, READABLE);
   }, [byPerson, focusId, fitView, centreView]);
+
+  // ---- Implode / explode (Everyone, cross layout) ---------------------------------------------
+  const canImplode = level === 'everyone' && orient === 'cross';
+  const axisNode = byPerson.get(focusId) ?? byPerson.get(centreId);
+  const imp = useImplode({ world, box, layout, axis: axisNode ? { x: axisNode.x, y: axisNode.y } : undefined, pz });
 
   // ---- layout change: opening view, or keep the anchor still + FLIP the cards ------------------
   const prev = useRef<{ byKey: Map<string, { x: number; y: number }>; byPerson: Map<string, { x: number; y: number }>; focus: string } | null>(null);
@@ -308,7 +314,8 @@ export function FamilyTree({
         else if (e.key === '0') pz.set(fitView(), true);
       }}
     >
-      <div ref={world} className="tree-world absolute left-0 top-0 origin-top-left will-change-transform">
+      <div ref={world} className="tree-world absolute left-0 top-0 origin-top-left will-change-transform"
+        style={imp.state !== 'open' ? { pointerEvents: 'none' } : undefined}>
         <GenerationBands bands={bands} />
         <TreeEdges edges={layout.edges} path={path} lit={pathEdges} />
         {nodes.map((n) => {
@@ -327,6 +334,15 @@ export function FamilyTree({
           <FindInTree candidates={candidates} onFind={onFind} />
           <LevelPicker level={level} onLevel={onLevel} />
           <OrientButton orient={orient} onOrient={onOrient} />
+          {canImplode && (
+            <button type="button" data-no-pan disabled={imp.state === 'moving'} aria-pressed={imp.state === 'imploded'}
+              onClick={imp.state === 'imploded' ? imp.explode : imp.implode}
+              title={imp.state === 'imploded' ? 'Explode back into the tree' : 'Implode: collapse the tree into stacks'}
+              className="map-glass pointer-events-auto flex h-10 items-center gap-1.5 rounded-full bg-white/95 px-3.5 text-[13px] font-semibold text-brand-700 shadow-card ring-1 ring-stone-200 disabled:opacity-60 dark:bg-stone-800/95 dark:text-brand-200 dark:ring-stone-700">
+              {imp.state === 'imploded' ? <Expand size={16} /> : <Shrink size={16} />}
+              {imp.state === 'imploded' ? 'Explode' : 'Implode'}
+            </button>
+          )}
           {!map && <SaveMenu onImage={saveImage} />}
         </div>
         {banner}
