@@ -504,12 +504,30 @@ const REGION_TINT = {
   middle: 'bg-stone-200/45 dark:bg-stone-800/45',
   mother: 'bg-rose-100/45 dark:bg-rose-900/15',
 };
+/** How far a band reaches past the edge of the tree (layout units): more than any screen at the
+ * smallest zoom, so the bands look endless when zoomed out (the owner's request). */
+const FAR = 20_000;
 const GenerationBands = memo(function GenerationBands({ bands }: { bands: GenBand[] }) {
+  // A band edge on the outside of the whole picture reaches FAR beyond it; titles stay on the tree.
+  const minX = Math.min(...bands.map((b) => b.x0));
+  const maxX = Math.max(...bands.map((b) => b.x1));
+  const minY = Math.min(...bands.map((b) => b.y0));
+  const maxY = Math.max(...bands.map((b) => b.y1));
+  const far = (b: GenBand) => {
+    const x0 = b.x0 <= minX + 0.5 ? b.x0 - FAR : b.x0;
+    const x1 = b.x1 >= maxX - 0.5 ? b.x1 + FAR : b.x1;
+    const y0 = b.y0 <= minY + 0.5 ? b.y0 - FAR : b.y0;
+    const y1 = b.y1 >= maxY - 0.5 ? b.y1 + FAR : b.y1;
+    return { left: x0, top: y0, width: x1 - x0, height: y1 - y0 };
+  };
+  const box = (b: GenBand) => ({ left: b.x0, top: b.y0, width: b.x1 - b.x0, height: b.y1 - b.y0 });
   return (
     <div className="tree-bands pointer-events-none absolute left-0 top-0" aria-hidden>
+      {bands.map((b) => (
+        <div key={`${b.key}:fill`} className={`absolute ${b.region ? REGION_TINT[b.region] : BAND_TINT[((b.gen % 4) + 4) % 4]}`} style={far(b)} />
+      ))}
       {bands.map((b) => b.region ? (
-        <div key={b.key} className={`absolute ${REGION_TINT[b.region]}`}
-          style={{ left: b.x0, top: b.y0, width: b.x1 - b.x0, height: b.y1 - b.y0 }}>
+        <div key={b.key} className="absolute" style={box(b)}>
           <span className="absolute left-0 right-0 top-2.5 whitespace-nowrap text-center text-[13px] font-bold uppercase tracking-wide text-stone-600 dark:text-stone-300">
             {b.label}
           </span>
@@ -521,8 +539,7 @@ const GenerationBands = memo(function GenerationBands({ bands }: { bands: GenBan
           ))}
         </div>
       ) : (
-        <div key={b.key} className={`absolute ${BAND_TINT[((b.gen % 4) + 4) % 4]}`}
-          style={{ left: b.x0, top: b.y0, width: b.x1 - b.x0, height: b.y1 - b.y0 }}>
+        <div key={b.key} className="absolute" style={box(b)}>
           <span className={`absolute whitespace-nowrap text-[11px] font-semibold uppercase tracking-wide text-stone-500/90 dark:text-stone-400/80 ${
             b.vertical ? 'left-0 right-0 top-3 overflow-hidden text-ellipsis px-2 text-center' : 'left-3 top-1'}`}>
             {b.label}
