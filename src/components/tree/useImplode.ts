@@ -94,6 +94,23 @@ export function useImplode(opts: {
     later(quick ? 0 : SLIDE + FALL + FADE, () => { clean(); setState('open'); });
   }, [state, layout, pz]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /**
+   * Opening intro: the cards start packed in the wall (no lines), then explode into the tree. Call it
+   * before the first paint (layout effect), so the tree never shows first. The view doesn't move.
+   */
+  const intro = useCallback(() => {
+    if (state !== 'open' || !axis || prefersReducedMotion()) return;
+    saved.current = null;
+    setState('moving');
+    fadeLines(false, 0);
+    place(2, 0);
+    const PAUSE = 450;
+    later(PAUSE, () => place(1, SLIDE));
+    later(PAUSE + SLIDE, () => place(0, FALL));
+    later(PAUSE + SLIDE + FALL, () => fadeLines(true, FADE));
+    later(PAUSE + SLIDE + FALL + FADE, () => { clean(); setState('open'); });
+  }, [state, axis, layout]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // A new layout (level, layout direction, focus, data) always starts open.
   const first = useRef(true);
   useEffect(() => {
@@ -104,5 +121,5 @@ export function useImplode(opts: {
   }, [layout]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
 
-  return { state, implode, explode };
+  return { state, implode, explode, intro };
 }
