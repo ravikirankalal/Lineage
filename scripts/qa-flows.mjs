@@ -195,15 +195,11 @@ async function main(browser) {
     await page.goBack();
   });
 
-  await flow('5 delete all data', async () => {
+  await flow('5 no way to delete the whole tree', async () => {
     await page.goto(BASE + '#/settings');
-    check(!/Download backup|Restore from backup|Sync now/.test(await body(page)), '[5] Settings still offers backup or sync');
-    await page.getByText('Delete all data').click();
-    await page.getByRole('button', { name: 'Delete everything' }).click();
-    await page.getByText('All data deleted.').waitFor();
-    check(/0 people and 0 relationships/.test(await body(page)), '[5] delete all did not clear');
-    await page.reload();
-    await page.getByText(/0 people and 0 relationships/).waitFor();
+    const st = await body(page);
+    check(!/Download backup|Restore from backup|Sync now/.test(st), '[5] Settings still offers backup or sync');
+    check(!/Delete all data|Delete everything/.test(st), '[5] Settings still offers Delete all data');
   });
 
   await ctx.close();

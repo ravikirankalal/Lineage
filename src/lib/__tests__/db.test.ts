@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   addRelationship,
-  clearAll,
   deletePerson,
   deleteRelationship,
   ensureRelationship,
@@ -520,14 +519,6 @@ describe('writes go to the cloud as one batch per change', () => {
     const moved = await db.relationships.get(ds);
     expect(moved!.fromId).toBe('K');
     expect(moved!.updatedAt).toBeGreaterThan(1);
-  });
-
-  it('clearAll deletes everything', async () => {
-    await db.people.bulkPut([person('A'), person('B')]);
-    await addRelationship({ fromId: 'A', toId: 'B', type: 'sibling' });
-    await clearAll();
-    expect(await db.people.count()).toBe(0);
-    expect(await db.relationships.count()).toBe(0);
   });
 
   it('composed changes (write + ops) are one batch, and reads see earlier steps', async () => {

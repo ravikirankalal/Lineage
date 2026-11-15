@@ -247,7 +247,7 @@ export function usePermissions() {
   return {
     /** Create, edit, delete, merge. False for viewers, and while offline (nothing can be saved). */
     canEdit: role !== 'viewer' && online,
-    /** Manage sharing, delete all, load the sample, set "This is me": only in your own family. */
+    /** Manage sharing, load the sample, set "This is me": only in your own family. */
     isOwner: role === 'owner' && !isShared,
     /** Viewing someone else's family. */
     isShared,

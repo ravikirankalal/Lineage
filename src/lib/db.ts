@@ -154,14 +154,6 @@ export function purgeLooseContacts(): Promise<number> {
   });
 }
 
-/** Delete all people and relationships in this family. */
-export function clearAll(): Promise<void> {
-  return write((t) => {
-    for (const r of t.allRels()) t.removeRel(r.id);
-    for (const p of t.allPeople()) t.removePerson(p.id);
-  });
-}
-
 // ---------------------------------------------------------------------------
 // Merge two people
 
