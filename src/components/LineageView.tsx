@@ -1,4 +1,4 @@
-import { Crosshair, UserPlus, X } from 'lucide-react';
+import { Crosshair, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCanEdit } from '../lib/cloud/CloudProvider';
@@ -15,7 +15,11 @@ import type { CardInfo } from './tree/TreeCard';
 import { useTreeParams } from './tree/useTreeParams';
 
 /** The family tree for any person. (Relatives and lines live on the People page.) */
-export function LineageView({ ego, egoLabel = 'You' }: { ego: Person; egoLabel?: string }) {
+/**
+ * `map`: the My Family page — the tree fills the screen with only Find, levels, layout and zoom.
+ * Relatives are added from a card (tap → Add relative) or the "Add father / Add mother" placeholders.
+ */
+export function LineageView({ ego, egoLabel = 'You', map = false }: { ego: Person; egoLabel?: string; map?: boolean }) {
   const { graph, byId, me } = useData();
   const nav = useNavigate();
   const canEdit = useCanEdit();
@@ -116,14 +120,6 @@ export function LineageView({ ego, egoLabel = 'You' }: { ego: Person; egoLabel?:
 
   return (
     <div>
-      {canEdit && focusPerson && (
-        <div className="mb-3 flex items-center gap-2 print:hidden">
-          <button type="button" className="btn-primary ml-auto shrink-0 px-3 py-2" onClick={() => setAdding({ person: focusPerson })}
-            aria-label={`Add a relative of ${focusPerson.firstName}`}>
-            <UserPlus size={17} /> <span className="hidden sm:inline">Add relative</span>
-          </button>
-        </div>
-      )}
 
       <FamilyTree
         layout={layout}
@@ -146,6 +142,7 @@ export function LineageView({ ego, egoLabel = 'You' }: { ego: Person; egoLabel?:
         onRecentre={() => update({ focus: ego.id }, { push: true })}
         banner={banner}
         exportTitle={isMe ? 'My family tree' : `${displayName(ego)}’s family tree`}
+        map={map}
       />
 
       {sheet && sheetPerson && (

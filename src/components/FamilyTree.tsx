@@ -24,7 +24,7 @@ export interface FindCandidate { person: Person; label?: string }
  */
 export function FamilyTree({
   layout, focusId, centreId, centreLabel, cardInfo, path, pathEdges, panTo, level, onLevel, orient, onOrient, candidates, onFind,
-  onTap, onToggle, onAddParent, onRecentre, banner, exportTitle,
+  onTap, onToggle, onAddParent, onRecentre, banner, exportTitle, map = false,
 }: {
   layout: TreeLayout;
   focusId: string;
@@ -51,13 +51,15 @@ export function FamilyTree({
   onRecentre: () => void;
   banner?: ReactNode;
   exportTitle: string;
+  /** Map view: fills the page edge to edge, with only Find, levels, layout and zoom (no save, no full screen). */
+  map?: boolean;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const world = useRef<HTMLDivElement>(null);
   const overlay = useRef<HTMLDivElement>(null);
   const userMoved = useRef(false);
   const pz = usePanZoom(box, world);
-  const height = useFillHeight(box);
+  const height = useFillHeight(box, map);
   const [full, toggleFull] = useFullScreen();
 
   const byKey = useMemo(() => new Map(layout.nodes.map((n) => [n.key, n])), [layout]);
@@ -291,6 +293,7 @@ export function FamilyTree({
       ref={box}
       className={`tree-viewport touch-none select-none overflow-hidden ${full
         ? 'fixed inset-0 z-[45] bg-stone-100 dark:bg-stone-900'
+        : map ? 'relative bg-stone-100/70 dark:bg-stone-900/60'
         : 'relative rounded-2xl bg-stone-100/70 ring-1 ring-stone-200/70 dark:bg-stone-900/60 dark:ring-stone-800'}`}
       style={{ height: full ? '100dvh' : height, ['--print-transform' as string]: printTransform }}
       onKeyDown={(e) => {
@@ -319,7 +322,7 @@ export function FamilyTree({
           <FindInTree candidates={candidates} onFind={onFind} />
           <LevelPicker level={level} onLevel={onLevel} />
           <OrientButton orient={orient} onOrient={onOrient} />
-          <SaveMenu onImage={saveImage} />
+          {!map && <SaveMenu onImage={saveImage} />}
         </div>
         {banner}
       </div>
@@ -327,10 +330,12 @@ export function FamilyTree({
       {/* Bottom-right controls, clear of the centre and of the phone's home indicator. */}
       <div data-no-pan className="absolute z-10 flex flex-col gap-1 rounded-2xl bg-white/90 p-1 shadow-card ring-1 ring-stone-200 backdrop-blur dark:bg-stone-800/90 dark:ring-stone-700 print:hidden"
         style={{ right: 'calc(10px + env(safe-area-inset-right))', bottom: full ? 'calc(10px + env(safe-area-inset-bottom))' : 10 }}>
-        <button type="button" className="icon-btn" onClick={toggleFull} aria-pressed={full}
-          aria-label={full ? 'Exit full screen' : 'Full screen'} title={full ? 'Exit full screen (Esc)' : 'Full screen'}>
-          {full ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
-        </button>
+        {!map && (
+          <button type="button" className="icon-btn" onClick={toggleFull} aria-pressed={full}
+            aria-label={full ? 'Exit full screen' : 'Full screen'} title={full ? 'Exit full screen (Esc)' : 'Full screen'}>
+            {full ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+          </button>
+        )}
         <button type="button" className="icon-btn" onClick={() => { userMoved.current = true; pz.zoomBy(1.3, undefined, true); }} aria-label="Zoom in" title="Zoom in"><Plus size={19} /></button>
         <button type="button" className="icon-btn" onClick={() => { userMoved.current = true; pz.zoomBy(1 / 1.3, undefined, true); }} aria-label="Zoom out" title="Zoom out"><Minus size={19} /></button>
         <button type="button" className="icon-btn" onClick={() => { userMoved.current = true; pz.set(fitView(), true); }} aria-label="Fit the whole tree" title="Fit the whole tree"><Maximize size={17} /></button>
@@ -396,7 +401,7 @@ function useFullScreen(): [boolean, () => void] {
 }
 
 /** Tree height: fill the viewport below the box, above the phone's bottom tabs. */
-function useFillHeight(box: React.RefObject<HTMLDivElement | null>): string {
+function useFillHeight(box: React.RefObject<HTMLDivElement | null>, edge = false): string {
   const [top, setTop] = useState<number | null>(null);
   const [wide, setWide] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(min-width: 768px)').matches);
   useLayoutEffect(() => {
@@ -410,8 +415,8 @@ function useFillHeight(box: React.RefObject<HTMLDivElement | null>): string {
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
   }, [box]);
-  // Bottom tabs are ~58px plus the safe area on phones; desktop keeps a small margin.
-  const reserve = wide ? '24px' : 'calc(70px + env(safe-area-inset-bottom))';
+  // Bottom tabs are ~58px plus the safe area on phones; desktop keeps a small margin (none in map view).
+  const reserve = wide ? (edge ? '0px' : '24px') : `calc(${edge ? 58 : 70}px + env(safe-area-inset-bottom))`;
   return `max(360px, calc(100dvh - ${top ?? 200}px - ${reserve}))`;
 }
 

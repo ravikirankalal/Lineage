@@ -268,6 +268,11 @@ Read this before changing code. Append new learnings at the bottom.
 - **Page split (2026-11-15, owner's request):** My Family (`/family`) and `/people/:id/tree` show only the tree
   (`LineageView` has no tabs; `useTreeParams` has no `tab`). Relatives and Lines live on the People page as views
   (`?view=relatives|lines`, centred on "me"; components in `src/components/Relatives.tsx`). "Show in tree" goes to
-  `/family?focus=<id>&hl=<id>`. `FamilyPage` redirects old `?tab=relatives|lines` links to `/people?view=…`.
+  `/family?focus=<id>&hl=<id>`. `FamilyPage` redirects old `?tab=relatives|lines` links to `/?view=…`.
 - Smoke screenshots of segmented controls can show the previous selection: the buttons have a CSS transition and
   the shot is taken right after the click.
+- **My Family is a map (2026-11-15, owner's request):** `/family` renders only `<LineageView map>`; `App` `Shell` drops
+  the page padding and width limit on that route (banners keep their padding). `FamilyTree` `map` = edge to edge, no
+  save menu, no full-screen button; `useFillHeight` reserves only the phone tab bar (58px). The "Add relative" bar is
+  gone from every tree: add from a card's sheet or the ghost cards. Save image / full screen remain on
+  `/people/:id/tree`. People links use `/` (not `/people`) so the People nav item stays highlighted.
