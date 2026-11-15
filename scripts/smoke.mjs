@@ -184,6 +184,22 @@ async function run(name, viewport) {
   check(await page.getByRole('radio', { name: 'Extended', checked: true }).count() === 1, `[${name}] coming back, the tree lost its level`);
   const ext2 = await viewNow();
   check(same(ext, ext2), `[${name}] coming back, the tree lost its view (${JSON.stringify(ext)} → ${JSON.stringify(ext2)})`);
+  // One sheet for everything on a card: Centre / How related, and adding a relative in place.
+  const anjali = page.locator('.tree-viewport button').filter({ hasText: 'Anjali' }).first();
+  await anjali.click();
+  if (!(await page.getByRole('dialog').count())) { await page.waitForTimeout(300); await anjali.click(); } // phone: first tap brings the tabs back
+  const cardSheet = page.getByRole('dialog');
+  await cardSheet.getByRole('button', { name: 'Centre the tree on Anjali' }).waitFor();
+  check(await cardSheet.getByRole('button', { name: /How are we related/ }).count() === 1, `[${name}] card sheet lacks "How are we related?"`);
+  check(!(await cardSheet.getByText(/Add a relative of/).count()), `[${name}] card sheet still has "Add a relative of"`);
+  await shot('2f-card-sheet');
+  await cardSheet.getByRole('button', { name: 'Add Anjali’s son' }).click();
+  await cardSheet.getByRole('heading', { name: 'Anjali’s son' }).waitFor();
+  check(await cardSheet.getByRole('group', { name: 'Father' }).getByText('Ravi Rao').isVisible(), `[${name}] adding from the card sheet: father not prefilled with Ravi`);
+  await shot('2g-card-sheet-add');
+  await cardSheet.getByRole('button', { name: 'Back' }).click();
+  await cardSheet.getByRole('button', { name: 'Centre the tree on Anjali' }).waitFor();
+  await cardSheet.getByRole('button', { name: 'Close' }).click();
   await page.goto(BASE + '#/family?tab=relatives');
   await page.getByPlaceholder('Search relatives').waitFor();
   // Show in tree from the Relatives list opens Family Tree with that person highlighted.
