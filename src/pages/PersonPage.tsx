@@ -30,6 +30,8 @@ export function PersonPage() {
   const hasFamily = useMemo(() => !!p && rels.some((r) => isFamilyType(r.type) && (r.fromId === p.id || r.toId === p.id)), [p, rels]);
 
   const groups = useMemo(() => (p ? connectionsOf(p.id, people, rels, graph) : []), [p, people, rels, graph]);
+  const core = groups.filter((g) => g.core);
+  const rest = groups.filter((g) => !g.core);
   const toMe = useMemo(() => {
     if (!p || !me || p.id === me.id) return undefined;
     const k = kinship(graph, me.id, p.id);
@@ -76,16 +78,7 @@ export function PersonPage() {
         </div>
       </div>
 
-      {canEdit && missing.length > 0 && !p.isMe && (
-        <Link to={`/people/${p.id}/edit`} className="mt-6 flex items-start gap-3 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-amber-100 dark:bg-amber-900/20 dark:text-amber-200 dark:ring-amber-900/40">
-          <Sparkles size={18} className="mt-0.5 shrink-0" />
-          <span>Help future you: add {missing.slice(0, 3).join(', ')}.</span>
-        </Link>
-      )}
-
-      <Details p={p} />
-
-      {/* Family */}
+      {/* Family: parents, spouse and children first, then the details, then everyone else. */}
       <div className="mt-8 flex items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Family {total > 0 && <span className="text-stone-400">· {total}</span>}</h2>
         {canEdit && <button className="btn-primary" onClick={() => setAdding(true)}><Plus size={17} /> Add</button>}
@@ -100,7 +93,22 @@ export function PersonPage() {
         </button>
       ) : (
         <div className="mt-3 space-y-4">
-          {groups.map((g) => <Group key={g.key} group={g} personId={p.id} personName={p.firstName} canEdit={canEdit} />)}
+          {(core.length ? core : rest).map((g) => <Group key={g.key} group={g} personId={p.id} personName={p.firstName} canEdit={canEdit} />)}
+        </div>
+      )}
+
+      {canEdit && missing.length > 0 && !p.isMe && (
+        <Link to={`/people/${p.id}/edit`} className="mt-6 flex items-start gap-3 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-amber-100 dark:bg-amber-900/20 dark:text-amber-200 dark:ring-amber-900/40">
+          <Sparkles size={18} className="mt-0.5 shrink-0" />
+          <span>Help future you: add {missing.slice(0, 3).join(', ')}.</span>
+        </Link>
+      )}
+
+      <Details p={p} />
+
+      {core.length > 0 && rest.length > 0 && (
+        <div className="mt-8 space-y-4">
+          {rest.map((g) => <Group key={g.key} group={g} personId={p.id} personName={p.firstName} canEdit={canEdit} />)}
         </div>
       )}
 
