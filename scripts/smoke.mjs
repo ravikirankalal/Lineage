@@ -218,6 +218,20 @@ async function run(name, viewport) {
   await shot('2i-card-sheet-renamed');
   await rename('Anjalee Rao', 'Anjali');
   await cardSheet.getByRole('button', { name: 'Close' }).click();
+  // A "shown elsewhere" copy takes you to the main card, which flashes a yellow ring.
+  for (const lvl of ['Extended', 'Everyone']) {
+    await page.getByRole('radio', { name: lvl }).click();
+    await page.waitForTimeout(600);
+    const dup = page.locator('.tree-viewport .tree-card.border-dashed').first();
+    if (!(await dup.count())) continue;
+    await dup.click();
+    let flashed = await page.waitForSelector('.tree-card.tree-flash', { timeout: 1500 }).then(() => true, () => false);
+    if (!flashed) { await dup.click(); flashed = await page.waitForSelector('.tree-card.tree-flash', { timeout: 1500 }).then(() => true, () => false); } // phone: first tap shows the tabs
+    check(flashed, `[${name}] the main card did not flash after tapping its copy (${lvl})`);
+    await page.waitForTimeout(900);
+    await shot('2j-dup-flash');
+    break;
+  }
   await page.goto(BASE + '#/family?tab=relatives');
   await page.getByPlaceholder('Search relatives').waitFor();
   // Show in tree from the Relatives list opens Family Tree with that person highlighted.

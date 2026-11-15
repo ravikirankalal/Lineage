@@ -299,6 +299,14 @@ export function FamilyTree({
       if (primary) {
         userMoved.current = true;
         pz.set(centreView(primary, READABLE), true);
+        // Flash a yellow ring on the card we arrived at, so it's clear which one it is.
+        const card = world.current?.querySelector<HTMLElement>(`[data-key="${CSS.escape(primary.key)}"] .tree-card`);
+        if (card) {
+          card.classList.remove('tree-flash');
+          void card.offsetWidth; // restart the animation on a second tap
+          card.classList.add('tree-flash');
+          card.addEventListener('animationend', () => card.classList.remove('tree-flash'), { once: true });
+        }
       }
       return;
     }
