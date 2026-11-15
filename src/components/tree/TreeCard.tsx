@@ -1,7 +1,7 @@
 import { Minus, Plus, UserPlus, CornerUpRight } from 'lucide-react';
 import { memo } from 'react';
 import { CARD, type TreeNode } from '../../lib/graph/contract';
-import { age, formatPlace, fullName, initials, lifespan } from '../../lib/person';
+import { age, formatPlace, fullName, lifespan } from '../../lib/person';
 import type { Person } from '../../lib/types';
 import { Avatar } from '../Avatar';
 import type { Detail } from './detail';
@@ -23,12 +23,12 @@ export interface CardInfo {
 }
 
 /** One person card at CARD size, positioned in layout units. Keyed by node.key for FLIP. */
-export const TreeCard = memo(function TreeCard({ node, info, onTap, onToggle, detail = 4 }: {
+export const TreeCard = memo(function TreeCard({ node, info, onTap, onToggle, detail = 3 }: {
   node: TreeNode;
   info: CardInfo;
   onTap: (node: TreeNode) => void;
   onToggle: (personId: string) => void;
-  /** How much the card shows, from the zoom (see detail.ts): 1 tile … 5 detailed. */
+  /** How much the card shows, from the zoom (see detail.ts): 1 name … 4 detailed. */
   detail?: Detail;
 }) {
   const p = info.person;
@@ -44,8 +44,6 @@ export const TreeCard = memo(function TreeCard({ node, info, onTap, onToggle, de
           title={`${cardName(p)} is shown elsewhere in the tree. Tap to go there.`}
           className="tree-card flex h-full w-full items-center gap-2 rounded-2xl border-2 border-dashed border-stone-300 bg-stone-50/80 px-2.5 text-left dark:border-stone-600 dark:bg-stone-900/80">
           {detail === 1 ? (
-            <span className="w-full text-center text-[30px] font-bold text-stone-500 dark:text-stone-400">{initials(p)}</span>
-          ) : detail === 2 ? (
             <span className="w-full truncate text-center text-[22px] font-semibold text-stone-600 dark:text-stone-300">{firstName(p)}</span>
           ) : (
             <>
@@ -126,21 +124,17 @@ function yearsWithAge(p: Person, span: string): string {
   return a !== undefined && span ? `${span} · ${a}` : span;
 }
 
-/** The inside of a card, one of five designs by zoom (detail.ts). The card's size never changes. */
+/** The inside of a card, one of four designs by zoom (detail.ts). The card's size never changes. */
 function CardBody({ p, detail, label, term, span, relCls, mutedCls, spanCls, focus }: {
   p: Person; detail: Detail; label?: string; term?: string; span: string; relCls: string; mutedCls: string; spanCls: string; focus: boolean;
 }) {
   const nameCls = focus ? '' : 'text-stone-800 dark:text-stone-100';
   if (detail === 1) {
-    // Tile: big initials, readable from far away.
-    return <span className={`tree-text w-full text-center text-[32px] font-bold tracking-wide ${nameCls}`}>{initials(p)}</span>;
-  }
-  if (detail === 2) {
     // Name: the first name, large.
     return <span className={`tree-text w-full truncate text-center text-[24px] font-semibold ${nameCls}`}>{firstName(p)}</span>;
   }
   const rel = term ?? label ?? '';
-  if (detail === 3) {
+  if (detail === 2) {
     // Compact: small photo, short name and how they're related, a bit larger than standard.
     return (
       <>
@@ -152,7 +146,7 @@ function CardBody({ p, detail, label, term, span, relCls, mutedCls, spanCls, foc
       </>
     );
   }
-  if (detail === 5) {
+  if (detail === 4) {
     // Detailed: full name, relation and family term, years with age, then place or occupation.
     const place = formatPlace(p.address, true) || formatPlace(p.origin, true);
     const extra = [p.occupation, place].filter(Boolean).join(' · ');

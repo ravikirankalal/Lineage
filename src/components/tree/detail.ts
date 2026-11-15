@@ -1,12 +1,13 @@
 /**
- * Level of detail for tree cards, from how big a card is on screen (the zoom). Five designs:
- * 1 tile (initials), 2 name, 3 compact (photo, short name, relation), 4 standard (+ years),
- * 5 detailed (full name, relation and term, years with age, place and occupation).
+ * Level of detail for tree cards, from how big a card is on screen (the zoom). Four designs:
+ * 1 name (large first name), 2 compact (photo, short name, relation), 3 standard (+ years),
+ * 4 detailed (full name, relation and term, years with age, place and occupation).
+ * (An initials-only tile was tried and dropped by the owner: too little to be useful.)
  */
-export type Detail = 1 | 2 | 3 | 4 | 5;
+export type Detail = 1 | 2 | 3 | 4;
 
-/** Zoom where each level starts: level 2 from 0.35, 3 from 0.55, 4 from 0.8, 5 from 1.3. */
-export const DETAIL_FROM = [0.35, 0.55, 0.8, 1.3] as const;
+/** Zoom where each level starts: level 2 from 0.55, 3 from 0.8, 4 from 1.3. */
+export const DETAIL_FROM = [0.55, 0.8, 1.3] as const;
 const SLACK = 0.03; // hysteresis, so a zoom resting on a boundary doesn't flicker between designs
 
 /** The level for zoom `k`, staying at `current` until `k` is clearly past a boundary. */
