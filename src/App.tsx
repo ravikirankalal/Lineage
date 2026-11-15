@@ -100,7 +100,7 @@ function Shell() {
       {/* Bottom tabs (phone) */}
       {/* On My Family they slide away when idle; a tap on the tree brings them back (bottomTabs.ts). */}
       <nav inert={tabsHidden} aria-hidden={tabsHidden || undefined} data-hidden={tabsHidden || undefined}
-        className={`fixed inset-x-0 bottom-0 z-40 border-t border-stone-200/80 bg-white/90 pb-safe backdrop-blur-lg transition-transform duration-200 dark:border-stone-800 dark:bg-stone-900/90 md:hidden ${tabsHidden ? 'translate-y-full' : ''}`}>
+        className={`fixed inset-x-0 bottom-0 z-40 border-t border-stone-200/80 bg-white/90 pb-safe backdrop-blur-lg transition-transform duration-200 dark:border-stone-800 dark:bg-stone-900/90 md:hidden ${map ? 'map-glass' : ''} ${tabsHidden ? 'translate-y-full' : ''}`}>
         <div className="mx-auto flex max-w-lg">
           {NAV.map(({ to, label, icon: Icon, end }) => (
             <NavLink key={to} to={to} end={end}

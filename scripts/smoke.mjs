@@ -57,6 +57,12 @@ async function run(name, viewport) {
   const tb = await page.locator('.tree-viewport').boundingBox();
   const vw = page.viewportSize().width;
   check(tb && vw - tb.width <= 241 && tb.height > page.viewportSize().height * 0.7, `[${name}] tree does not fill the screen (${JSON.stringify(tb)})`);
+  // Everyone: the whole family, nothing folded (no show/hide buttons on cards).
+  await page.getByRole('radio', { name: 'Everyone' }).click();
+  await page.waitForTimeout(600);
+  check(!(await page.locator('.tree-viewport button[aria-label^="Show "][aria-label$="children"], .tree-viewport button[aria-label^="Show "][aria-label$="relatives"]').count()), `[${name}] Everyone still has folded cards`);
+  await shot('2c-everyone');
+  await page.getByRole('radio', { name: 'Immediate' }).click();
   if (vw < 768) {
     // Phone: the bottom tabs slide away when idle; a tap on the tree only brings them back.
     const tabs = page.locator('nav.fixed');

@@ -96,7 +96,7 @@ export function LineageView({ ego, egoLabel = 'You', map = false }: { ego: Perso
   const pathHidden = !!path && [...path].some((id) => !inLayout(id));
 
   const banner = hlPerson ? (
-    <div data-no-pan className="pointer-events-auto flex max-w-full items-center gap-2 self-start rounded-2xl bg-amber-50/95 py-1.5 pl-3 pr-1 text-sm shadow-card ring-1 ring-amber-200 backdrop-blur dark:bg-amber-950/80 dark:ring-amber-900">
+    <div data-no-pan className="map-glass pointer-events-auto flex max-w-full items-center gap-2 self-start rounded-2xl bg-amber-50/95 py-1.5 pl-3 pr-1 text-sm shadow-card ring-1 ring-amber-200 backdrop-blur dark:bg-amber-950/80 dark:ring-amber-900">
       <span className="min-w-0 flex-1">
         <b>{hlPerson.firstName}</b> is {isMe ? 'your' : `${ego.firstName}’s`}{' '}
         <KinLabel label={labels.get(hlPerson.id)?.label ?? 'relative'} egoId={ego.id} targetId={hlPerson.id} className="font-semibold text-amber-800 dark:text-amber-200" termClassName="font-normal" />
@@ -110,7 +110,7 @@ export function LineageView({ ego, egoLabel = 'You', map = false }: { ego: Perso
       <button type="button" className="icon-btn h-9 w-9 shrink-0" aria-label="Clear highlight" onClick={() => update({ hl: null })}><X size={17} /></button>
     </div>
   ) : focusId !== ego.id && focusPerson ? (
-    <div data-no-pan className="pointer-events-auto flex max-w-full items-center gap-1 self-start rounded-2xl bg-white/95 py-1 pl-3 pr-1 text-sm shadow-card ring-1 ring-stone-200 backdrop-blur dark:bg-stone-800/95 dark:ring-stone-700">
+    <div data-no-pan className="map-glass pointer-events-auto flex max-w-full items-center gap-1 self-start rounded-2xl bg-white/95 py-1 pl-3 pr-1 text-sm shadow-card ring-1 ring-stone-200 backdrop-blur dark:bg-stone-800/95 dark:ring-stone-700">
       <span className="min-w-0 truncate text-stone-500 dark:text-stone-400">Centred on <b className="text-stone-800 dark:text-stone-100">{displayName(focusPerson)}</b></span>
       <button type="button" className="btn-ghost shrink-0 px-2.5 py-1.5" onClick={() => update({ focus: ego.id }, { push: true })}>
         <Crosshair size={15} /> Back to {isMe ? 'me' : ego.firstName}

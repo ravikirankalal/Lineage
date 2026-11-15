@@ -23,7 +23,7 @@ import type { FamilyGraph } from './kinship';
  * - Every ancestor's brothers (above) and sisters (below) bring their families: their children one column
  *   further in, level with them, and so on down to the focus's column (parents' cousins in the parents'
  *   column, second cousins beside the focus). Everyone in the focus's column has their spouse below them.
- *   Each such couple's children start collapsed: the card's button (`expanded`) shows them.
+ *   Each such couple's children start collapsed (except in Everyone): the card's button (`expanded`) shows them.
  *
  * Levels: immediate (siblings without their spouses, ancestors' siblings hidden), extended (+ siblings'
  * spouses, parents' brothers and sisters with their children), everyone (+ every ancestor's brothers and
@@ -66,6 +66,10 @@ class Cross {
   private exp(id: string) {
     return this.opts.expanded.has(id);
   }
+  /** A brother's or sister's children are drawn: always in Everyone, otherwise once their card is opened. */
+  private kidsOpen(id: string) {
+    return this.opts.level === 'everyone' || this.exp(id);
+  }
 
   /** Cards drawn beside a partner (a spouse, or a wife below her husband on an ancestor line). */
   readonly partnerNodes = new Set<TreeNode>();
@@ -81,7 +85,7 @@ class Cross {
       n = { key: `${role}:${id}`, personId: id, x, y, generation: gen, role, ...flags };
       this.placed.set(id, n.key);
       this.byId.set(id, n);
-      if (this.exp(id)) n.expanded = true;
+      if (this.exp(id) && this.opts.level !== 'everyone') n.expanded = true;
     }
     this.nodes.push(n);
     if (partner) this.partnerNodes.add(n);
@@ -185,7 +189,7 @@ class Cross {
     const hit = this.memo.get(k);
     if (hit !== undefined) return hit;
     let kidRows = 0;
-    if (this.exp(id)) for (const c of this.g.childrenOf(id)) kidRows += this.bandRows(c.id, gen - 1);
+    if (this.kidsOpen(id)) for (const c of this.g.childrenOf(id)) kidRows += this.bandRows(c.id, gen - 1);
     const rows = Math.max(1 + this.partners(id).length, kidRows);
     this.memo.set(k, rows);
     return rows;
@@ -220,7 +224,8 @@ class Cross {
     const kids = this.g.childrenOf(id).map((c) => c.id).sort(byBirth(this.g));
     if (!kids.length) return n;
     // Each couple's children start collapsed (the owner's choice): the card's button opens them.
-    if (!this.exp(id)) {
+    // Everyone shows everyone: nothing is collapsed there.
+    if (!this.kidsOpen(id)) {
       n.expandable = { ...n.expandable, down: true };
       this.hideFamily(id, gen);
       return n;
