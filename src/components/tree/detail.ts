@@ -6,8 +6,8 @@
  */
 export type Detail = 1 | 2 | 3 | 4;
 
-/** Zoom where each level starts: level 2 from 0.55, 3 from 0.8, 4 from 1.3. */
-export const DETAIL_FROM = [0.55, 0.8, 1.3] as const;
+/** Zoom where each level starts: level 2 from 0.29, 3 from 0.8, 4 from 1.3. */
+export const DETAIL_FROM = [0.29, 0.8, 1.3] as const; // name only at the lowest zoom step (owner), 25–29%
 const SLACK = 0.03; // hysteresis, so a zoom resting on a boundary doesn't flicker between designs
 
 /** The level for zoom `k`, staying at `current` until `k` is clearly past a boundary. */
