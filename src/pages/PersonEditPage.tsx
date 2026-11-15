@@ -183,7 +183,7 @@ function Editor({ initial, isNew }: { initial: Person; isNew: boolean }) {
           {!isShared && (
             <label className="flex items-center gap-3 rounded-xl bg-brand-50/70 px-3 py-2.5 text-sm dark:bg-brand-900/20">
               <input type="checkbox" className="h-4 w-4 accent-brand-600" checked={!!p.isMe} onChange={(e) => set('isMe', e.target.checked || undefined)} />
-              <span><b>This is me</b> — the centre of “My Family”</span>
+              <span><b>This is me</b> — the centre of the family tree</span>
             </label>
           )}
         </Section>

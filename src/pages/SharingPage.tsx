@@ -133,7 +133,7 @@ export function SharingPage() {
 
       {!me && (
         <Link to="/family" className="mb-4 block rounded-2xl bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-amber-100 dark:bg-amber-900/20 dark:text-amber-200 dark:ring-amber-900/40">
-          Add yourself to My Family first. Lineage shares the people connected to you by family, so without you there’s nothing to share yet.
+          Add yourself to the family tree first. Lineage shares the people connected to you by family, so without you there’s nothing to share yet.
         </Link>
       )}
 

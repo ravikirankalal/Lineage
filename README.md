@@ -16,7 +16,7 @@ with the relatives you choose. The tree lives in your Google account (Firebase),
 - **Merge duplicates** — combine two profiles of the same person. You see a preview first, and
   the dropped copy's name is kept as an other name.
 - **Each person's family** — their page lists immediate family, then extended family.
-- **My Family** — your family tree as a full-screen map: ancestors above, siblings beside,
+- **Family Tree** — your family tree as a full-screen map: ancestors above, siblings beside,
   descendants below; drag, zoom, Find, and tap a card to move around or add a relative ("Add father
   / Add mother" placeholders grow it upward). On phones the bottom tabs slide away when you
   stop touching the screen; tap the tree to bring them back. The controls are see-through, and
@@ -28,7 +28,7 @@ with the relatives you choose. The tree lives in your Google account (Firebase),
   - Hindi or Telugu family terms if you want them (Settings → Family terms): *Uncle · Chacha*,
     *Dadi · Grandmother* on tree cards
   - father's line and mother's line, with stats (relatives, generations, earliest ancestor)
-  - "Show in tree" jumps to My Family with the path highlighted
+  - "Show in tree" jumps to Family Tree with the path highlighted
 - **Birthdays & gaps** — upcoming birthdays on the People page, and a *Needs details* filter for
   people whose profiles are thin.
 - **Sign in with Google (required)** — the tree is read live from your account and every change is

@@ -290,3 +290,6 @@ Read this before changing code. Append new learnings at the bottom.
 - **See-through map controls (2026-11-15, owner):** add `map-glass` to a control and it turns 30% transparent, without
   blur or shadow, but only inside `.tree-map` (FamilyTree `map`) or on `nav.map-glass` (App's tabs on /family). Dark
   mode is `media`, so the dark rule is a `prefers-color-scheme` media query.
+- (2026-11-15, owner) The second page is called **Family Tree** in the UI (route still `/family`; older notes say
+  "My Family"). The tree's default level is Extended on every screen (`useTreeParams`); `?level=` still overrides.
+  "My family" in the family switcher means your own family space, which is a different thing: keep it.

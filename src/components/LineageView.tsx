@@ -16,7 +16,7 @@ import { useTreeParams } from './tree/useTreeParams';
 
 /** The family tree for any person. (Relatives and lines live on the People page.) */
 /**
- * `map`: the My Family page — the tree fills the screen with only Find, levels, layout and zoom.
+ * `map`: the Family Tree page — the tree fills the screen with only Find, levels, layout and zoom.
  * Relatives are added from a card (tap → Add relative) or the "Add father / Add mother" placeholders.
  */
 export function LineageView({ ego, egoLabel = 'You', map = false }: { ego: Person; egoLabel?: string; map?: boolean }) {

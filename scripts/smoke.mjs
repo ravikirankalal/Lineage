@@ -47,13 +47,13 @@ async function run(name, viewport) {
   await page.getByText("Father's line").waitFor();
   await page.getByText('Earliest ancestor').waitFor();
   await shot('4-lines');
-  // My Family is the tree only; old ?tab= links land on the People page.
+  // Family Tree is the tree only; old ?tab= links land on the People page.
   await page.goto(BASE + '#/family');
   await page.getByPlaceholder('Find in tree').waitFor();
-  check(!(await page.getByRole('button', { name: /Relatives \(/ }).count()), `[${name}] My Family still has a Relatives tab`);
+  check(!(await page.getByRole('button', { name: /Relatives \(/ }).count()), `[${name}] Family Tree still has a Relatives tab`);
   // Map view: no page header, Share, Add relative, save or full-screen buttons; the tree fills the width.
-  for (const n of [/^Share/, /Add a relative of/, /Full screen/, /^Save/]) check(!(await page.getByRole('button', { name: n }).count()), `[${name}] My Family still shows ${n}`);
-  check(!(await page.getByRole('heading', { name: 'My Family' }).count()), `[${name}] My Family still has a page title`);
+  for (const n of [/^Share/, /Add a relative of/, /Full screen/, /^Save/]) check(!(await page.getByRole('button', { name: n }).count()), `[${name}] Family Tree still shows ${n}`);
+  check(!(await page.getByRole('heading', { name: 'Family Tree' }).count()), `[${name}] Family Tree still has a page title`);
   const tb = await page.locator('.tree-viewport').boundingBox();
   const vw = page.viewportSize().width;
   check(tb && vw - tb.width <= 241 && tb.height > page.viewportSize().height * 0.7, `[${name}] tree does not fill the screen (${JSON.stringify(tb)})`);
@@ -76,7 +76,7 @@ async function run(name, viewport) {
   }
   await page.goto(BASE + '#/family?tab=relatives');
   await page.getByPlaceholder('Search relatives').waitFor();
-  // Show in tree from the Relatives list opens My Family with that person highlighted.
+  // Show in tree from the Relatives list opens Family Tree with that person highlighted.
   await page.getByRole('button', { name: /Show .* in the tree/ }).first().click();
   await page.getByRole('button', { name: 'Clear highlight' }).waitFor();
 

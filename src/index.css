@@ -47,7 +47,7 @@
   .tree-card-focus { box-shadow: 0 0 0 3px #266955 !important; }
 }
 
-/* My Family map: the controls and tabs are see-through, so the tree shows behind them (owner, 2026-11-15).
+/* Family Tree map: the controls and tabs are see-through, so the tree shows behind them (owner, 2026-11-15).
    Text gets a soft halo so it stays readable over cards and lines. */
 .tree-map .map-glass, nav.map-glass {
   background-color: rgb(255 255 255 / 0.3) !important;
