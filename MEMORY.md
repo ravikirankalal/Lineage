@@ -321,3 +321,5 @@ Read this before changing code. Append new learnings at the bottom.
 - Android versioning: `LINEAGE_VERSION_CODE` env → versionCode and versionName 1.0.N (CI: $((GITHUB_RUN_NUMBER + 1)) in the shell, since workflow expressions have no arithmetic; local
   builds default to 1). Groovy gotcha: write `versionName("1.0." + x)` with parentheses; without them Groovy
   calls `versionName("1.0.")` and adds to its null result ("Value is null").
+- (2026-11-15, owner) There is deliberately no way to delete the whole tree: "Delete all data" and `clearAll()` were
+  removed. Don't add a bulk delete back without asking. "Try a sample family" stays (owner, empty tree, can edit).
