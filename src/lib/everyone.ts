@@ -142,6 +142,7 @@ function stack(parts: { layout: TreeLayout; root?: string; family: boolean }[]):
     for (const n of L.nodes) {
       const m: TreeNode = { ...n, key: pre + n.key, x: n.x + dx, y: n.y + dy };
       if (n.dupOf) m.dupOf = pre + n.dupOf;
+      if (i > 0 && n === rootNode) m.treeRoot = true;
       if (part.family && n === rootNode) familyRoot.set(n.personId!, m);
       nodes.push(m);
     }
