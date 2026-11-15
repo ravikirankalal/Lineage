@@ -11,7 +11,7 @@
 import { useSyncExternalStore } from 'react';
 import { fromGooglePerson, fromNative, type ContactSuggestion, type GooglePersonLite } from '../contactSuggest';
 import { ContactsReader, isNativeApp } from '../native';
-import { cloudConfigured, getFirebaseAuth, usingEmulators } from './firebase';
+import { cloudConfigured, getFirebaseAuth, popupResolver, usingEmulators } from './firebase';
 
 const SCOPE = 'https://www.googleapis.com/auth/contacts.readonly';
 const URL_CONNECTIONS = 'https://people.googleapis.com/v1/people/me/connections';
@@ -73,7 +73,7 @@ export async function loadGoogleContacts(): Promise<void> {
     const provider = new GoogleAuthProvider();
     provider.addScope(SCOPE);
     provider.setCustomParameters({ login_hint: user.email ?? '' });
-    const result = await reauthenticateWithPopup(user, provider);
+    const result = await reauthenticateWithPopup(user, provider, await popupResolver());
     if (result.user.uid !== user.uid) throw new Error('Pick the same Google account you use for Lineage.');
     let token = GoogleAuthProvider.credentialFromResult(result)?.accessToken;
     if (!token) throw new Error('Lineage wasn’t given access to your contacts. Tap again and allow “See your contacts”.');

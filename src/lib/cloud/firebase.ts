@@ -9,6 +9,7 @@
  */
 import type { FirebaseApp } from 'firebase/app';
 import type { Auth } from 'firebase/auth';
+import { isNativeApp } from '../native';
 import type { Firestore } from 'firebase/firestore';
 
 const env = import.meta.env;
@@ -77,14 +78,32 @@ export function getFirebaseAuth(): Promise<Auth> {
   if (!authP) {
     authP = (async () => {
       const app = await getFirebaseApp();
-      const { getAuth, connectAuthEmulator } = await import('firebase/auth');
-      const auth = getAuth(app);
+      const fa = await import('firebase/auth');
+      const { connectAuthEmulator } = fa;
+      // getAuth() makes sign-in state wait until Google's popup helper (scripts + an iframe) has loaded:
+      // seconds on a phone. The Android app signs in natively and never uses it, so there it's left out
+      // (sign-in state comes straight from storage). The website keeps it ready, so the sign-in popup
+      // opens at once and isn't blocked. Same storage as getAuth().
+      let auth: Auth;
+      try {
+        auth = fa.initializeAuth(app, {
+          persistence: [fa.indexedDBLocalPersistence, fa.browserLocalPersistence, fa.browserSessionPersistence],
+          popupRedirectResolver: isNativeApp() ? undefined : fa.browserPopupRedirectResolver,
+        });
+      } catch {
+        auth = fa.getAuth(app); // already set up (dev hot reload)
+      }
       if (usingEmulators()) connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
       return auth;
     })();
     authP.catch(() => (authP = null));
   }
   return authP;
+}
+
+/** The popup/redirect helper for Google sign-in on the website (loads Google's scripts on first use). */
+export async function popupResolver() {
+  return (await import('firebase/auth')).browserPopupRedirectResolver;
 }
 
 export function getDb(): Promise<Firestore> {
