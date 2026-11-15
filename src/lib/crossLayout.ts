@@ -30,11 +30,13 @@ import type { FamilyGraph } from './kinship';
  * sisters with their descendants, all generations up). `expanded` shows one sibling's spouse or one ancestor's siblings/parents.
  */
 
-const PC = CARD.w + 44; // column pitch
-const RP = CARD.h + 24; // row pitch
+const PC = CARD.w + 32; // column pitch
+const RP = CARD.h + 12; // row pitch
 const GX = PC - CARD.w; // gap between columns (lines run here)
 const W2 = CARD.w / 2;
 const H2 = CARD.h / 2;
+/** Column and row pitch of the cross layout (for tests). */
+export const CROSS_PITCH = { col: PC, row: RP } as const;
 const MANY = 99;
 
 const isBlood = (sub: string | undefined) => sub !== 'step' && sub !== 'foster';
@@ -352,10 +354,13 @@ class Cross {
     const parentPartners = new Map<string, string[]>();
     if (dad) parentPartners.set(dad, this.columnPartners(dad, dad, false, mom));
     if (mom) parentPartners.set(mom, this.columnPartners(mom, mom, false, dad));
-    // Each side has its own columns, so each keeps its own range of rows (they don't need to share).
-    const coreEnd = Math.max(row, focusRow + 1 + Math.max(0, ...[...parentPartners.values()].map((l) => l.length)));
-    const top = new Map<number, number>([[-1, 0], [1, 0]]);
-    const bottom = new Map<number, number>([[-1, coreEnd], [1, coreEnd]]);
+    // Each side has its own columns, so each keeps its own range of rows (they don't need to share). A side
+    // only needs the parent's own rows (the parent and their partners): the line to the focus and siblings
+    // crosses the side's columns on the parent's row only, so the side's families may sit beside the rest
+    // of the middle column (compact, the owner's request).
+    const sideRows = (p: string | undefined) => (p ? 1 + parentPartners.get(p)!.length : 1);
+    const top = new Map<number, number>([[-1, focusRow], [1, focusRow]]);
+    const bottom = new Map<number, number>([[-1, focusRow + sideRows(dad)], [1, focusRow + sideRows(mom)]]);
     const yRow = (r: number) => (r - focusRow) * RP;
 
     // The focus first so it is the primary card if anyone repeats.

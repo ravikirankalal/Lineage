@@ -6,6 +6,10 @@ import { layoutFamily } from '../tree';
 import type { Gender, Person, Relationship, RelType } from '../types';
 import { generatedFamily } from './families';
 import { everyoneIds } from '../everyone';
+import { CROSS_PITCH } from '../crossLayout';
+
+const PC = CROSS_PITCH.col;
+const RP = CROSS_PITCH.row;
 
 function family() {
   const people = new Map<string, Person>();
@@ -263,21 +267,25 @@ describe('layoutFamily', () => {
     }
     // Cousins get their side's own column right beside mine (father's left, mother's right), level with
     // their own parent: an uncle's children above, an aunt's children below.
-    expect(at('cousin').x).toBe(-208);
-    expect(at('dad').x).toBe(-416);
+    expect(at('cousin').x).toBe(-PC);
+    expect(at('dad').x).toBe(-2 * PC);
     expect(at('cousin').y).toBe(at('uncle').y);
     expect(at('cousin2').y).toBeGreaterThan(at('cousin').y);
-    expect(at('cousin2').y).toBeLessThan(at('bro').y);
-    expect(at('mCousin').x).toBe(208);
+    // Compact (the owner's request): the cousins may sit beside my brothers, but never on the parent's row,
+    // where the father's line crosses their column.
+    expect(at('cousin2').y).toBeLessThan(at('dad').y);
+    expect(at('cousin2').y).toBeGreaterThan(at('bro').y - RP); // level with the brothers, not above them all
+    expect(at('mCousin').x).toBe(PC);
     expect(at('mCousin').y).toBe(at('mAunt').y);
-    expect(at('mCousin').y).toBeGreaterThan(at('sis2').y);
+    expect(at('mCousin').y).toBeGreaterThan(at('mom').y); // beside my sisters (compact), below the mother's row
+    expect(at('mCousin').y).toBeLessThan(at('sis2').y + RP);
     expect(at('uncle').y).toBeLessThan(at('dad').y);
     expect(at('mAunt').y).toBeGreaterThan(at('mom').y);
     expect(L.edges.some((e) => e.from === 'uncle' && e.to === 'cousin')).toBe(true);
     expect(L.edges.some((e) => e.from === 'mAunt' && e.to === 'mCousin')).toBe(true);
     // My column holds only me, my siblings and our spouses; cousins sit in their side's cousins column.
     for (const id of ['me', 'bro', 'bro2', 'sis', 'sis2', 'wife', 'broWife']) expect(at(id).x, id).toBe(0);
-    expect(new Set(L.nodes.filter((n) => n.generation === 0).map((n) => n.x))).toEqual(new Set([-208, 0, 208]));
+    expect(new Set(L.nodes.filter((n) => n.generation === 0).map((n) => n.x))).toEqual(new Set([-PC, 0, PC]));
     const regionCols = (L.regions ?? []).flatMap((r) => r.columns.map((c) => `${r.side}:${c.label}`));
     // Cousins share the "your generation" band (same colour); the sides start at the parents' columns.
     expect(regionCols.filter((c) => c === 'middle:Cousins')).toHaveLength(2);
@@ -350,7 +358,7 @@ describe('layoutFamily', () => {
     const at = (id: string) => L.nodes.find((n) => n.personId === id && !n.dupOf)!;
     const below = (a: string, b: string) => {
       expect(at(b).x, `${b} under ${a}`).toBe(at(a).x);
-      expect(at(b).y, `${b} under ${a}`).toBe(at(a).y + 100);
+      expect(at(b).y, `${b} under ${a}`).toBe(at(a).y + RP);
       expect(L.edges.some((e) => (e.kind === 'marriage' || e.kind === 'divorced') && [e.from, e.to].sort().join() === [a, b].sort().join()), `${a}–${b} line`).toBe(true);
     };
     below('uncle', 'uncleWife'); // an uncle's wife
@@ -406,7 +414,7 @@ describe('layoutFamily', () => {
       const at = (id: string) => L.nodes.find((n) => n.personId === id && !n.dupOf)!;
       for (const [gf, gm] of [['dgf', 'dgm'], ['mgf', 'mgm']]) {
         expect(at(gm).x).toBe(at(gf).x);
-        expect(at(gm).y).toBe(at(gf).y + 100); // wife right below her husband
+        expect(at(gm).y).toBe(at(gf).y + RP); // wife right below her husband
         expect(at(gm).role).toBe('ancestor');
         expect(at(gm).expandable?.up).toBeUndefined();
         expect(L.edges.some((e) => e.from === gm && (e.to === 'dad' || e.to === 'mom'))).toBe(true); // still her child's line
@@ -427,10 +435,10 @@ describe('layoutFamily', () => {
     checkGeometry(E, 'patriline everyone');
     for (const [gf, gm, gmDad] of [['dgf', 'dgm', 'dgmF'], ['mgf', 'mgm', 'mgmF']]) {
       const gfCard = E.nodes.find((n) => n.personId === gf && !n.dupOf)!;
-      const copy = E.nodes.find((n) => n.personId === gm && n.x === gfCard.x && n.y === gfCard.y + 100);
+      const copy = E.nodes.find((n) => n.personId === gm && n.x === gfCard.x && n.y === gfCard.y + RP);
       expect(copy?.dupOf, `${gm} copy under ${gf}`).toBeDefined();
       const main = E.nodes.find((n) => n.personId === gm && !n.dupOf)!;
-      expect(main.y).toBeGreaterThan(gfCard.y + 200);
+      expect(main.y).toBeGreaterThan(gfCard.y + 2 * RP);
       expect(E.edges.some((e) => e.from === gmDad && e.to === gm)).toBe(true);
     }
   });
@@ -451,7 +459,7 @@ describe('layoutFamily', () => {
         const start = L.edges.find((e) => e.from === only && e.to === kid)!.points[0];
         expect(start[0], `${only}→${kid}`).toBe(at('ggf').x); // from the marriage line, not a card's side
         expect(start[1]).toBeGreaterThan(top + CARD.h);
-        expect(start[1]).toBeLessThan(top + 100);
+        expect(start[1]).toBeLessThan(top + RP);
       }
     }
   });
@@ -490,13 +498,13 @@ describe('layoutFamily', () => {
       expect(at('Bro').y).toBeLessThan(main(gf)!.y); // brothers above
       expect(at('Sis').y).toBeGreaterThan(main(gf)!.y); // sisters below
       // His children (the parents' cousins) in the parents' column, the first level with him.
-      expect(at('BroKid').x).toBe(dir * 416);
+      expect(at('BroKid').x).toBe(dir * 2 * PC);
       expect(at('BroKid').y).toBe(at('Bro').y);
       expect(at('BroKid2').y).toBeGreaterThan(at('BroKid').y);
-      expect(at('BroWife').y).toBe(at('Bro').y + 100); // his wife right below him
-      expect(at('SisKid').x).toBe(dir * 416);
+      expect(at('BroWife').y).toBe(at('Bro').y + RP); // his wife right below him
+      expect(at('SisKid').x).toBe(dir * 2 * PC);
       // Grandchildren (second cousins) in that side's cousins column, level with their parent.
-      expect(at('BroGk').x).toBe(dir * 208);
+      expect(at('BroGk').x).toBe(dir * PC);
       expect(at('BroGk').y).toBe(at('BroKid').y);
       for (const [a, b] of [[gf + 'Bro', gf + 'BroKid'], [gf + 'BroWife', gf + 'BroKid2'], [gf + 'BroKid', gf + 'BroGk'], [gf + 'Sis', gf + 'SisKid']]) {
         expect(L.edges.some((e) => e.from === a && e.to === b), `${a}→${b}`).toBe(true);
@@ -508,9 +516,9 @@ describe('layoutFamily', () => {
     checkGeometry(S, 'second cousins column');
     const sAt = (id: string) => S.nodes.find((n) => n.personId === id && !n.dupOf && !n.key.includes('/'))!;
     for (const [gf, dir] of [['dgf', -1], ['mgf', 1]] as const) {
-      expect(sAt(gf + 'BroGk').x, 'second cousin').toBe(dir * 416);
-      expect(sAt(gf + 'BroKid').x, "parents' cousin").toBe(dir * 624);
-      expect(sAt('dad').x).toBe(-624);
+      expect(sAt(gf + 'BroGk').x, 'second cousin').toBe(dir * 2 * PC);
+      expect(sAt(gf + 'BroKid').x, "parents' cousin").toBe(dir * 3 * PC);
+      expect(sAt('dad').x).toBe(-3 * PC);
       expect(S.edges.some((e) => e.from === gf + 'BroKid' && e.to === gf + 'BroGk')).toBe(true);
     }
     expect((S.regions ?? []).flatMap((r) => r.columns.map((c) => `${r.side}:${c.label}`))).toContain('middle:Second cousins');
@@ -518,8 +526,8 @@ describe('layoutFamily', () => {
     const wide = layoutFamily(G, { focusId: 'me', level: 'everyone', expanded: new Set(open), orient: 'cross', aspect: 3 });
     const tall = layoutFamily(G, { focusId: 'me', level: 'everyone', expanded: new Set(open), orient: 'cross', aspect: 0.5 });
     const xOf = (M: TreeLayout) => M.nodes.find((n) => n.personId === 'dgfBroGk' && !n.dupOf)!.x;
-    expect(xOf(wide)).toBe(-416);
-    expect(xOf(tall)).toBe(-208);
+    expect(xOf(wide)).toBe(-2 * PC);
+    expect(xOf(tall)).toBe(-PC);
     // Every tree below lines up with the main one (the same columns).
     const wideTrees = (wide.regions ?? []).filter((r) => r.side === 'father');
     expect(new Set(wideTrees.map((r) => r.x0)).size).toBe(1);
@@ -549,14 +557,14 @@ describe('layoutFamily', () => {
       const at = (id: string) => L.nodes.find((n) => n.personId === id && !n.key.includes('/'));
       const pairs = [['cousin', 'cousinEx'], ['cousinF', 'cousinFHusband'], ...(level === 'everyone' ? [['secondCousin', 'scHusband']] : [])];
       for (const [a, b] of pairs) {
-        expect(at(b)?.x, `${level}: ${b} in the father's cousins column`).toBe(-208);
+        expect(at(b)?.x, `${level}: ${b} in the father's cousins column`).toBe(-PC);
         expect(at(b)?.x).toBe(at(a)!.x);
         expect(L.edges.some((e) => (e.kind === 'marriage' || e.kind === 'divorced') && [e.from, e.to].sort().join() === [a, b].sort().join()), `${a}–${b}`).toBe(true);
       }
       // The first partner right below, a second one below that; the next person starts after them.
       const both = [at('cousinWife')!.y, at('cousinEx')!.y].sort((x, y) => x - y);
-      expect(both).toEqual([at('cousin')!.y + 100, at('cousin')!.y + 200]);
-      expect(at('cousinFHusband')!.y).toBe(at('cousinF')!.y + 100);
+      expect(both).toEqual([at('cousin')!.y + RP, at('cousin')!.y + 2 * RP]);
+      expect(at('cousinFHusband')!.y).toBe(at('cousinF')!.y + RP);
     }
   });
 
@@ -577,7 +585,7 @@ describe('layoutFamily', () => {
     const mgf = L.nodes.find((n) => n.personId === 'mgf' && !n.dupOf)!;
     expect(main.x).toBe(dgf.x); // beside her brother, under their parents
     expect(L.edges.some((e) => e.from === 'ggf' && e.to === 'mgm')).toBe(true);
-    expect([copy.x, copy.y]).toEqual([mgf.x, mgf.y + 100]); // the copy right below her husband
+    expect([copy.x, copy.y]).toEqual([mgf.x, mgf.y + RP]); // the copy right below her husband
     expect(copy.dupOf).toBe(main.key);
     expect(L.edges.some((e) => e.from === 'mgm' && e.to === 'mom')).toBe(true); // still her daughter's line
   });
@@ -598,7 +606,7 @@ describe('layoutFamily', () => {
     expect(main.key.includes('/'), 'main card in a tree below').toBe(true);
     expect(L.edges.some((e) => e.from === 'xf' && e.to === 'mgm')).toBe(true);
     const mgf = L.nodes.find((n) => n.personId === 'mgf' && !n.dupOf)!;
-    const copy = cards.find((n) => n.x === mgf.x && n.y === mgf.y + 100)!;
+    const copy = cards.find((n) => n.x === mgf.x && n.y === mgf.y + RP)!;
     expect(copy.dupOf).toBe(main.key);
     expect(L.nodes.filter((n) => n.personId === 'me' && !n.dupOf)[0].key.includes('/')).toBe(false); // I stay main in the main tree
   });
@@ -688,7 +696,7 @@ describe('layoutFamily', () => {
     // The wife's main card is in her own family's tree (with her parents), below the main tree; beside me a copy.
     const myCard = mains('me')[0];
     const wifeMain = mains('wife')[0];
-    expect(wifeMain.y).toBeGreaterThan(myCard.y + 200);
+    expect(wifeMain.y).toBeGreaterThan(myCard.y + 2 * RP);
     expect(L.edges.some((e) => e.from === 'wifeDad' && e.to === 'wife')).toBe(true);
     expect(L.nodes.some((n) => n.personId === 'wife' && n.dupOf === wifeMain.key)).toBe(true);
     // Someone who married in with no recorded parents keeps a single card (no copy).
@@ -789,7 +797,6 @@ describe('layoutFamily', () => {
 });
 
 describe('cross layout: empty cousins columns close up (not in Everyone)', () => {
-  const PC = CARD.w + 44;
   // Me with a sister; Dad's brother and Mom's sister each have a child (cousins on both sides).
   const f = family();
   for (const [id, g, b] of [['me', 'male', '1985'], ['sis', 'female', '1988'], ['dad', 'male', '1955'], ['mom', 'female', '1958'],
