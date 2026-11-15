@@ -52,6 +52,8 @@ function OfflineBar() {
 }
 
 function Shell() {
+  // My Family is a full-bleed map of the tree: no page padding or width limit.
+  const map = useLocation().pathname === '/family';
   return (
     <div className="min-h-dvh md:flex">
       <ScrollTop />
@@ -73,11 +75,13 @@ function Shell() {
         </nav>
       </aside>
 
-      <main className="mx-auto w-full min-w-0 max-w-5xl flex-1 px-4 pb-28 pt-4 sm:px-6 md:pb-10 md:pt-8">
-        <OfflineBar />
-        <CloudNotice />
-        <SharedSpaceBanner />
-        <InviteBanner />
+      <main className={map ? 'w-full min-w-0 flex-1' : 'mx-auto w-full min-w-0 max-w-5xl flex-1 px-4 pb-28 pt-4 sm:px-6 md:pb-10 md:pt-8'}>
+        <div className={map ? 'px-4 pt-3 empty:hidden sm:px-6 [&>*:last-child]:mb-3' : undefined}>
+          <OfflineBar />
+          <CloudNotice />
+          <SharedSpaceBanner />
+          <InviteBanner />
+        </div>
         <Routes>
           <Route path="/" element={<PeoplePage />} />
           <Route path="/people/new" element={<EditOnly><PersonEditPage /></EditOnly>} />

@@ -107,7 +107,7 @@ async function main(browser) {
     const yBro = (await page.getByText('Vijay K.').boundingBox()).y;
     check(Math.abs(yMe - yBro) < 5, `[1] brother not beside me in tree (y ${yMe} vs ${yBro})`);
     await shot(page, '1b-tree-brother');
-    await page.goto(BASE + '#/people'); await page.getByRole('button', { name: /Relatives \(/ }).click(); await page.getByPlaceholder('Search relatives').waitFor(); await page.waitForFunction(() => document.querySelectorAll('section h3').length > 0);
+    await page.goto(BASE + '#/'); await page.getByRole('button', { name: /Relatives \(/ }).click(); await page.getByPlaceholder('Search relatives').waitFor(); await page.waitForFunction(() => document.querySelectorAll('section h3').length > 0);
     const rel = await body(page);
     check(/Vijay Kumar[\s\S]{0,40}Brother/.test(rel), '[1] Vijay not "Brother" in Relatives');
     await shot(page, '1c-relatives');
@@ -217,7 +217,7 @@ async function dark(browser) {
     check(ov <= 0, `[6] long name causes horizontal page scroll (${ov}px)`);
     await shot(page, '6c-dark-longname-profile');
     await page.goto(BASE + '#/family');
-    await page.getByText('Earliest ancestor').waitFor();
+    await page.getByPlaceholder('Find in tree').waitFor();
     await shot(page, '6d-dark-tree');
     await page.goto(BASE + '#/');
     const ov2 = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -272,7 +272,7 @@ async function features(browser) {
     await openProfile(page, 'Ravi Rao');
     check(/Prakash Rao\s*Uncle/.test(await body(page)), '[7] Ravi lost uncle Prakash');
     await page.goto(BASE + '#/family');
-    await page.getByText('Earliest ancestor').waitFor();
+    await page.getByPlaceholder('Find in tree').waitFor();
     await shot(page, '7b-tree-after-merge');
 
     // Cycle: keeping Aarav (Kiran's son) and dropping great-grandparent Venkata must be refused.
@@ -308,12 +308,12 @@ async function features(browser) {
     await openProfile(page, 'Ravi Rao');
     check(/Kamala Gupta\s*Grandmother · Nani/.test(await body(page)), '[8] connection row lacks term');
     await page.goto(BASE + '#/family');
-    await page.getByText('Earliest ancestor').waitFor();
+    await page.getByPlaceholder('Find in tree').waitFor();
     // Tree cards lead with the regional term, English label muted after it ("Pitaji · Father",
     // or on two lines when there is no lifespan). Elsewhere it stays "Father · Pitaji".
     const card = (await page.locator('button[title*="Pitaji"]').first().innerText()).replace(/\s+/g, ' ');
     check(/Pitaji( ·)? Father/.test(card) && !/Father · Pitaji/.test(card), `[8] tree card not term-first: "${card}"`);
-    await page.goto(BASE + '#/people'); await page.getByRole('button', { name: /Relatives \(/ }).click(); await page.getByPlaceholder('Search relatives').waitFor(); await page.waitForFunction(() => document.querySelectorAll('section h3').length > 0);
+    await page.goto(BASE + '#/'); await page.getByRole('button', { name: /Relatives \(/ }).click(); await page.getByPlaceholder('Search relatives').waitFor(); await page.waitForFunction(() => document.querySelectorAll('section h3').length > 0);
     const rl = await body(page);
     check(/Uncle · Mama · Mother's brother/.test(rl) && /Uncle · Chacha · Father's brother/.test(rl), '[8] Relatives list lacks terms');
     await shot(page, '8a-relatives-hindi');

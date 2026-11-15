@@ -4,7 +4,8 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Avatar } from '../components/Avatar';
 import { Empty } from '../components/Empty';
 import { PersonRow } from '../components/PersonRow';
-import { Lines, RelativesList } from '../components/Relatives';
+import { FamilyStats, Lines, RelativesList } from '../components/Relatives';
+import { SpaceSwitcher } from '../components/Cloud';
 import { usePermissions } from '../lib/cloud/CloudProvider';
 import { useData } from '../lib/data';
 import { loadDemo } from '../lib/demo';
@@ -65,6 +66,7 @@ export function PeoplePage() {
     return (
       <div className="pt-6">
         <Header count={0} />
+        <SpaceSwitcher className="mb-4 md:hidden" />
         <div className="card">
           {isShared ? (
             <Empty icon={<Users size={26} />} title="No one here yet"
@@ -131,11 +133,12 @@ export function PeoplePage() {
     return (
       <div>
         <Header count={people.length} />
+        <SpaceSwitcher className="mb-4 md:hidden" />
         {viewTabs}
         {view === 'relatives'
           ? <RelativesList relatives={relatives} egoId={me.id} egoName={egoName}
               onShowInTree={(id) => nav(`/family?focus=${encodeURIComponent(id)}&hl=${encodeURIComponent(id)}`)} />
-          : <Lines ego={me} />}
+          : <><FamilyStats ego={me} relatives={relatives} /><Lines ego={me} /></>}
         {addButton}
       </div>
     );
@@ -144,6 +147,7 @@ export function PeoplePage() {
   return (
     <div>
       <Header count={people.length} />
+      <SpaceSwitcher className="mb-4 md:hidden" />
       {viewTabs}
 
       {!me && !isShared && (

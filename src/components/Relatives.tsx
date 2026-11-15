@@ -1,9 +1,9 @@
 import { GitBranch, Search } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useCanEdit } from '../lib/cloud/CloudProvider';
 import { useData } from '../lib/data';
-import { CATEGORY_LABELS, CATEGORY_ORDER, directLine, type KinCategory, type Relative } from '../lib/kinship';
+import { CATEGORY_LABELS, CATEGORY_ORDER, directLine, lineageStats, type KinCategory, type Relative } from '../lib/kinship';
 import { displayName, formatPlace, lifespan, matchesQuery } from '../lib/person';
 import { subgroupRelatives } from '../lib/relativeGroups';
 import type { Person } from '../lib/types';
@@ -125,6 +125,31 @@ export function Lines({ ego }: { ego: Person }) {
     <div className="grid gap-4 md:grid-cols-2">
       {col("Father's line", 'Father → his father → … (surname / gotra line)', pat)}
       {col("Mother's line", 'Mother → her mother → …', mat)}
+    </div>
+  );
+}
+
+/** Relatives, generations, direct ancestors and the earliest ancestor of one person. */
+export function FamilyStats({ ego, relatives }: { ego: Person; relatives: Relative[] }) {
+  const { graph } = useData();
+  const stats = useMemo(() => lineageStats(graph, ego.id, relatives), [graph, ego.id, relatives]);
+  const stat = (value: number, label: string) => (
+    <div className="card p-3.5">
+      <div className="text-2xl font-bold tabular-nums">{value}</div>
+      <div className="text-xs text-stone-500">{label}</div>
+    </div>
+  );
+  return (
+    <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      {stat(stats.relatives, 'Relatives')}
+      {stat(stats.generationsUp + stats.generationsDown + 1, 'Generations')}
+      {stat(stats.ancestors, 'Direct ancestors')}
+      {stats.earliest ? (
+        <Link to={`/people/${stats.earliest.id}`} className="card p-3.5 hover:bg-stone-50 dark:hover:bg-stone-800">
+          <div className="truncate text-base font-semibold">{displayName(stats.earliest)}</div>
+          <div className="text-xs text-stone-500">Earliest ancestor{lifespan(stats.earliest) && ' · ' + lifespan(stats.earliest)}</div>
+        </Link>
+      ) : stat(stats.descendants, 'Descendants')}
     </div>
   );
 }
