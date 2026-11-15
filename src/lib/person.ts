@@ -1,4 +1,4 @@
-import type { Person, Place } from './types';
+import { isFamilyType, type Person, type Place, type Relationship } from './types';
 
 export function newId(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
@@ -156,4 +156,22 @@ export function completeness(p: Person): number {
     !!(p.notes || p.facts.length),
   ];
   return Math.round((checks.filter(Boolean).length / checks.length) * 100);
+}
+
+const CONTACT_SOURCES = new Set<Person['source']>(['vcard', 'csv', 'picker', 'google']);
+
+/** Ids of everyone with at least one family link (parent, spouse or sibling). */
+export function familyLinkedIds(rels: Relationship[]): Set<string> {
+  const s = new Set<string>();
+  for (const r of rels) if (isFamilyType(r.type)) { s.add(r.fromId); s.add(r.toId); }
+  return s;
+}
+
+/**
+ * Whether a person belongs on the People page. Imported contacts (phone, vCard, CSV, Google) stay in the
+ * background, only as suggestions when adding a relative, until they are linked into the family.
+ * People added by hand (or from a GEDCOM file) always show.
+ */
+export function inFamilyList(p: Person, linked: Set<string>): boolean {
+  return !!p.isMe || linked.has(p.id) || !CONTACT_SOURCES.has(p.source);
 }
