@@ -199,6 +199,18 @@ async function run(name, viewport) {
   await shot('2g-card-sheet-add');
   await cardSheet.getByRole('button', { name: 'Back' }).click();
   await cardSheet.getByRole('button', { name: 'Centre the tree on Anjali' }).waitFor();
+  // Edit the name in place: the sheet and the tree card change at once; then put it back.
+  const rename = async (from, to) => {
+    await cardSheet.getByRole('button', { name: `Edit name: ${from}` }).click();
+    await cardSheet.getByLabel('First name').fill(to);
+    if (to === 'Anjalee') await shot('2h-card-sheet-editing-name');
+    await cardSheet.getByRole('button', { name: 'Save name' }).click();
+    await cardSheet.getByRole('button', { name: `Edit name: ${to} Rao` }).waitFor();
+  };
+  await rename('Anjali Rao', 'Anjalee');
+  check(await page.locator('.tree-viewport button').filter({ hasText: 'Anjalee' }).count() > 0, `[${name}] renamed person not updated on the tree card`);
+  await shot('2i-card-sheet-renamed');
+  await rename('Anjalee Rao', 'Anjali');
   await cardSheet.getByRole('button', { name: 'Close' }).click();
   await page.goto(BASE + '#/family?tab=relatives');
   await page.getByPlaceholder('Search relatives').waitFor();

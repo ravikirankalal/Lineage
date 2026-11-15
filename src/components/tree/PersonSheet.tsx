@@ -1,7 +1,9 @@
-import { Crosshair, Minus, Plus, Route, User } from 'lucide-react';
+import { Check, Crosshair, Minus, Pencil, Plus, Route, User } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import type { TreeNode } from '../../lib/graph/contract';
 import { displayName, formatPlace, lifespan } from '../../lib/person';
+import { ops } from '../../lib/db';
+import { write } from '../../lib/store';
 import type { Person } from '../../lib/types';
 import { AddRelationBody, FAMILY_CHOICES, type RelChoice } from '../AddRelationSheet';
 import { Avatar } from '../Avatar';
@@ -30,6 +32,7 @@ export function PersonSheet({ person, node, label, path, term, isEgo, isFocus, e
   onRelate: () => void;
 }) {
   const [adding, setAdding] = useState<RelChoice | undefined>();
+  const [editing, setEditing] = useState(false);
   const span = lifespan(person);
   const place = formatPlace(person.address, true) || formatPlace(person.origin, true);
   const canExpand = !!node.expandable && (node.expandable.up || node.expandable.down || node.expandable.side);
@@ -53,9 +56,19 @@ export function PersonSheet({ person, node, label, path, term, isEgo, isFocus, e
       : { key: 'toggle', icon: <Plus size={20} />, short: 'More relatives', full: `Show ${first}’s relatives`, onClick: onToggle });
   }
 
+  // The name, editable in place for editors: tap it (or the pencil) to change first and last name.
+  const title = editing ? null : canEdit ? (
+    <button type="button" onClick={() => setEditing(true)} aria-label={`Edit name: ${displayName(person)}`}
+      className="group -mx-1.5 inline-flex items-center gap-2 rounded-lg px-1.5 py-0.5 text-left hover:bg-stone-100 dark:hover:bg-stone-800">
+      <span className="min-w-0 break-words">{displayName(person)}</span>
+      <Pencil size={15} className="shrink-0 text-stone-400 group-hover:text-brand-700 dark:group-hover:text-brand-300" />
+    </button>
+  ) : displayName(person);
+
   return (
-    <Sheet open onClose={onClose} title={displayName(person)}
+    <Sheet open onClose={onClose} title={title}
       footer={<button type="button" className="btn-primary w-full" onClick={onProfile}><User size={18} /> Open profile</button>}>
+      {editing && <NameEditor person={person} onDone={() => setEditing(false)} />}
       <div className="flex items-center gap-3">
         <Avatar person={person} size={56} />
         <div className="min-w-0">
@@ -102,5 +115,42 @@ export function PersonSheet({ person, node, label, path, term, isEgo, isFocus, e
         </div>
       )}
     </Sheet>
+  );
+}
+
+/** First and last name, saved straight to the family tree. */
+function NameEditor({ person, onDone }: { person: Person; onDone: () => void }) {
+  const [first, setFirst] = useState(person.firstName);
+  const [last, setLast] = useState(person.lastName ?? '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const changed = first.trim() !== person.firstName || last.trim() !== (person.lastName ?? '');
+
+  async function save() {
+    if (!first.trim()) { setError('A first name is needed.'); return; }
+    if (!changed) { onDone(); return; }
+    setBusy(true);
+    setError('');
+    try {
+      await write((t) => { ops.savePerson(t, { ...person, firstName: first.trim(), lastName: last.trim() || undefined }); });
+      onDone();
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="mb-4" aria-label="Edit name" onSubmit={(e) => { e.preventDefault(); void save(); }}>
+      <div className="grid grid-cols-2 gap-2">
+        <input autoFocus className="input" aria-label="First name" placeholder="First name" value={first} onChange={(e) => setFirst(e.target.value)} />
+        <input className="input" aria-label="Last name" placeholder="Last name" value={last} onChange={(e) => setLast(e.target.value)} />
+      </div>
+      {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
+      <div className="mt-2 flex justify-end gap-2">
+        <button type="button" className="btn-ghost" onClick={onDone} disabled={busy}>Cancel</button>
+        <button type="submit" className="btn-primary" disabled={busy}><Check size={16} /> Save name</button>
+      </div>
+    </form>
   );
 }
