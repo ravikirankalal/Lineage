@@ -9,6 +9,7 @@ import { avatarColors, renderTreePng, shareOrDownload } from './tree/exportImage
 import { cardName, GhostCard, TreeCard, type CardInfo } from './tree/TreeCard';
 import { TreeEdges } from './tree/TreeEdges';
 import { useImplode } from './tree/useImplode';
+import { detailFor, type Detail } from './tree/detail';
 
 /** The opening intro (imploded → exploded) plays once per app start. */
 let introPlayed = false;
@@ -63,7 +64,15 @@ export function FamilyTree({
   const world = useRef<HTMLDivElement>(null);
   const overlay = useRef<HTMLDivElement>(null);
   const userMoved = useRef(false);
-  const pz = usePanZoom(box, world);
+  // Cards show more or less depending on how big they are on screen (five designs, detail.ts). Only a
+  // change of level re-renders them; panning and zooming within a level don't.
+  const [detail, setDetail] = useState<Detail>(4);
+  const detailRef = useRef<Detail>(4);
+  const onView = useCallback((v: View) => {
+    const d = detailFor(v.k, detailRef.current);
+    if (d !== detailRef.current) { detailRef.current = d; setDetail(d); }
+  }, []);
+  const pz = usePanZoom(box, world, onView);
   // Registered after pan/zoom's click handler, so taps that ended a drag stay swallowed.
   useAutoHideTabs(map, box);
   const tabsHidden = useBottomTabsHidden();
@@ -326,7 +335,7 @@ export function FamilyTree({
         else if (e.key === '0') pz.set(fitView(), true);
       }}
     >
-      <div ref={world} className="tree-world absolute left-0 top-0 origin-top-left will-change-transform"
+      <div ref={world} data-detail={detail} className="tree-world absolute left-0 top-0 origin-top-left will-change-transform"
         style={imp.state !== 'open' ? { pointerEvents: 'none' } : undefined}>
         <GenerationBands bands={bands} />
         <TreeEdges edges={layout.edges} path={path} lit={pathEdges} />
@@ -335,7 +344,7 @@ export function FamilyTree({
           const info = cardInfo(n);
           if (!info) return null;
           const mark = pathActive ? (path!.has(info.person.id) ? 'path' : 'dim') : undefined;
-          return <TreeCard key={n.key} node={n} info={mark ? { ...info, mark } : info} onTap={goToNode} onToggle={onToggle} />;
+          return <TreeCard key={n.key} node={n} info={mark ? { ...info, mark } : info} onTap={goToNode} onToggle={onToggle} detail={detail} />;
         })}
       </div>
 

@@ -436,8 +436,13 @@ async function cleanup(browser) {
     await page.getByText('Mumtaz').first().waitFor();
     const gone = await page.waitForFunction(() => !/Loosey|Csvy|Pally/.test(document.body.innerText), null, { timeout: 15_000 }).then(() => true, () => false);
     check(gone, '[11] loose contacts still listed');
-    const left = await fetch(`${FS}/people`, { headers: { Authorization: 'Bearer owner' } }).then((r) => r.json());
-    const ids = (left.documents ?? []).map((d) => d.name.split('/').pop()).sort();
+    const told = await page.getByText('Removed 3 old imported contacts').first().waitFor({ timeout: 15_000 }).then(() => true, () => false);
+    check(told, '[11] no notice saying how many old contacts were removed');
+    // The screen updates before the server confirms the deletes: give the cloud a moment to catch up.
+    const cloudIds = async () => ((await fetch(`${FS}/people`, { headers: { Authorization: 'Bearer owner' } }).then((r) => r.json())).documents ?? [])
+      .map((d) => d.name.split('/').pop()).sort();
+    let ids = await cloudIds();
+    for (let i = 0; i < 30 && ids.length > 3; i++) { await page.waitForTimeout(500); ids = await cloudIds(); }
     check(JSON.stringify(ids) === JSON.stringify(['me', 'mum', 'typed']), `[11] people left in the cloud: ${ids.join(', ')}`);
     const rels = await fetch(`${FS}/relationships`, { headers: { Authorization: 'Bearer owner' } }).then((r) => r.json());
     const rids = (rels.documents ?? []).map((d) => d.name.split('/').pop()).sort();
