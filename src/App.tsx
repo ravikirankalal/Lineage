@@ -4,7 +4,7 @@ import { HashRouter, Link, NavLink, Route, Routes, useLocation } from 'react-rou
 import { CloudNotice, GoogleButton, InviteBanner, SharedSpaceBanner, SpaceSwitcher } from './components/Cloud';
 import { Empty } from './components/Empty';
 import { PullToRefresh, UpdateBar } from './components/AppRefresh';
-import { isNativeApp } from './lib/native';
+import { hideSplash, isNativeApp } from './lib/native';
 import { useBottomTabsHidden } from './components/tree/bottomTabs';
 import { CloudProvider, useCanEdit, useCloud } from './lib/cloud/CloudProvider';
 import { DataProvider } from './lib/data';
@@ -146,6 +146,8 @@ function SignIn() {
 /** Signed out → sign in; signed in → the app once the family tree has loaded. */
 function Gate() {
   const { configured, auth, state, error, online } = useCloud();
+  // The app's launch screen stays until sign-in is known (the sign-in screen, or the tree opening).
+  useEffect(() => { if (!auth.loading) hideSplash(); }, [auth.loading]);
   if (!configured) return <Centered><p className="text-stone-500">Lineage isn’t set up correctly (no Firebase settings in this build).</p></Centered>;
   if (auth.loading) return <Centered><p className="text-stone-500">Loading…</p></Centered>;
   if (!auth.user) return <SignIn />;

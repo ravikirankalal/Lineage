@@ -63,6 +63,8 @@ export interface TreeNode {
   /** Hidden relatives exist in these directions; the UI shows a "+" affordance. */
   expandable?: { up?: boolean; down?: boolean; side?: boolean };
   expanded?: boolean;
+  /** Everyone: the card an extra tree is built around (that tree's own focus). */
+  treeRoot?: boolean;
 }
 
 export interface TreeEdge {

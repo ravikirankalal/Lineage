@@ -4,6 +4,8 @@
  * nearest the focus's row staying on that row (cards above settle down onto it, cards below rise up).
  * Phase 2: the columns slide together until they touch, the column nearest the focus staying put.
  * Explode plays it backwards. These are offsets from each card's real position; the layout never changes.
+ * Everyone draws several trees stacked top to bottom: each one packs into its own wall, around its own
+ * root card (the main tree around the focus), so the trees never merge into one.
  */
 import { CARD, type TreeNode } from './graph/contract';
 
@@ -21,7 +23,27 @@ function nearest(values: number[], v: number): number {
   return best;
 }
 
+/** Which stacked tree a card belongs to: Everyone prefixes extra trees' keys with `t1/`, `t2/`, … */
+export function treeOf(key: string): string {
+  return /^t\d+\//.exec(key)?.[0] ?? '';
+}
+
 export function implodeOffsets(nodes: readonly TreeNode[], axis: { x: number; y: number }): Map<string, ImplodeOffset> {
+  const trees = new Map<string, TreeNode[]>();
+  for (const n of nodes) {
+    const t = treeOf(n.key);
+    if (!trees.has(t)) trees.set(t, []);
+    trees.get(t)!.push(n);
+  }
+  const out = new Map<string, ImplodeOffset>();
+  for (const [t, group] of trees) {
+    const root = t ? group.find((n) => n.treeRoot) ?? group[0] : undefined;
+    wall(group, root ? { x: root.x, y: root.y } : axis, out);
+  }
+  return out;
+}
+
+function wall(nodes: readonly TreeNode[], axis: { x: number; y: number }, out: Map<string, ImplodeOffset>) {
   const cols = new Map<number, TreeNode[]>();
   for (const n of nodes) {
     const k = Math.round(n.x);
@@ -31,7 +53,6 @@ export function implodeOffsets(nodes: readonly TreeNode[], axis: { x: number; y:
   // Columns left to right; the one nearest the focus keeps its x, the others close up beside it.
   const xs = [...cols.keys()].sort((a, b) => a - b);
   const cx = nearest(xs, axis.x);
-  const out = new Map<string, ImplodeOffset>();
   xs.forEach((x, j) => {
     const targetX = xs[cx] + (j - cx) * CARD.w;
     // Top to bottom; the card nearest the row lands on it, the rest stack flush above and below.
@@ -41,5 +62,4 @@ export function implodeOffsets(nodes: readonly TreeNode[], axis: { x: number; y:
       out.set(n.key, { dy: axis.y + (i - c) * CARD.h - n.y, dx: targetX - n.x });
     });
   });
-  return out;
 }

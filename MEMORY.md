@@ -336,3 +336,5 @@ Read this before changing code. Append new learnings at the bottom.
 - It's mounted in `App` above `Gate`, so it also runs on the sign-in screen.
 - Never auto-reload while editing (`busyEditing`: `/edit` or `/new` route, or any `[role="dialog"]`); show the bar instead.
 - Pull to refresh is native-only and off on `/family` (dragging pans the tree). It's passive touch listeners on window, so it never blocks scrolling.
+- Implode works per stacked tree: `treeOf(key)` reads Everyone's `t1/`, `t2/` key prefixes; extra trees pack around their `treeRoot` card. Any new way of stacking trees must keep those prefixes and mark the root.
+- Android launch: the site is remote, so the WebView is empty until it arrives (black in dark theme). The splash plugin keeps the launch screen up until `hideSplash()` (Gate, once `auth.loading` is false), capped at 10 s by `launchShowDuration`. `hideSplash` swallows errors so APKs without the plugin keep working. Native changes need a new APK; the workflow runs when android/, capacitor.config.ts or package-lock.json change on master.

@@ -11,9 +11,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <title>Lineage</title>
+    <style>html,body{background:#fafaf9}@media (prefers-color-scheme:dark){html,body{background:#0c0a09}}</style>
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Shown the moment the page arrives, until the app has started (it replaces this). -->
+    <div id="root"><div style="min-height:100dvh;display:flex;align-items:center;justify-content:center"><img src="./icon.svg" alt="" width="64" height="64" style="border-radius:14px" /></div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
