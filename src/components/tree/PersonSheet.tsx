@@ -115,6 +115,14 @@ export function PersonSheet({ person, node, label, path, term, isEgo, isFocus, e
           <div className="grid grid-cols-3 gap-2">
             {FAMILY_CHOICES.map((c) => {
               const has = taken[c.key];
+              // A man isn't offered a husband, a woman isn't offered a wife (owner).
+              const notFor = (c.key === 'husband' && person.gender === 'male') || (c.key === 'wife' && person.gender === 'female');
+              if (notFor) {
+                return (
+                  <button key={c.key} type="button" disabled className="btn-secondary"
+                    aria-label={`Add ${first}’s ${c.label.toLowerCase()} (not available)`}>{c.label}</button>
+                );
+              }
               return has ? (
                 <button key={c.key} type="button" disabled title={`${first}’s ${c.label.toLowerCase()} is ${displayName(has)}`}
                   aria-label={`${first}’s ${c.label.toLowerCase()} is already ${displayName(has)}`}

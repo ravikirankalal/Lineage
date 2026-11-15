@@ -195,6 +195,9 @@ async function run(name, viewport) {
   // Anjali's father (Mohan) is in the tree: Father is off; Son stays available.
   check(await cardSheet.getByRole('button', { name: /Anjali’s father is already Mohan/ }).isDisabled(), `[${name}] Father button not disabled when the father is already in the tree`);
   check(await cardSheet.getByRole('button', { name: 'Add Anjali’s son' }).isEnabled(), `[${name}] Son button disabled`);
+  // Anjali is a woman: Wife is off, Husband is on.
+  check(await cardSheet.getByRole('button', { name: /Add Anjali’s wife/ }).isDisabled(), `[${name}] Wife button not disabled for a woman`);
+  check(await cardSheet.getByRole('button', { name: 'Add Anjali’s husband' }).isEnabled(), `[${name}] Husband button disabled for a woman`);
   await shot('2f-card-sheet');
   await cardSheet.getByRole('button', { name: 'Add Anjali’s son' }).click();
   await cardSheet.getByRole('heading', { name: 'Anjali’s son' }).waitFor();
