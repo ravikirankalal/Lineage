@@ -323,3 +323,10 @@ Read this before changing code. Append new learnings at the bottom.
   calls `versionName("1.0.")` and adds to its null result ("Value is null").
 - (2026-11-15, owner) There is deliberately no way to delete the whole tree: "Delete all data" and `clearAll()` were
   removed. Don't add a bulk delete back without asking. "Try a sample family" stays (owner, empty tree, can edit).
+- **Implode (2026-11-15, owner):** button only for level Everyone + orient cross (desktop defaults to "down", so pick
+  the cross layout first). Owner wants a flush wall (bricks/containers), never cards hidden behind each other.
+  Pure offsets in `src/lib/implode.ts`: per column cards stack CARD.h apart (nearest the focus row stays on it), then
+  columns sit CARD.w apart; `useImplode` animates `[data-key]` cards with inline transforms in three timed phases
+  (fade lines 250 → stack 650 → slide 550 ms), fits the wall in view, and
+  `.tree-edges, .tree-bands` opacity. While not 'open', `.tree-world` has pointer-events none (panning still works).
+  A layout change clears the inline styles. Print CSS already forces transforms off.
