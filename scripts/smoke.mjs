@@ -93,6 +93,8 @@ async function run(name, viewport) {
   const sheet = await body();
   for (const w of ['Friend', 'Colleague', 'Classmate', 'Neighbour', 'Acquaintance', 'Social']) check(!sheet.includes(w), `[${name}] add sheet offers "${w}"`);
   await page.getByRole('button', { name: 'Son', exact: true }).click();
+  check(await page.getByRole('group', { name: 'Other parent' }).getByText('Anjali Rao').isVisible(), `[${name}] other parent not prefilled with the wife`);
+  await shot('5b-add-son');
   await page.getByPlaceholder('Search people or type a new name').fill('Smoke Tester');
   await page.getByText('Add “Smoke Tester”').click();
   await page.getByText('Smoke Tester').first().waitFor();

@@ -27,7 +27,10 @@ function watch(page, tag) {
 
 async function flow(name, fn) {
   const before = failures.length;
-  try { await fn(); } catch (e) { failures.push(`[${name}] crashed: ${e.message.split('\n')[0]}`); }
+  try { await fn(); } catch (e) {
+    const where = (e.message.match(/waiting for (.*)/) ?? [])[1];
+    failures.push(`[${name}] crashed: ${e.message.split('\n')[0]}${where ? ` (waiting for ${where})` : ''}`);
+  }
   if (failures.length === before) passed.push(name);
 }
 
@@ -86,7 +89,7 @@ async function main(browser) {
     await openProfile(page, 'Raj Kumar');
     await page.getByRole('button', { name: 'Add', exact: true }).click();
     await page.getByRole('button', { name: 'Son', exact: true }).click();
-    check(await page.getByText(/Also Lata.s son/).isVisible(), '[1] "Also Lata\'s son" option missing');
+    check(await page.getByRole('group', { name: 'Other parent' }).getByText('Lata Kumar').isVisible(), '[1] other parent not prefilled with Lata');
     await addViaSheet(page, 'Vijay Kumar');
     await page.goto(BASE + '#/family');
     await page.getByText('Vijay K.').waitFor();
@@ -117,14 +120,12 @@ async function main(browser) {
     check(/Arun Kumar\s*Brother/.test(vp), '[1] brother profile does not list Arun as Brother');
   });
 
-  await flow('2 wife + son with "Also <wife>\'s son"', async () => {
+  await flow('2 wife + son: the wife is the other parent (prefilled)', async () => {
     await openProfile(page, 'Arun Kumar');
     await profileAdd(page, 'Wife', 'Meena Kumar');
     await page.getByRole('button', { name: 'Add', exact: true }).click();
     await page.getByRole('button', { name: 'Son', exact: true }).click();
-    const cb = page.getByText('Also Meena’s son');
-    check(await cb.isVisible(), '[2] "Also Meena’s son" checkbox missing');
-    check(await page.locator('label', { hasText: 'Also Meena’s son' }).locator('input').isChecked(), '[2] co-parent checkbox not default on');
+    check(await page.getByRole('group', { name: 'Other parent' }).getByText('Meena Kumar').isVisible(), '[2] other parent not prefilled with Meena');
     await addViaSheet(page, 'Rohan Kumar');
     await openProfile(page, 'Rohan Kumar');
     const rp = await body(page);
@@ -245,7 +246,15 @@ async function features(browser) {
     await page.getByPlaceholder('Phone', { exact: true }).fill('98765 43210');
     await page.getByRole('button', { name: 'Save' }).first().click();
     await page.getByRole('heading', { name: /^Family\b/ }).first().waitFor();
-    await profileAdd(page, 'Daughter', 'Latha Rao');
+    // No spouse yet: the other parent must be chosen before the daughter can be added.
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    await page.getByRole('button', { name: 'Daughter', exact: true }).click();
+    await page.getByPlaceholder('Search people or type a new name').fill('Latha Rao');
+    check(await page.getByRole('button', { name: /Add “Latha Rao”/ }).isDisabled(), '[7] daughter could be added without the other parent');
+    await page.getByLabel("Other parent's name").fill('Sita Rao');
+    await page.getByText('Add “Sita Rao” as the other parent').click();
+    await page.getByText('Add “Latha Rao”').click();
+    await page.getByText('Latha Rao').first().waitFor();
     await page.goto(BASE + '#/');
     await page.getByPlaceholder(/Search names/).fill('Prakash');
     await page.locator('a', { hasText: 'Prakash' }).filter({ hasText: 'fertiliser' }).first().click();
@@ -255,7 +264,7 @@ async function features(browser) {
     const sug = dlg.getByRole('button', { name: /Prakash Rao/ });
     check(/Possible duplicates[\s\S]*Same name/i.test(await dlg.innerText()), '[7] duplicate not suggested');
     await sug.first().click();
-    await dlg.getByText(/relationship will move/).waitFor();
+    await dlg.getByText(/relationships? will move/).waitFor();
     const pv = await dlg.innerText();
     check(/Birth date: 1961 kept, 1962 dropped/.test(pv), '[7] preview missing birth-date conflict');
     await shot(page, '7a-merge-preview');

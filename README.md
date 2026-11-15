@@ -10,7 +10,8 @@ with the relatives you choose. The tree lives in your Google account (Firebase),
 - **People** — name, nickname, other names, phones, emails, place of origin, current address,
   what they look like, work, education, birthday, photo, tags, notes, and any custom detail
   (gotra, blood group, kids' names…). Search looks through every field.
-- **Family only** — relationships are parent, child and spouse (biological, adoptive, step,
+- **Family only** — adding a son or daughter always asks for the other parent (your spouse is
+  filled in), so half- and step-relations are never guessed. Relationships are parent, child and spouse (biological, adoptive, step,
   foster, divorced…). Brothers and sisters are added as children of the parents, so they always
   share them. (Sibling links from older data are still understood.)
 - **Merge duplicates** — combine two profiles of the same person. You see a preview first, and

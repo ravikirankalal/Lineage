@@ -293,3 +293,9 @@ Read this before changing code. Append new learnings at the bottom.
 - (2026-11-15, owner) The second page is called **Family Tree** in the UI (route still `/family`; older notes say
   "My Family"). The tree's default level is Extended on every screen (`useTreeParams`); `?level=` still overrides.
   "My family" in the family switcher means your own family space, which is a different thing: keep it.
+- **Other parent is required for a new son/daughter (2026-11-15, owner):** `AddRelationSheet` `OtherParentPicker`.
+  Prefilled with the first current spouse; former spouses are listed as "(former)"; "Someone else" searches the tree
+  or creates a new person (opposite gender). The other parent's link: adoptive/foster copy the chosen subtype, a
+  step-child gets `biological` from the other parent (they are the child's own parent). A non-spouse other parent
+  gets a `married` spouse link unless "is X's spouse" is unticked. Replaces the old "Also <spouse>'s son" checkbox.
+  Adding a parent (Father/Mother) is unchanged.
