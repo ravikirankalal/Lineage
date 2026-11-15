@@ -10,9 +10,9 @@ are in `.claude/agents/`. Claude Code loads them automatically, so you can name 
 | --- | --- | --- | --- |
 | `kinship-engineer` | `src/lib/kinship.ts`, `kinshipTerms.ts`, `tree.ts`, `connections.ts` + tests | yes | relationship labels, tree layout, connection grouping |
 | `ui-builder` | `src/pages`, `src/components`, `src/index.css` | yes | new screens, forms, polish, responsive/dark-mode fixes |
-| `import-specialist` | `src/lib/contacts.ts`, `gedcom.ts`, backup format, `ImportPage` | yes | contacts formats, dedupe/merge, GEDCOM |
-| `data-steward` | `src/lib/types.ts`, `src/lib/db.ts` (incl. `mergePeople`); built `src/lib/sync.ts` in round 3 | yes | any schema/field change, Dexie migrations, integrity rules, sync engine |
-| `security-engineer` | `src/lib/cloud/firebase.ts`, `auth.ts`, `spaces.ts`, `firestoreRemote.ts`, `firestore.rules`, `firebase.json`, `tests/rules/`, `firebase-deploy.yml`, `FIREBASE_SETUP.md` | yes | sign-in, who can read/write what, sharing roles, Firebase Hosting |
+| `import-specialist` | (retired 2026-11-15: contacts import, GEDCOM and backups were removed) | — | — |
+| `data-steward` | `src/lib/types.ts`, `src/lib/db.ts` (incl. `mergePeople`), `src/lib/store.ts` | yes | any field change, how changes are written, integrity rules, clean-ups of old data |
+| `security-engineer` | `src/lib/cloud/firebase.ts`, `auth.ts`, `spaces.ts`, `firestoreBackend.ts`, `CloudProvider.tsx`, `firestore.rules`, `firebase.json`, `tests/rules/`, `firebase-deploy.yml`, `FIREBASE_SETUP.md` | yes | sign-in, who can read/write what, sharing roles, Firebase Hosting |
 | `code-reviewer` | — | no (read-only) | after non-trivial changes; whole-codebase audits |
 | `qa-tester` | `scripts/` test scripts only | no app code | before shipping; after UI changes; exploratory testing |
 | `docs-keeper` | `STATE.md`, `PLAN.md`, `MEMORY.md`, `README.md`, `AGENTS.md` | docs only | end of every session; after agent reports |
@@ -24,7 +24,6 @@ feature request
   ├─ touches who can sign in or access what? ──► security-engineer
   ├─ touches stored fields/schema? ──► data-steward first (migration plan)
   ├─ derivation / labels / layout? ──► kinship-engineer
-  ├─ import / export formats?      ──► import-specialist
   └─ screens / interaction?        ──► ui-builder
 then, in parallel:  code-reviewer (diff)  +  qa-tester (browser)
 fix confirmed findings with the owning agent
@@ -40,11 +39,9 @@ finally:            docs-keeper  (STATE / PLAN / MEMORY)
 - **Reviewers and QA don't fix.** They report confirmed findings, and the owning agent fixes them.
 - **Agents report, the main session decides.** Agent reports are inputs. The coordinating
   session checks them (e.g. re-runs `npm run verify`) before committing.
-- **Nothing leaves the device unless the user signs in.** The network paths are Firebase
-  (Auth + Firestore) behind Google sign-in, per `src/lib/cloud/contract.ts`, plus a **read-only**
-  call to `people.googleapis.com` (`src/lib/cloud/googleContacts.ts`) that runs only when the user
-  starts "Import from Google Contacts". Its OAuth token stays in memory and is never stored or synced.
-  No agent adds other network calls or analytics, and fixtures never contain real personal data.
+- **The only network path is Firebase** (Auth + Firestore) behind Google sign-in, per
+  `src/lib/cloud/contract.ts`. Sign-in is required and nothing is stored on the device. No agent
+  adds other network calls or analytics, and fixtures never contain real personal data.
 - **Cross-area features start from a contract** (e.g. `src/lib/cloud/contract.ts`), then owners
   build against it in parallel.
 - **Never `git stash` or switch branches while agents are editing the working tree.**
@@ -56,13 +53,12 @@ finally:            docs-keeper  (STATE / PLAN / MEMORY)
 | --- | --- |
 | `npm test` | Vitest unit tests (domain logic, parsers) |
 | `npm run build` | Type-check and production build to `dist/` |
-| `npm run smoke` | Serves `dist/`, drives main flows in Chromium at phone + desktop sizes, screenshots to `smoke-output/`, fails on any page/console error |
+| `npm run smoke` | Starts the Auth + Firestore emulators, builds an emulator bundle, signs in (emulator-only hook), drives main flows at phone + desktop sizes, screenshots to `smoke-output/`, fails on any page/console error (`scripts/emu.mjs`; ports 8080/9099/4179) |
 | `npm run verify` | Tests, build and smoke, in order |
-| `npm run qa` | Exploratory browser flows written by qa-tester (`scripts/qa-flows.mjs`) |
+| `npm run qa` | Browser flows written by qa-tester, incl. sharing between three accounts, on the emulators (`scripts/qa-flows.mjs`; port 4191) |
 | `npm run test:rules` | Firestore security-rules tests on the emulator (port 8180, `tests/rules/`) |
-| `npm run qa:cloud` | Sign-in, sync and sharing flows on the Auth + Firestore emulators (`scripts/qa-cloud.mjs`; ports 8080/9099/4196) |
 
-`npm run smoke` needs Playwright with Chromium. It is pre-installed in Claude Code cloud
+`npm run smoke` and `npm run qa` need Playwright with Chromium, and Java for the emulators. It is pre-installed in Claude Code cloud
 sessions. Locally, run `npm i -D playwright && npx playwright install chromium`.
 
 ## Adding an agent

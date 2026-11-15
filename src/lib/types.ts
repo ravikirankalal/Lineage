@@ -68,7 +68,7 @@ export interface Person {
 export type FamilyType = 'parent' | 'spouse' | 'sibling';
 /**
  * Non-family link types from older versions. Lineage is family-only now: nothing creates or shows
- * these, but they stay in the type so old databases, backups and synced records still load.
+ * these, but they stay in the type so old stored records still read (and are then deleted).
  */
 export type SocialType =
   | 'close_friend'
@@ -95,22 +95,6 @@ export interface Relationship {
   /** Last change (ms). Added in DB version 2; rows written before that, and rows from old backups,
    * may lack it. Readers must fall back to `createdAt`. */
   updatedAt?: number;
-}
-
-/** The two synced tables. */
-export type TableName = 'people' | 'relationships';
-
-/** A local record of a deletion, so sync can propagate it (DB version 2). Holds no personal data. */
-export interface Tombstone {
-  id: string; // id of the deleted person/relationship
-  table: TableName;
-  deletedAt: number;
-}
-
-/** Key-value store for sync bookkeeping (DB version 2). */
-export interface MetaRow {
-  key: string;
-  value: unknown;
 }
 
 export const FAMILY_TYPES: FamilyType[] = ['parent', 'spouse', 'sibling'];

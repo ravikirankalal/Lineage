@@ -1,4 +1,4 @@
-import { isFamilyType, type Person, type Place, type Relationship } from './types';
+import type { Person, Place } from './types';
 
 export function newId(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
@@ -158,20 +158,17 @@ export function completeness(p: Person): number {
   return Math.round((checks.filter(Boolean).length / checks.length) * 100);
 }
 
-const CONTACT_SOURCES = new Set<Person['source']>(['vcard', 'csv', 'picker', 'google']);
+/** A trailing extension: "ext. 204", "extension 204", "x204", "#5", ";ext=204" or a dial pause ",204". */
+const PHONE_EXT = /\s*(?:;\s*ext=|e?xt(?:ension)?\.?|x|#|[,;])\s*(\d+)\s*$/i;
 
-/** Ids of everyone with at least one family link (parent, spouse or sibling). */
-export function familyLinkedIds(rels: Relationship[]): Set<string> {
-  const s = new Set<string>();
-  for (const r of rels) if (isFamilyType(r.type)) { s.add(r.fromId); s.add(r.toId); }
-  return s;
+/** Matching key for a phone number: its last 10 digits, ignoring any extension. */
+export function phoneKey(v: string): string {
+  const d = v.replace(PHONE_EXT, '').replace(/\D/g, '');
+  return d.length > 10 ? d.slice(-10) : d;
 }
 
-/**
- * Whether a person belongs on the People page. Imported contacts (phone, vCard, CSV, Google) stay in the
- * background, only as suggestions when adding a relative, until they are linked into the family.
- * People added by hand (or from a GEDCOM file) always show.
- */
-export function inFamilyList(p: Person, linked: Set<string>): boolean {
-  return !!p.isMe || linked.has(p.id) || !CONTACT_SOURCES.has(p.source);
-}
+/** Key for merging phone lists: the same line with a different extension is a different entry. */
+export const phoneEntryKey = (v: string): string => {
+  const ext = PHONE_EXT.exec(v)?.[1];
+  return ext ? `${phoneKey(v)}x${ext}` : phoneKey(v);
+};

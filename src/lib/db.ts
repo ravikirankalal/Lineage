@@ -1,228 +1,164 @@
-import Dexie, { type EntityTable } from 'dexie';
-import { phoneEntryKey } from './contacts';
-import { emptyPerson, formatPlace, fullName, newId, norm } from './person';
-import { isFamilyType, type Gender, type LabeledValue, type MetaRow, type Person, type Place, type RelType, type Relationship, type TableName, type Tombstone } from './types';
-
-export class LineageDB extends Dexie {
-  people!: EntityTable<Person, 'id'>;
-  relationships!: EntityTable<Relationship, 'id'>;
-  /** Added in version 2. */
-  tombstones!: EntityTable<Tombstone, 'id'>;
-  /** Added in version 2. */
-  meta!: EntityTable<MetaRow, 'key'>;
-
-  constructor(name = LOCAL_DB_NAME) {
-    super(name);
-    // Never edit a released version block. Add a new version with an upgrade instead.
-    this.version(1).stores({
-      people: 'id, firstName, lastName, updatedAt, *tags',
-      relationships: 'id, fromId, toId, type, [fromId+toId]',
-    });
-    // v2 (cloud sync): relationships get an updatedAt index (backfilled from createdAt), plus
-    // tombstones for deletions and a key-value meta table for sync watermarks.
-    this.version(2)
-      .stores({
-        people: 'id, firstName, lastName, updatedAt, *tags',
-        relationships: 'id, fromId, toId, type, [fromId+toId], updatedAt',
-        tombstones: 'id, table, deletedAt',
-        meta: 'key',
-      })
-      .upgrade(async (tx) => {
-        const now = Date.now();
-        await tx
-          .table('relationships')
-          .toCollection()
-          .modify((r: Relationship) => {
-            if (typeof r.updatedAt !== 'number') r.updatedAt = typeof r.createdAt === 'number' ? r.createdAt : now;
-          });
-        // Very old/hand-made rows might lack people.updatedAt; sync relies on it being a number.
-        await tx
-          .table('people')
-          .toCollection()
-          .modify((p: Person) => {
-            if (typeof p.updatedAt !== 'number') p.updatedAt = typeof p.createdAt === 'number' ? p.createdAt : now;
-          });
-      });
-  }
-}
-
-export const LOCAL_DB_NAME = 'lineage';
-export const SPACE_DB_PREFIX = 'lineage-space-';
-
-/** IndexedDB name for a space: null = the local/personal database. */
-export function dbNameFor(spaceId: string | null): string {
-  return spaceId === null ? LOCAL_DB_NAME : SPACE_DB_PREFIX + spaceId;
-}
-
 /**
- * The active database. A live binding: `openSpaceDb` re-points it, so always read `db` at call
- * time (never cache it in a module-level variable).
+ * Changes to the family tree. Each exported function runs as one transaction over the live tree
+ * (see store.ts) and is sent to the cloud as one batch. `ops` holds the same steps for composing
+ * several changes into one batch: `write((t) => { ops.savePerson(t, p); ops.addRelationship(t, r); })`.
  */
-export let db = new LineageDB();
-let activeSpace: string | null = null;
-
-/**
- * Switch the active database. null = the local/personal 'lineage' DB; otherwise the shared space's
- * own 'lineage-space-<id>' DB, so a shared tree never mixes with personal data. The previous
- * database is closed (in-flight operations on it fail). Re-opening the active space is a no-op.
- */
-export function openSpaceDb(spaceId: string | null): void {
-  if (spaceId !== null && (typeof spaceId !== 'string' || !spaceId)) throw new Error('Invalid space id.');
-  if (spaceId === activeSpace) return;
-  const prev = db;
-  db = new LineageDB(dbNameFor(spaceId));
-  activeSpace = spaceId;
-  prev.close();
-}
-
-/**
- * Remove a shared space from this device (e.g. after the user was removed from it, or left).
- * Deletes the whole 'lineage-space-<id>' database (its people, relationships, tombstones and sync
- * meta), and any sync meta keys for that space in the active database. If the space is active, the
- * local/personal database becomes active first. Never touches the local 'lineage' data rows.
- */
-export async function forgetSpace(spaceId: string): Promise<void> {
-  if (typeof spaceId !== 'string' || !spaceId) throw new Error('Invalid space id.');
-  if (activeSpace === spaceId) openSpaceDb(null);
-  await Dexie.delete(dbNameFor(spaceId));
-  const isSpaceKey = (k: string) =>
-    k === `synced:${spaceId}` || k === `lastPushedAt:${spaceId}` || k.startsWith(`pull:${spaceId}:`);
-  await db.meta.filter((m) => isSpaceKey(m.key)).delete();
-}
-
-/** The space whose database is active (null = local/personal). */
-export function activeSpaceId(): string | null {
-  return activeSpace;
-}
-
-/** Last-change time of a row; tolerates old relationship rows without updatedAt. */
-export function rowUpdatedAt(r: { updatedAt?: number; createdAt?: number }): number {
-  return typeof r.updatedAt === 'number' ? r.updatedAt : typeof r.createdAt === 'number' ? r.createdAt : 0;
-}
-
-/** Record deletions. Call inside a transaction that includes `tombstones`. */
-async function addTombstones(target: LineageDB, table: TableName, ids: Iterable<string>, deletedAt = Date.now()) {
-  const rows = [...new Set(ids)].map((id) => ({ id, table, deletedAt }));
-  if (rows.length) await target.tombstones.bulkPut(rows);
-}
+import { formatPlace, fullName, newId, norm, phoneEntryKey, emptyPerson } from './person';
+import { read, write, type Tx } from './store';
+import { isFamilyType, type Gender, type LabeledValue, type Person, type Place, type RelType, type Relationship } from './types';
 
 const SYMMETRIC = (t: RelType) => t !== 'parent';
 
-export async function savePerson(p: Person): Promise<string> {
-  const toSave = { ...p, updatedAt: Date.now() };
-  if (toSave.isMe) {
+type NewRelationship = Omit<Relationship, 'id' | 'createdAt' | 'updatedAt'>;
+
+function savePersonTx(t: Tx, p: Person): string {
+  const now = Date.now();
+  if (p.isMe) {
     // Only one person can be "me".
-    await db.people.where('id').notEqual(p.id).modify((x) => {
-      if (x.isMe) {
-        delete x.isMe;
-        x.updatedAt = toSave.updatedAt; // so the change syncs
+    for (const x of t.allPeople()) {
+      if (x.isMe && x.id !== p.id) {
+        const { isMe: _drop, ...rest } = x;
+        void _drop;
+        t.putPerson({ ...rest, updatedAt: now });
       }
-    });
+    }
   }
-  await db.people.put(toSave);
+  t.putPerson({ ...p, updatedAt: now });
   return p.id;
 }
 
-export async function deletePerson(id: string) {
-  await db.transaction('rw', db.people, db.relationships, db.tombstones, async () => {
-    const relIds = [
-      ...(await db.relationships.where('fromId').equals(id).primaryKeys()),
-      ...(await db.relationships.where('toId').equals(id).primaryKeys()),
-    ];
-    await db.relationships.bulkDelete(relIds);
-    const existed = (await db.people.get(id)) !== undefined;
-    await db.people.delete(id);
-    await addTombstones(db, 'relationships', relIds);
-    if (existed) await addTombstones(db, 'people', [id]);
-  });
+function deletePersonTx(t: Tx, id: string) {
+  for (const r of t.allRels()) if (r.fromId === id || r.toId === id) t.removeRel(r.id);
+  t.removePerson(id);
 }
 
 /** Find an existing edge equivalent to (from, to, type). */
-export async function findRelationship(fromId: string, toId: string, type: RelType) {
-  const a = await db.relationships.where('[fromId+toId]').equals([fromId, toId]).filter((r) => r.type === type).first();
+function findRelationshipTx(t: Tx, fromId: string, toId: string, type: RelType): Relationship | undefined {
+  const all = t.allRels();
+  const a = all.find((r) => r.fromId === fromId && r.toId === toId && r.type === type);
   if (a || !SYMMETRIC(type)) return a;
-  return db.relationships.where('[fromId+toId]').equals([toId, fromId]).filter((r) => r.type === type).first();
+  return all.find((r) => r.fromId === toId && r.toId === fromId && r.type === type);
 }
 
-type NewRelationship = Omit<Relationship, 'id' | 'createdAt' | 'updatedAt'>;
-
 /** True if `targetId` is `startId` or one of its descendants (following `parent` edges downward). */
-async function isSelfOrDescendant(startId: string, targetId: string): Promise<boolean> {
+function isSelfOrDescendant(t: Tx, startId: string, targetId: string): boolean {
+  const kids = new Map<string, string[]>();
+  for (const r of t.allRels()) if (r.type === 'parent') (kids.get(r.fromId) ?? kids.set(r.fromId, []).get(r.fromId)!).push(r.toId);
   const seen = new Set<string>([startId]);
   const queue = [startId];
   while (queue.length) {
     const cur = queue.shift()!;
     if (cur === targetId) return true;
-    const kids = await db.relationships.where('fromId').equals(cur).filter((r) => r.type === 'parent').toArray();
-    for (const k of kids) {
-      if (!seen.has(k.toId)) {
-        seen.add(k.toId);
-        queue.push(k.toId);
-      }
-    }
+    for (const k of kids.get(cur) ?? []) if (!seen.has(k)) { seen.add(k); queue.push(k); }
   }
   return false;
 }
 
+function addRelationshipTx(t: Tx, r: NewRelationship, opts: { ifMissing?: boolean } = {}): string {
+  if (r.fromId === r.toId) throw new Error('A person cannot be related to themselves.');
+  const existing = findRelationshipTx(t, r.fromId, r.toId, r.type);
+  if (existing) {
+    if (!opts.ifMissing) {
+      const patch: Partial<Relationship> = {};
+      if (r.subtype !== undefined) patch.subtype = r.subtype;
+      if (r.note !== undefined) patch.note = r.note;
+      if (Object.keys(patch).length) t.putRel({ ...existing, ...patch, updatedAt: Date.now() });
+    }
+    return existing.id;
+  }
+  if (r.type === 'parent' && isSelfOrDescendant(t, r.toId, r.fromId)) {
+    throw new Error('That would make someone their own ancestor.');
+  }
+  const id = newId();
+  const now = Date.now();
+  // Strip any stray updatedAt/createdAt a caller passed in at runtime.
+  const { updatedAt: _u, createdAt: _c, ...rest } = r as Relationship;
+  void _u;
+  void _c;
+  t.putRel({ ...rest, id, createdAt: now, updatedAt: now });
+  return id;
+}
+
+function mergePeopleTx(t: Tx, keepId: string, dropId: string) {
+  const plan = planMerge(t, keepId, dropId);
+  const now = Date.now();
+  if (plan.person.isMe) {
+    for (const x of t.allPeople()) {
+      if (x.isMe && x.id !== keepId && x.id !== dropId) {
+        const { isMe: _drop, ...rest } = x;
+        void _drop;
+        t.putPerson({ ...rest, updatedAt: now });
+      }
+    }
+  }
+  t.putPerson(plan.person);
+  for (const id of plan.dropped) t.removeRel(id);
+  for (const m of plan.moved) t.putRel({ ...m, updatedAt: now });
+  for (const f of plan.fills) {
+    const r = t.rel(f.id);
+    if (r) t.putRel({ ...r, ...f.changes, updatedAt: now });
+  }
+  t.removePerson(dropId);
+}
+
+/** The same steps as the exported functions, for composing several into one batch with `write`. */
+export const ops = {
+  savePerson: savePersonTx,
+  deletePerson: deletePersonTx,
+  findRelationship: findRelationshipTx,
+  addRelationship: addRelationshipTx,
+  ensureRelationship: (t: Tx, r: NewRelationship) => addRelationshipTx(t, r, { ifMissing: true }),
+  deleteRelationship: (t: Tx, id: string) => t.removeRel(id),
+  mergePeople: mergePeopleTx,
+};
+
+export const savePerson = (p: Person) => write((t) => savePersonTx(t, p));
+export const deletePerson = (id: string) => write((t) => deletePersonTx(t, id));
+export const findRelationship = (fromId: string, toId: string, type: RelType) => read((t) => findRelationshipTx(t, fromId, toId, type));
 /**
  * Add an edge, or update an equivalent existing one. On an existing edge only the fields the caller
  * actually passed (`subtype`, `note`) are changed; undefined fields keep their stored values.
  * With `{ ifMissing: true }` an existing edge is returned untouched.
  */
-export async function addRelationship(r: NewRelationship, opts: { ifMissing?: boolean } = {}): Promise<string> {
-  if (r.fromId === r.toId) throw new Error('A person cannot be related to themselves.');
-  return db.transaction('rw', db.relationships, async () => {
-    const existing = await findRelationship(r.fromId, r.toId, r.type);
-    if (existing) {
-      if (!opts.ifMissing) {
-        const patch: Partial<Relationship> = {};
-        if (r.subtype !== undefined) patch.subtype = r.subtype;
-        if (r.note !== undefined) patch.note = r.note;
-        if (Object.keys(patch).length) {
-          patch.updatedAt = Date.now();
-          await db.relationships.update(existing.id, patch);
-        }
-      }
-      return existing.id;
-    }
-    if (r.type === 'parent' && (await isSelfOrDescendant(r.toId, r.fromId))) {
-      throw new Error('That would make someone their own ancestor.');
-    }
-    const id = newId();
-    const now = Date.now();
-    // Strip any stray updatedAt/createdAt a caller passed in at runtime.
-    const { updatedAt: _u, createdAt: _c, ...rest } = r as Relationship;
-    void _u;
-    void _c;
-    await db.relationships.add({ ...rest, id, createdAt: now, updatedAt: now });
-    return id;
-  });
-}
-
+export const addRelationship = (r: NewRelationship, opts: { ifMissing?: boolean } = {}) => write((t) => addRelationshipTx(t, r, opts));
 /** Make sure an equivalent edge exists; never changes an existing one. Returns its id. */
-export function ensureRelationship(r: NewRelationship): Promise<string> {
-  return addRelationship(r, { ifMissing: true });
-}
-
-export async function deleteRelationship(id: string) {
-  await db.transaction('rw', db.relationships, db.tombstones, async () => {
-    if ((await db.relationships.get(id)) === undefined) return;
-    await db.relationships.delete(id);
-    await addTombstones(db, 'relationships', [id]);
-  });
-}
+export const ensureRelationship = (r: NewRelationship) => write((t) => addRelationshipTx(t, r, { ifMissing: true }));
+export const deleteRelationship = (id: string) => write((t) => t.removeRel(id));
 
 /**
  * Lineage is family-only: delete every non-family link (friend, colleague, … from older versions) for
- * good. Tombstones make the deletion sync to the cloud like any other delete. Returns how many went.
+ * good. Returns how many went.
  */
-export async function purgeNonFamilyLinks(): Promise<number> {
-  return db.transaction('rw', db.relationships, db.tombstones, async () => {
-    const ids = (await db.relationships.filter((r) => !isFamilyType(r.type)).toArray()).map((r) => r.id);
-    if (!ids.length) return 0;
-    await db.relationships.bulkDelete(ids);
-    await addTombstones(db, 'relationships', ids);
+export function purgeNonFamilyLinks(): Promise<number> {
+  return write((t) => {
+    const ids = t.allRels().filter((r) => !isFamilyType(r.type)).map((r) => r.id);
+    for (const id of ids) t.removeRel(id);
     return ids.length;
+  });
+}
+
+/** Imported-contact sources from older versions (contacts import is gone). */
+const CONTACT_SOURCES = new Set<Person['source']>(['vcard', 'csv', 'picker', 'google']);
+
+/**
+ * Delete, for good, imported contacts that never became family: from a contacts source, not "me",
+ * and with no parent/spouse/sibling link. Their remaining links go with them. Returns how many.
+ */
+export function purgeLooseContacts(): Promise<number> {
+  return write((t) => {
+    const linked = new Set<string>();
+    for (const r of t.allRels()) if (isFamilyType(r.type)) { linked.add(r.fromId); linked.add(r.toId); }
+    const loose = t.allPeople().filter((p) => !p.isMe && CONTACT_SOURCES.has(p.source) && !linked.has(p.id));
+    for (const p of loose) deletePersonTx(t, p.id);
+    return loose.length;
+  });
+}
+
+/** Delete all people and relationships in this family. */
+export function clearAll(): Promise<void> {
+  return write((t) => {
+    for (const r of t.allRels()) t.removeRel(r.id);
+    for (const p of t.allPeople()) t.removePerson(p.id);
   });
 }
 
@@ -248,7 +184,7 @@ interface MergePlan {
 
 const blank = (s?: string) => !s || !s.trim();
 const placeEmpty = (pl?: Place) => !pl || !formatPlace(pl);
-// Same key as imports use: last 10 digits ignoring an extension, but a different extension is a
+// Last 10 digits ignoring an extension, but a different extension is a
 // different entry so merging never drops it. Numbers with no digits fall back to the text.
 const phoneKey = (v: string) => phoneEntryKey(v ?? '') || norm(v);
 
@@ -353,23 +289,23 @@ function mergeFields(keep: Person, drop: Person): { person: Person; conflicts: s
 const edgeKey = (r: Pick<Relationship, 'fromId' | 'toId' | 'type'>) =>
   SYMMETRIC(r.type) ? `${r.type}|${[r.fromId, r.toId].sort().join('|')}` : `${r.type}|${r.fromId}|${r.toId}`;
 
-/** Reads everything it needs; must run inside a transaction covering people and relationships. */
-async function planMerge(keepId: string, dropId: string): Promise<MergePlan> {
+function planMerge(t: Tx, keepId: string, dropId: string): MergePlan {
   if (!keepId || !dropId || keepId === dropId) throw new Error('Choose two different people to merge.');
-  const [keep, drop] = await Promise.all([db.people.get(keepId), db.people.get(dropId)]);
+  const keep = t.person(keepId);
+  const drop = t.person(dropId);
   if (!keep || !drop) throw new Error('One of these people no longer exists.');
 
   const { person, conflicts } = mergeFields(keep, drop);
 
-  const all = await db.relationships.toArray();
+  const all = t.allRels().map((r) => ({ ...r }));
   const touchesDrop = (r: Relationship) => r.fromId === dropId || r.toId === dropId;
   const byKey = new Map<string, Relationship>();
   for (const r of all) if (!touchesDrop(r)) byKey.set(edgeKey(r), r);
 
   const nameCache = new Map<string, string>();
-  const nameOf = async (id: string) => {
+  const nameOf = (id: string) => {
     if (!nameCache.has(id)) {
-      const x = await db.people.get(id);
+      const x = t.person(id);
       nameCache.set(id, x ? fullName(x) : 'someone');
     }
     return nameCache.get(id)!;
@@ -407,7 +343,7 @@ async function planMerge(keepId: string, dropId: string): Promise<MergePlan> {
       } else if (existing.subtype && r.subtype && existing.subtype !== r.subtype) {
         const other = next.fromId === keepId ? next.toId : next.fromId;
         const role = roleOf(next);
-        conflicts.push(`Link to ${await nameOf(other)}: ${existing.subtype} ${role} kept, ${r.subtype} dropped`);
+        conflicts.push(`Link to ${nameOf(other)}: ${existing.subtype} ${role} kept, ${r.subtype} dropped`);
       }
       if (Object.keys(changes).length) fill.set(existing.id, changes);
       continue;
@@ -469,7 +405,7 @@ async function planMerge(keepId: string, dropId: string): Promise<MergePlan> {
         : ancestors.has(other)
           ? 'an ancestor'
           : 'a descendant';
-    conflicts.push(`Removed ${r.type} link to ${await nameOf(other)}: they are also ${what}`);
+    conflicts.push(`Removed ${r.type} link to ${nameOf(other)}: they are also ${what}`);
   }
   const keptMoved = moved.filter((m) => !contradicted.has(m.id));
 
@@ -509,59 +445,23 @@ async function planMerge(keepId: string, dropId: string): Promise<MergePlan> {
  * Throws the same errors as `mergePeople` (same person, missing person, parent cycle).
  */
 export async function previewMerge(keepId: string, dropId: string): Promise<MergePreview> {
-  return db.transaction('r', db.people, db.relationships, async () => (await planMerge(keepId, dropId)).preview);
+  return read((t) => planMerge(t, keepId, dropId).preview);
 }
 
 /**
  * Merge `dropId` into `keepId`: keep's non-empty fields win, empty ones are filled from drop, lists
  * are unioned, drop's differing names go to otherNames, drop's edges are re-pointed to keep
  * (self-links, duplicates and contradicting sibling/spouse links removed; a duplicate's missing
- * subtype/note is filled from drop's copy), then drop
- * is deleted. All checks run before any write; everything happens in one transaction.
+ * subtype/note is filled from drop's copy), then drop is deleted. All checks run before any write;
+ * everything is sent as one batch.
  */
-export async function mergePeople(keepId: string, dropId: string): Promise<void> {
-  await db.transaction('rw', db.people, db.relationships, db.tombstones, async () => {
-    const plan = await planMerge(keepId, dropId);
-    const now = Date.now();
-    if (plan.person.isMe) {
-      await db.people.filter((x) => x.isMe === true && x.id !== keepId && x.id !== dropId).modify((x) => {
-        delete x.isMe;
-        x.updatedAt = now;
-      });
-    }
-    await db.people.put(plan.person);
-    if (plan.dropped.length) await db.relationships.bulkDelete(plan.dropped);
-    if (plan.moved.length) await db.relationships.bulkPut(plan.moved.map((m) => ({ ...m, updatedAt: now })));
-    for (const f of plan.fills) await db.relationships.update(f.id, { ...f.changes, updatedAt: now });
-    await db.people.delete(dropId);
-    await addTombstones(db, 'relationships', plan.dropped, now);
-    await addTombstones(db, 'people', [dropId], now);
-  });
-}
+export const mergePeople = (keepId: string, dropId: string) => write((t) => mergePeopleTx(t, keepId, dropId));
 
 // ---------------------------------------------------------------------------
-// Backup
-
-export interface Backup {
-  app: 'lineage';
-  version: 1;
-  exportedAt: string;
-  people: Person[];
-  relationships: Relationship[];
-}
-
-export async function exportBackup(): Promise<Backup> {
-  return {
-    app: 'lineage',
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    people: await db.people.toArray(),
-    relationships: await db.relationships.toArray(),
-  };
-}
+// Reading stored records
 
 const GENDERS: Gender[] = ['male', 'female', 'other', 'unknown'];
-// Includes the non-family types of older versions, so sync and old records stay valid; restore drops them.
+// Includes the non-family types of older versions, so old records still read (and get purged).
 const REL_TYPES: RelType[] = [
   'parent', 'spouse', 'sibling',
   'close_friend', 'friend', 'colleague', 'classmate', 'neighbor', 'acquaintance', 'other',
@@ -569,7 +469,7 @@ const REL_TYPES: RelType[] = [
 const isStr = (x: unknown): x is string => typeof x === 'string' && x.length > 0;
 const arr = <T>(x: unknown): T[] => (Array.isArray(x) ? (x as T[]) : []);
 
-/** Coerce an untrusted backup row into a valid Person, or null if it has no id. */
+/** Coerce an untrusted stored record into a valid Person, or null if it has no id. */
 export function normalisePerson(row: unknown): Person | null {
   if (!row || typeof row !== 'object') return null;
   const r = row as Record<string, unknown>;
@@ -597,96 +497,3 @@ export function validRelationship(row: unknown): row is Relationship {
   return isStr(r.id) && isStr(r.fromId) && isStr(r.toId) && REL_TYPES.includes(r.type as RelType) && r.fromId !== r.toId;
 }
 
-export const BACKUP_VERSION = 1;
-
-export async function importBackup(data: unknown, mode: 'merge' | 'replace') {
-  const b = data as Backup;
-  if (!b || b.app !== 'lineage' || !Array.isArray(b.people) || !Array.isArray(b.relationships)) {
-    throw new Error('This file is not a Lineage backup.');
-  }
-  // Every backup ever exported has version 1; tolerate a missing version as 1.
-  const version: unknown = (b as { version?: unknown }).version ?? 1;
-  if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) {
-    throw new Error('This file is not a Lineage backup.');
-  }
-  if (version > BACKUP_VERSION) {
-    throw new Error(`This backup was made by a newer version of Lineage (format ${version}). Please update the app and try again.`);
-  }
-
-  const incoming = b.people.map(normalisePerson).filter((p): p is Person => p !== null);
-  // Imported rows are new local writes: stamp them so sync treats them as the latest version
-  // (otherwise an older backup's rows would lose to the cloud copy and the restore would be undone).
-  const now = Date.now();
-  for (const p of incoming) p.updatedAt = now;
-
-  await db.transaction('rw', db.people, db.relationships, db.tombstones, async () => {
-    let before: { people: string[]; relationships: string[] } | undefined;
-    if (mode === 'replace') {
-      before = {
-        people: (await db.people.toCollection().primaryKeys()) as string[],
-        relationships: (await db.relationships.toCollection().primaryKeys()) as string[],
-      };
-      await db.people.clear();
-      await db.relationships.clear();
-    }
-
-    // Only one person may be "me". In merge mode a local "me" wins unless the backup overwrites
-    // that same person; otherwise the first incoming "me" wins.
-    let meId: string | undefined;
-    if (mode === 'merge') {
-      const localMe = await db.people.filter((p) => p.isMe === true).first();
-      if (localMe) {
-        const overwritten = incoming.find((p) => p.id === localMe.id);
-        // If the backup overwrites local "me" without isMe, fall through to the incoming choice.
-        if (!overwritten || overwritten.isMe) meId = localMe.id;
-      }
-    }
-    if (meId === undefined) meId = incoming.find((p) => p.isMe)?.id;
-    for (const p of incoming) if (p.isMe && p.id !== meId) delete p.isMe;
-    if (mode === 'merge' && meId !== undefined) {
-      // Clear any stale local "me" that is not the chosen one (e.g. overwritten by an incoming row).
-      await db.people.filter((p) => p.isMe === true && p.id !== meId).modify((x) => {
-        delete x.isMe;
-        x.updatedAt = now;
-      });
-    }
-
-    await db.people.bulkPut(incoming);
-    const ids = new Set(await db.people.toCollection().primaryKeys());
-    const rels = b.relationships
-      .filter(validRelationship)
-      .filter((r) => isFamilyType(r.type)) // family only: old non-family links are not restored
-      .filter((r) => ids.has(r.fromId) && ids.has(r.toId))
-      .map((r) => ({ ...r, createdAt: typeof r.createdAt === 'number' ? r.createdAt : now, updatedAt: now }));
-    await db.relationships.bulkPut(rels);
-
-    // Imported ids are alive again; ids that a replace removed are deletions.
-    const relIds = new Set(rels.map((r) => r.id));
-    await db.tombstones.bulkDelete([...ids, ...relIds] as string[]);
-    if (before) {
-      await addTombstones(db, 'people', before.people.filter((id) => !ids.has(id)), now);
-      await addTombstones(db, 'relationships', before.relationships.filter((id) => !relIds.has(id)), now);
-    }
-  });
-}
-
-/** Delete all people and relationships (recorded as tombstones so sync propagates it). */
-export async function clearAll() {
-  await db.transaction('rw', db.people, db.relationships, db.tombstones, async () => {
-    const now = Date.now();
-    const people = (await db.people.toCollection().primaryKeys()) as string[];
-    const rels = (await db.relationships.toCollection().primaryKeys()) as string[];
-    await db.people.clear();
-    await db.relationships.clear();
-    await addTombstones(db, 'people', people, now);
-    await addTombstones(db, 'relationships', rels, now);
-  });
-}
-
-export async function requestPersistence() {
-  try {
-    if (navigator.storage?.persist && !(await navigator.storage.persisted())) await navigator.storage.persist();
-  } catch {
-    /* ignore */
-  }
-}

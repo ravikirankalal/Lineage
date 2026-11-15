@@ -1,7 +1,7 @@
-import { useLiveQuery } from 'dexie-react-hooks';
-import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
-import { db, purgeNonFamilyLinks } from './db';
+import { createContext, useContext, useEffect, useMemo, useSyncExternalStore, type ReactNode } from 'react';
+import { purgeNonFamilyLinks } from './db';
 import { FamilyGraph } from './kinship';
+import { store } from './store';
 import { isFamilyType, type Person, type Relationship } from './types';
 
 interface Data {
@@ -15,26 +15,25 @@ interface Data {
 
 const Ctx = createContext<Data | null>(null);
 
+/** The live family tree from the store (see store.ts), plus the derived family graph. */
 export function DataProvider({ children }: { children: ReactNode }) {
-  const people = useLiveQuery(() => db.people.toArray(), []);
-  const rels = useLiveQuery(() => db.relationships.toArray(), []);
-  // Family only: links from older versions (friend, colleague, …), or pulled from an old device, are
-  // deleted for good as soon as they show up. The tombstones sync the deletion to the cloud.
-  const stray = !!rels?.some((r) => !isFamilyType(r.type));
-  useEffect(() => { if (stray) void purgeNonFamilyLinks().catch(() => { /* retried on the next change */ }); }, [stray, rels]);
+  const snap = useSyncExternalStore(store.subscribe, store.get);
   const value = useMemo<Data>(() => {
-    const ps = people ?? [];
-    const rs = rels ?? [];
+    const ps = [...snap.people.values()];
+    const rs = [...snap.rels.values()];
     const byId = new Map(ps.map((p) => [p.id, p]));
     return {
-      loaded: people !== undefined && rels !== undefined,
+      loaded: snap.loaded,
       people: ps,
       rels: rs,
       byId,
       graph: new FamilyGraph(byId, rs),
       me: ps.find((p) => p.isMe),
     };
-  }, [people, rels]);
+  }, [snap]);
+  // Family only: links from older versions (friend, colleague, …) are deleted for good when seen.
+  const stray = value.rels.some((r) => !isFamilyType(r.type));
+  useEffect(() => { if (stray) void purgeNonFamilyLinks().catch(() => { /* not allowed here (viewer) or offline */ }); }, [stray, value.rels]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

@@ -24,15 +24,15 @@
 
 ## Architecture
 
-- **Local-first PWA**: React 19 + TypeScript + Vite, Tailwind CSS, Dexie
-  (IndexedDB). Without sign-in, data never leaves the device; JSON backup/restore for safety.
-- **Optional cloud** (contract: `src/lib/cloud/contract.ts`): Google sign-in (Firebase Auth) syncs
-  the user's own space across devices and shares the *family part* of the tree with relatives as
-  editor/viewer. Friends, colleagues and private notes about non-family stay in the owner's space.
-  Authorization is server-side in `firestore.rules`. Setup: [FIREBASE_SETUP.md](FIREBASE_SETUP.md).
+- **Cloud only** (since 2026-11-15; contract: `src/lib/cloud/contract.ts`): React 19 + TypeScript +
+  Vite, Tailwind CSS. Google sign-in (Firebase Auth) is required. `src/lib/store.ts` holds the
+  active family's tree, streamed live from Firestore (`firestoreBackend.ts`); each change is one
+  batched write. Nothing is stored on the device and there is no offline editing. Relatives are
+  invited as editor/viewer; authorization is server-side in `firestore.rules`.
+  Setup: [FIREBASE_SETUP.md](FIREBASE_SETUP.md).
 - `HashRouter` + relative `base` so the build runs from any static host
   (GitHub Pages, a phone's home screen, a USB stick).
-- Pure domain logic in `src/lib/` (kinship, connections, vCard/CSV parsing)
+- Pure domain logic in `src/lib/` (kinship, connections, layouts)
   with unit tests; UI in `src/pages` and `src/components`.
 
 ### Data model (`src/lib/types.ts`)
@@ -41,7 +41,7 @@
   phones, emails, education, work, custom facts.
 - `Relationship` — `{ fromId, toId, type, subtype?, note? }`.
   - `parent`: `fromId` is the parent of `toId` (subtype biological/adoptive/step).
-  - `spouse`, `sibling` and all social types are symmetric.
+  - `spouse` and `sibling` are symmetric. (Old social link types are deleted when seen.)
   - Siblings are *also* derived from shared parents; an explicit `sibling`
     edge is only needed when the parents are unknown.
   - Children, grandparents, cousins, in-laws are never stored — they are
@@ -78,7 +78,7 @@
 - [x] Stats: relatives known, generations known, earliest ancestor
 - [x] Friends are excluded by construction (only family edges are traversed)
 
-### Phase 5 — Contacts import ✅
+### Phase 5 — Contacts import ✅ (removed 2026-11-15: the app is cloud only and family only)
 - [x] vCard (.vcf) import — what Android, iOS and Google Contacts export
 - [x] CSV import (Google / Outlook contacts export)
 - [x] Contact Picker API on supported phones (Android Chrome)
@@ -138,11 +138,12 @@
 - [ ] Live on https://lineage-d575c.web.app (on merge)
 
 ### Backlog / ideas
+- [x] Cloud only: sign-in required, no device copy, no sync or offline editing; contacts import,
+      GEDCOM and backups removed; imported contacts never linked to the family deleted (2026-11-15)
 - [ ] Split family notes into shared and private (members currently see a family person's full record)
-- [ ] Server-time stamps instead of client clocks for sync
+- [ ] Server-time stamps instead of client clocks for `updatedAt`
 - [ ] Invite cap per space
-- [ ] Member-device removal is best-effort; a device that never comes online keeps its copy
-- [ ] GEDCOM re-import that matches existing people instead of adding duplicates
+- [ ] Hard-delete old soft-deleted records (`deleted: true`) left by earlier versions
 - [ ] Regional terms for great-grandparents, grand-uncles/aunts (plus Telugu younger cross-cousin,
       parallel nephew/niece, step/foster)
 - [ ] Wider tree cards so "Great-grandfather" fits
@@ -166,7 +167,6 @@
 - [ ] Reminders (birthdays, "haven't talked in a while")
 - [ ] Kinship: transitive step edges / chained half edges, half-sibling's ancestors as blood,
       half-uncles/half-cousins
-- [x] Faster `planImport`: indexed matching, 5000 contacts in ~30 ms (was ~3 s)
 
 ### Phase 11 — Family graph & navigation (mobile first) ✅
 Audits (2026-11-14): the kinship-engineer measured the layout, and the qa-tester ran a UX walkthrough

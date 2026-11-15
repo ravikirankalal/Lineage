@@ -1,5 +1,4 @@
-/** Small cloud UI pieces: Google button, user avatar, role badge, space switcher and banners.
- * Every export renders nothing when Firebase is not configured. */
+/** Small account UI pieces: Google button, user avatar, role badge, family switcher and banners. */
 import { Check, ChevronsUpDown, Eye, Mail, Users } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -55,7 +54,7 @@ export function SpaceSwitcher({ className = '' }: { className?: string }) {
   const { configured, auth, spaces, activeSpace, isShared } = useCloud();
   const [open, setOpen] = useState(false);
   if (!configured || !auth.user || !spaces.some((s) => s.id !== auth.user!.uid)) return null;
-  const current = isShared && activeSpace ? activeSpace.name : 'My people';
+  const current = isShared && activeSpace ? activeSpace.name : 'My family';
   return (
     <>
       <button onClick={() => setOpen(true)} aria-label={`Showing ${current}. Switch family`}
@@ -80,12 +79,11 @@ export function SpaceList({ onPicked }: { onPicked?: () => void }) {
   if (!uid) return null;
   const mine = spaces.find((s) => s.id === uid);
   const shared = spaces.filter((s) => s.id !== uid);
-  const pick = async (id: string) => {
+  const pick = (id: string) => {
     onPicked?.();
-    // A different family has different people: leave any person page behind first
-    // (switching re-mounts the router).
+    // A different family has different people: leave any person page behind first.
     if ((activeSpace?.id ?? uid) !== id) nav(id === uid ? '/' : '/family');
-    await switchSpace(id);
+    switchSpace(id);
   };
   const row = (id: string, title: string, sub: string, role?: Role, s?: MySpace) => {
     const active = (activeSpace?.id ?? uid) === id;
@@ -105,7 +103,7 @@ export function SpaceList({ onPicked }: { onPicked?: () => void }) {
   };
   return (
     <div className="space-y-1">
-      {row(uid, 'My people', mine ? 'Everyone you’ve added' : 'Your own family')}
+      {row(uid, 'My family', mine ? mine.name : 'Your own family')}
       {shared.length > 0 && <div className="section-title px-3 pb-1 pt-3">Shared with me</div>}
       {shared.map((s) => row(s.id, s.name, ROLE_HINT[s.role], s.role, s))}
     </div>
@@ -121,7 +119,7 @@ export function SharedSpaceBanner() {
     <div className="mb-4 flex items-center gap-3 rounded-2xl bg-sky-50 px-4 py-2.5 text-sm text-sky-900 ring-1 ring-sky-100 dark:bg-sky-950/40 dark:text-sky-100 dark:ring-sky-900/60">
       <Eye size={17} className="shrink-0" />
       <span className="min-w-0 flex-1 truncate">Viewing <b>{activeSpace.name}</b> · {ROLE_LABEL[activeSpace.role]}</span>
-      <button className="shrink-0 rounded-lg px-2.5 py-2 font-medium hover:bg-sky-100 dark:hover:bg-sky-900/50" onClick={() => { nav('/'); void switchSpace(auth.user!.uid); }}>My people</button>
+      <button className="shrink-0 rounded-lg px-2.5 py-2 font-medium hover:bg-sky-100 dark:hover:bg-sky-900/50" onClick={() => { nav('/'); switchSpace(auth.user!.uid); }}>My family</button>
     </div>
   );
 }
@@ -161,45 +159,6 @@ export function InviteBanner() {
       ))}
       {err && <p className="px-1 text-sm text-red-600">{err}</p>}
     </div>
-  );
-}
-
-/** One-time question before this device's people are uploaded for the first time. */
-export function BackupConsentSheet() {
-  const { configured, backup, signOut } = useCloud();
-  const [busy, setBusy] = useState(false);
-  if (!configured) return null;
-  const n = backup.count;
-  const people = `${n} ${n === 1 ? 'person' : 'people'}`;
-  if (backup.foreign) {
-    const run = async (fn: () => Promise<void>) => { setBusy(true); try { await fn(); } finally { setBusy(false); } };
-    return (
-      <Sheet open onClose={() => { void signOut(true); }} title={`This device has ${people} from another account`}
-        footer={<div className="flex flex-col gap-2 sm:flex-row-reverse">
-          <button className="btn-primary" disabled={busy} onClick={() => run(backup.keepSeparate)}>Keep them only on this device</button>
-          <button className="btn-danger" disabled={busy} onClick={() => run(backup.removeLocal)}>Remove them from this device</button>
-          <button className="btn-ghost sm:mr-auto" disabled={busy} onClick={() => signOut(true)}>Cancel and sign out</button>
-        </div>}>
-        <div className="space-y-3 text-sm text-stone-600 dark:text-stone-300">
-          <p>Someone else signed in to Lineage on this browser before. Their people will <b>not</b> be added to your account.</p>
-          <p><b>Keep them only on this device</b>: they stay here for whoever uses this browser signed out. Your own people are kept separately while you’re signed in.</p>
-          <p><b>Remove them from this device</b>: deletes them here only. If they were backed up, the other account still has them.</p>
-        </div>
-      </Sheet>
-    );
-  }
-  return (
-    <Sheet open={backup.asking} onClose={backup.decline} title={`Back up your ${n} ${n === 1 ? 'person' : 'people'} to your Google account?`}
-      footer={<div className="flex justify-end gap-2">
-        <button className="btn-ghost" onClick={backup.decline}>Not now</button>
-        <button className="btn-primary" onClick={backup.approve}>Back up</button>
-      </div>}>
-      <div className="space-y-3 text-sm text-stone-600 dark:text-stone-300">
-        <p>They’ll be kept safe in your account and appear on every device where you sign in.</p>
-        {backup.combine && <p>Your account already has people saved from another device. The two will be combined.</p>}
-        <p className="text-stone-500">Only you can see them. If you later share your family tree, relatives see only the family tree — never private notes.</p>
-      </div>
-    </Sheet>
   );
 }
 

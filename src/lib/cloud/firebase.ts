@@ -5,7 +5,7 @@
  *   secret. Without it, `cloudConfigured()` is false and nothing here is ever loaded.
  * - With VITE_FIREBASE_EMULATORS=1 the app talks to local emulators (project "demo-lineage",
  *   auth 127.0.0.1:9099, firestore 127.0.0.1:8080) and needs no real config.
- * - The SDK is imported dynamically, so local-only users never download it.
+ * - The SDK is imported dynamically, after the first screen has rendered.
  */
 import type { FirebaseApp } from 'firebase/app';
 import type { Auth } from 'firebase/auth';
@@ -58,7 +58,7 @@ let authP: Promise<Auth> | null = null;
 let dbP: Promise<Firestore> | null = null;
 
 function notConfigured(): Error {
-  return new Error('Cloud sync is not configured (missing VITE_FIREBASE_* settings).');
+  return new Error('Firebase is not configured (missing VITE_FIREBASE_* settings).');
 }
 
 export function getFirebaseApp(): Promise<FirebaseApp> {
@@ -92,8 +92,8 @@ export function getDb(): Promise<Firestore> {
     dbP = (async () => {
       const app = await getFirebaseApp();
       const { initializeFirestore, connectFirestoreEmulator } = await import('firebase/firestore');
-      // Default memory cache: Dexie already provides offline storage.
-      // ignoreUndefinedProperties: local records carry optional fields that may be undefined.
+      // Memory cache only: nothing is kept on the device (Lineage needs the internet).
+      // ignoreUndefinedProperties: records carry optional fields that may be undefined.
       const db = initializeFirestore(app, { ignoreUndefinedProperties: true });
       if (usingEmulators()) connectFirestoreEmulator(db, '127.0.0.1', 8080);
       return db;

@@ -1,4 +1,4 @@
-import { db } from './db';
+import { write } from './store';
 import { emptyPerson, newId } from './person';
 import type { FamilyType, Gender, Person, Relationship } from './types';
 
@@ -50,8 +50,8 @@ export async function loadDemo() {
   R(sis, bil, 'spouse'); R(sis, niece, 'parent'); R(bil, niece, 'parent');
   R(me, wife, 'spouse'); R(fil, wife, 'parent'); R(me, son, 'parent'); R(wife, son, 'parent'); R(me, daughter, 'parent'); R(wife, daughter, 'parent');
 
-  await db.transaction('rw', db.people, db.relationships, async () => {
-    await db.people.bulkAdd(people);
-    await db.relationships.bulkAdd(rels);
+  await write((t) => {
+    for (const p of people) t.putPerson(p);
+    for (const r of rels) t.putRel(r);
   });
 }

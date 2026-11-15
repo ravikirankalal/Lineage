@@ -240,3 +240,28 @@ Read this before changing code. Append new learnings at the bottom.
   link stay hidden until linked. The add sheet shows family only until you type; then contacts follow family,
   labelled "From your contacts". The merge sheet still searches everyone, so a contact can be merged into a
   relative.
+
+## Cloud only (2026-11-15)
+- The owner asked to remove contacts import, sync and offline editing, and to make sign-in required. Dexie, `sync.ts`,
+  `firestoreRemote.ts`, contacts import, GEDCOM, JSON backups, the Import page and the offline service worker are gone.
+- `src/lib/store.ts` is the data layer: a snapshot (`loaded`, `people`, `rels`) streamed by a `Backend`, plus
+  `write((t) => …)`, which runs synchronous steps on a `Tx` (reads see earlier writes) and sends them as ONE batch.
+  If a step throws, nothing is sent. `db.ts` keeps the old helper names; `ops.*` are the same steps for composing
+  several changes into one batch (AddRelationSheet does this).
+- `firestoreBackend.ts`: owners read the whole collection; members must query `scope == 'family'` (rules are not
+  filters). Every write uses scope 'family'. The owner deletes documents; editors set `deleted: true` (rules only allow
+  owners to delete). Records with `deleted: true` are skipped on read. `updatedAt` = max(now, last seen + 1), because
+  the rules need it to grow.
+- `canWrite()` refuses while `navigator.onLine` is false and for viewers, so writes never queue in memory. Firestore
+  uses its memory cache only. `usePermissions().canEdit` is also false while offline.
+- Sign-in gate (`App.tsx` `Gate`): config → auth loading → sign-in screen → tree loading/error → app.
+- The owner's own family: on first load, `purgeLooseContacts()` deletes contact-sourced people (vcard/csv/picker/
+  google) that are not "me" and have no family link, with their remaining links. Any role: `purgeNonFamilyLinks()` on
+  sight. Both are idempotent.
+- `main.tsx` deletes the IndexedDB copies older versions kept ('lineage', 'lineage-space-*'); `public/sw.js` is now a
+  self-unregistering worker that clears old caches.
+- Browser checks (`scripts/emu.mjs`): start Auth + Firestore emulators, build with `VITE_FIREBASE_EMULATORS=1` into
+  a temp dir, serve it, and sign in with `window.__lineageTestSignIn(email, name)`, which `auth.ts` defines only in
+  emulator builds (the auth emulator accepts an unsigned Google ID token). `REUSE_EMULATORS=1` reuses running ones.
+- Tests use `src/lib/__tests__/memoryBackend.ts` (`freshSpace()` → `{ db, backend }`; `db` is a small Dexie-shaped
+  view for seeding and checks; `backend.commits` records each batch).

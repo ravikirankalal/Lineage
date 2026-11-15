@@ -12,7 +12,7 @@ Review the diff (`git diff main...HEAD`, or `git diff` for uncommitted work) or,
 whole of `src/`. Read `MEMORY.md` first: it lists intended decisions, which are not bugs.
 
 ## Look for, in order of priority
-1. **Data loss / corruption**: unsafe Dexie migrations, deletes that orphan relationships,
+1. **Data loss / corruption**: unsafe writes or clean-ups of cloud records, deletes that orphan relationships,
    imports that overwrite user-typed data, backup format breaks, races between live queries and writes.
 2. **Wrong family facts**: kinship labels that are wrong from either direction, friends appearing
    in lineage views, step/half/in-law mistakes, parent cycles allowed.

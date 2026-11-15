@@ -1,8 +1,9 @@
 import { ArrowLeft, Search, UserPlus } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { addRelationship, db, ensureRelationship, findRelationship, savePerson } from '../lib/db';
+import { ops } from '../lib/db';
+import { write } from '../lib/store';
 import { useData } from '../lib/data';
-import { emptyPerson, familyLinkedIds, formatPlace, inFamilyList, matchesQuery } from '../lib/person';
+import { emptyPerson, formatPlace, matchesQuery } from '../lib/person';
 import type { FamilyType, Gender, ParentSubtype, Person, Relationship, SpouseSubtype } from '../lib/types';
 import { PersonRow } from './PersonRow';
 import { Sheet } from './Sheet';
@@ -14,7 +15,7 @@ export type RelChoice =
 /**
  * No "Brother"/"Sister" here (the owner's choice, to keep things simple): a brother or sister is added
  * as a son or daughter of the parents, so they share the parents and every view draws them correctly.
- * Sibling links that already exist (or come from a GEDCOM import) are still understood.
+ * Sibling links that already exist are still understood.
  */
 const FAMILY_CHOICES: { key: RelChoice; label: string }[] = [
   { key: 'father', label: 'Father' },
@@ -50,7 +51,7 @@ export function AddRelationSheet({ person, open, onClose, preset }: {
 }
 
 function AddRelationBody({ person, preset, onClose }: { person: Person; preset?: RelChoice; onClose: () => void }) {
-  const { people, rels, graph, byId } = useData();
+  const { people, graph, byId } = useData();
   const [choice, setChoice] = useState<RelChoice | undefined>(preset);
   const [q, setQ] = useState('');
   const [subtype, setSubtype] = useState<string>('');
@@ -70,42 +71,39 @@ function AddRelationBody({ person, preset, onClose }: { person: Person; preset?:
   const coParent = info?.dir === 'out' && spouses.length === 1 && subtype !== 'step' && subtype !== 'foster' ? spouses[0] : undefined;
   const [alsoCoParent, setAlsoCoParent] = useState(true);
 
-  // Family first; imported contacts are only suggested once you type a name.
-  const linked = useMemo(() => familyLinkedIds(rels), [rels]);
   const candidates = useMemo(() => {
-    const list = people.filter((p) => p.id !== person.id && (q.trim() || inFamilyList(p, linked)) && matchesQuery(p, q));
-    const rank = (p: Person) => (inFamilyList(p, linked) ? 0 : 2) + (info?.gender && p.gender !== info.gender ? 1 : 0);
-    list.sort((a, b) => rank(a) - rank(b));
+    const list = people.filter((p) => p.id !== person.id && matchesQuery(p, q));
+    if (info?.gender) list.sort((a, b) => Number(b.gender === info.gender) - Number(a.gender === info.gender));
     return list.slice(0, 50);
-  }, [people, person.id, q, info?.gender, linked]);
+  }, [people, person.id, q, info?.gender]);
 
-  /** Writes every edge for linking `other`, inside one transaction (optionally creating them first). */
+  /** Writes every edge for linking `other` as one batch (optionally creating them first). */
   async function link(other: Person, create = false) {
     if (!info || !choice) return;
     setBusy(true);
     setError('');
     try {
-      await db.transaction('rw', db.people, db.relationships, async () => {
-        if (create) await savePerson(other);
-        else if (info.gender && other.gender === 'unknown') await savePerson({ ...other, gender: info.gender });
+      await write((t) => {
+        if (create) ops.savePerson(t, other);
+        else if (info.gender && other.gender === 'unknown') ops.savePerson(t, { ...other, gender: info.gender });
         const sub = subtype || undefined;
         // The edge the user picked: a chosen subtype/note updates an existing edge, but the default
         // subtype only applies to a new edge (so re-linking never turns adoptive into biological).
-        const userEdge = async (r: Parameters<typeof addRelationship>[0], fallback?: Relationship['subtype']) => {
-          const exists = await findRelationship(r.fromId, r.toId, r.type);
-          await addRelationship({ ...r, subtype: r.subtype ?? (exists ? undefined : fallback) });
+        const userEdge = (r: Parameters<typeof ops.addRelationship>[1], fallback?: Relationship['subtype']) => {
+          const exists = ops.findRelationship(t, r.fromId, r.toId, r.type);
+          ops.addRelationship(t, { ...r, subtype: r.subtype ?? (exists ? undefined : fallback) });
         };
         if (info.type === 'parent') {
           const [from, to] = info.dir === 'in' ? [other.id, person.id] : [person.id, other.id];
-          await userEdge({ fromId: from, toId: to, type: 'parent', subtype: sub as ParentSubtype | undefined, note: note || undefined }, 'biological');
+          userEdge({ fromId: from, toId: to, type: 'parent', subtype: sub as ParentSubtype | undefined, note: note || undefined }, 'biological');
           if (otherParent && alsoSpouse && other.id !== otherParent.id) {
-            await ensureRelationship({ fromId: otherParent.id, toId: other.id, type: 'spouse', subtype: 'married' });
+            ops.ensureRelationship(t, { fromId: otherParent.id, toId: other.id, type: 'spouse', subtype: 'married' });
           }
           if (coParent && alsoCoParent && sub !== 'step' && sub !== 'foster') {
-            await ensureRelationship({ fromId: coParent.id, toId: other.id, type: 'parent', subtype: sub === 'adoptive' ? 'adoptive' : 'biological' });
+            ops.ensureRelationship(t, { fromId: coParent.id, toId: other.id, type: 'parent', subtype: sub === 'adoptive' ? 'adoptive' : 'biological' });
           }
         } else {
-          await userEdge({ fromId: person.id, toId: other.id, type: info.type, subtype: sub as SpouseSubtype | undefined, note: note || undefined }, info.type === 'spouse' ? 'married' : undefined);
+          userEdge({ fromId: person.id, toId: other.id, type: info.type, subtype: sub as SpouseSubtype | undefined, note: note || undefined }, info.type === 'spouse' ? 'married' : undefined);
         }
       });
       onClose();
@@ -193,7 +191,7 @@ function AddRelationBody({ person, preset, onClose }: { person: Person; preset?:
           </button>
         )}
         {candidates.map((p) => (
-          <PersonRow key={p.id} person={p} onClick={() => !busy && link(p)} subtitle={inFamilyList(p, linked) ? formatPlace(p.address, true) || p.occupation : ['From your contacts', p.phones[0]?.value].filter(Boolean).join(' · ')} />
+          <PersonRow key={p.id} person={p} onClick={() => !busy && link(p)} subtitle={formatPlace(p.address, true) || p.occupation} />
         ))}
         {!candidates.length && !q && <p className="px-2 py-6 text-center text-sm text-stone-500">Type a name to add someone new.</p>}
       </div>
