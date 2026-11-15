@@ -106,8 +106,8 @@ export function FamilyTree({
     return fit.k >= 0.75 || !f ? fit : centreView(f, READABLE, READABLE);
   }, [byPerson, focusId, fitView, centreView]);
 
-  // ---- Implode / explode (Everyone, cross layout) ---------------------------------------------
-  const canImplode = level === 'everyone' && orient === 'cross';
+  // ---- Implode / explode (Extended and Everyone, cross layout) ---------------------------------
+  const canImplode = (level === 'everyone' || level === 'extended') && orient === 'cross';
   const axisNode = byPerson.get(focusId) ?? byPerson.get(centreId);
   const imp = useImplode({ world, box, layout, axis: axisNode ? { x: axisNode.x, y: axisNode.y } : undefined, pz });
 
