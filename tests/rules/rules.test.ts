@@ -586,3 +586,44 @@ describe('stranger (signed in, no role, no invite)', () => {
     await assertFails(batch.commit());
   });
 });
+
+// ---------------------------------------------------------------------------
+describe('activity log (owner admin page)', () => {
+  const actRef = (db: Firestore, id: string, space = SPACE) => doc(db, 'spaces', space, 'activity', id);
+  const entry = (by: string, extra: object = {}) => ({ by, at: Date.now(), peopleAdded: 2, peopleEdited: 0, peopleRemoved: 0, linksAdded: 1, linksChanged: 0, linksRemoved: 0, ...extra });
+
+  it('owner and editors log their own changes; viewers and strangers cannot', async () => {
+    await assertSucceeds(setDoc(actRef(as('owner'), 'a1'), entry('alice')));
+    await assertSucceeds(setDoc(actRef(as('editor'), 'e1'), entry('erin')));
+    await assertFails(setDoc(actRef(as('viewer'), 'v1'), entry('victor')));
+    await assertFails(setDoc(actRef(as('stranger'), 's1'), entry('sam')));
+    await assertFails(setDoc(actRef(as('anon'), 'x1'), entry('alice')));
+  });
+
+  it('entries are validated: own uid, known fields, non-negative whole counts, no future time', async () => {
+    const db = as('editor');
+    await assertFails(setDoc(actRef(db, 'b1'), entry('alice'))); // posing as the owner
+    await assertFails(setDoc(actRef(db, 'b2'), entry('erin', { extra: 'x' })));
+    await assertFails(setDoc(actRef(db, 'b3'), entry('erin', { peopleAdded: -1 })));
+    await assertFails(setDoc(actRef(db, 'b4'), entry('erin', { peopleAdded: 1.5 })));
+    await assertFails(setDoc(actRef(db, 'b5'), entry('erin', { linksAdded: 'many' })));
+    await assertFails(setDoc(actRef(db, 'b6'), entry('erin', { at: FUTURE() })));
+    await assertFails(setDoc(actRef(db, 'b7'), { by: 'erin', peopleAdded: 1 })); // no time
+  });
+
+  it('only the owner reads it; nobody changes or deletes entries', async () => {
+    await assertSucceeds(setDoc(actRef(as('editor'), 'e1'), entry('erin')));
+    await assertSucceeds(getDocs(collection(as('owner'), 'spaces', SPACE, 'activity')));
+    await assertFails(getDocs(collection(as('editor'), 'spaces', SPACE, 'activity')));
+    await assertFails(getDoc(actRef(as('editor'), 'e1')));
+    await assertFails(getDocs(collection(as('viewer'), 'spaces', SPACE, 'activity')));
+    await assertFails(setDoc(actRef(as('editor'), 'e1'), entry('erin', { peopleAdded: 99 })));
+    await assertFails(setDoc(actRef(as('owner'), 'e1'), entry('alice')));
+    await assertFails(deleteDoc(actRef(as('owner'), 'e1')));
+    await assertFails(deleteDoc(actRef(as('editor'), 'e1')));
+  });
+
+  it('cannot write into another family\'s log', async () => {
+    await assertFails(setDoc(actRef(as('owner'), 'x', 'sam'), entry('alice')));
+  });
+});

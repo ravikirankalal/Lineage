@@ -8,6 +8,7 @@ import { hideSplash, isNativeApp } from './lib/native';
 import { useBottomTabsHidden } from './components/tree/bottomTabs';
 import { CloudProvider, useCanEdit, useCloud } from './lib/cloud/CloudProvider';
 import { DataProvider } from './lib/data';
+import { AdminPage } from './pages/AdminPage';
 import { FamilyPage } from './pages/FamilyPage';
 import { PeoplePage } from './pages/PeoplePage';
 import { PersonEditPage } from './pages/PersonEditPage';
@@ -96,6 +97,7 @@ function Shell() {
           <Route path="/family" element={<FamilyPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/sharing" element={<SharingPage />} />
+          <Route path="/admin" element={<AdminPage />} />
           <Route path="*" element={<PeoplePage />} />
         </Routes>
       </main>
