@@ -69,7 +69,7 @@ async function run(name, viewport) {
     if (vw < 768) check(await impBtn.count() > 0, `[${name}] ${lvl} has no Implode button`);
     if (await impBtn.count()) {
       await impBtn.click();
-      await page.waitForFunction(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Explode'); return b && !b.disabled; }, null, { timeout: 5000 });
+      await page.waitForFunction(() => { const b = [...document.querySelectorAll('button')].find((x) => x.getAttribute('aria-label') === 'Explode'); return b && !b.disabled; }, null, { timeout: 5000 });
       await page.waitForTimeout(300);
       const st = await page.evaluate(() => {
         const r = [...document.querySelectorAll('.tree-world [data-key]')].map((e) => e.getBoundingClientRect());
@@ -90,7 +90,7 @@ async function run(name, viewport) {
       check(st.touching === st.n, `[${name}] ${lvl}: imploded cards are not stacked flush (${st.touching}/${st.n} touching)`);
       await shot(lvl === 'Everyone' ? '2d-imploded' : '2e-imploded-extended');
       await page.getByRole('button', { name: 'Explode' }).click();
-      await page.waitForFunction(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Implode'); return b && !b.disabled; }, null, { timeout: 5000 });
+      await page.waitForFunction(() => { const b = [...document.querySelectorAll('button')].find((x) => x.getAttribute('aria-label') === 'Implode'); return b && !b.disabled; }, null, { timeout: 5000 });
       const back = await page.evaluate(() => ({
         moved: [...document.querySelectorAll('.tree-world [data-key]')].filter((e) => e.style.transform).length,
         lines: getComputedStyle(document.querySelector('.tree-edges')).opacity,
