@@ -270,14 +270,16 @@ async function run(name, viewport) {
   await page.getByText('Smoke Tester').first().waitFor();
   await shot('6-added');
 
-  // People page: "Found in your contacts" (Anjali is one of the test contacts), with markers for
+  // People page: the "In contacts" filter (Anjali is one of the test contacts), with markers for
   // people in your contacts and for those who have died; the tree cards carry the same markers.
   await page.goto(BASE + '#/');
-  const found = page.getByRole('region', { name: 'Found in your contacts' });
-  await found.getByText('Anjali Rao').waitFor();
-  check(await found.locator('[data-marker="contact"]').count() > 0, `[${name}] no contact marker in Found in your contacts`);
   check(await page.locator('[data-marker="deceased"]').count() > 0, `[${name}] no deceased marker in the People list`);
-  await shot('6b-found-in-contacts');
+  await page.getByRole('button', { name: 'In contacts (1)' }).click();
+  await page.locator('a', { hasText: 'Anjali Rao' }).first().waitFor();
+  check(!(await page.getByText('Aarav Rao').count()), `[${name}] In contacts filter still shows people not in contacts`);
+  check(await page.locator('a', { hasText: 'Anjali Rao' }).locator('[data-marker="contact"]').count() === 1, `[${name}] no contact marker on Anjali`);
+  await shot('6b-in-contacts-filter');
+  await page.getByRole('button', { name: 'In contacts (1)' }).click(); // back to All
   await page.goto(BASE + '#/family');
   await page.waitForSelector('.tree-world [data-key]');
   check(await page.locator('.tree-world [data-marker="contact"]').count() > 0, `[${name}] no contact marker on tree cards`);

@@ -16,7 +16,7 @@ import { relativesOf } from '../lib/kinship';
 import { daysUntilBirthday, formatPlace, fullName, matchesQuery, missingDetails } from '../lib/person';
 import type { Person } from '../lib/types';
 
-type Filter = 'all' | 'thin' | `tag:${string}`;
+type Filter = 'all' | 'thin' | 'contacts' | `tag:${string}`;
 type View = 'everyone' | 'relatives' | 'lines';
 
 export function PeoplePage() {
@@ -41,15 +41,20 @@ export function PeoplePage() {
   const relToMe = useMemo(() => new Map(relatives.map((r) => [r.person.id, r.kin.label])), [relatives]);
 
   const tags = useMemo(() => [...new Set(people.flatMap((p) => p.tags))].sort(), [people]);
+  // "In contacts": people in the tree who are also in your contacts (loaded on the first tap).
+  const gc = useGoogleContacts();
+  const matches = useContactMatches();
+  const contactsOffered = gc.status === 'ready' || googleContactsAvailable() || isNativeApp();
 
   const list = useMemo(() => {
     let l = people.filter((p) => matchesQuery(p, q));
     if (filter === 'thin') l = l.filter((p) => !p.isMe && missingDetails(p).length >= 3);
+    else if (filter === 'contacts') l = l.filter((p) => matches.has(p.id));
     else if (filter.startsWith('tag:')) l = l.filter((p) => p.tags.includes(filter.slice(4)));
     if (sort === 'name') l.sort((a, b) => fullName(a).localeCompare(fullName(b)));
     else l.sort((a, b) => b.updatedAt - a.updatedAt);
     return l;
-  }, [people, q, filter, sort, relToMe]);
+  }, [people, q, filter, sort, relToMe, matches]);
 
   const birthdays = useMemo(
     () => people.map((p) => ({ p, d: daysUntilBirthday(p) })).filter((x) => x.d !== undefined && x.d <= 14).sort((a, b) => a.d! - b.d!),
@@ -101,8 +106,8 @@ export function PeoplePage() {
     }
   } else groups.push(['', list]);
 
-  const chip = (f: Filter, label: string) => (
-    <button key={f} onClick={() => setFilter(filter === f ? 'all' : f)}
+  const chip = (f: Filter, label: string, onPick?: () => void) => (
+    <button key={f} onClick={() => { setFilter(filter === f ? 'all' : f); if (filter !== f) onPick?.(); }} aria-pressed={filter === f}
       className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium transition ${
         filter === f ? 'bg-stone-900 text-white dark:bg-white dark:text-stone-900' : 'bg-white text-stone-600 ring-1 ring-stone-200 hover:bg-stone-50 dark:bg-stone-900 dark:text-stone-300 dark:ring-stone-700'}`}>
       {label}
@@ -174,8 +179,6 @@ export function PeoplePage() {
         </div>
       )}
 
-      {!q && <FoundInContacts people={people} subtitle={subtitle} />}
-
       <div className="sticky top-0 z-10 -mx-4 bg-stone-50/90 px-4 pb-3 pt-1 backdrop-blur dark:bg-stone-950/90 sm:-mx-6 sm:px-6">
         <div className="relative">
           <Search size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
@@ -186,6 +189,8 @@ export function PeoplePage() {
         <div className="no-scrollbar mt-3 flex items-center gap-2 overflow-x-auto">
           {chip('all', 'All')}
           {chip('thin', 'Needs details')}
+          {contactsOffered && chip('contacts', gc.status === 'ready' ? `In contacts (${matches.size})` : 'In contacts',
+            () => { if (gc.status !== 'ready' && gc.status !== 'loading') void (isNativeApp() ? loadNativeContacts() : loadGoogleContacts()); })}
           {tags.map((t) => chip(`tag:${t}`, '#' + t))}
           <select value={sort} onChange={(e) => setSort(e.target.value as 'name' | 'recent')}
             className="ml-auto shrink-0 rounded-full border-0 bg-transparent py-1.5 pl-2 pr-7 text-sm text-stone-500 focus:ring-0">
@@ -195,7 +200,14 @@ export function PeoplePage() {
         </div>
       </div>
 
-      {list.length === 0 ? (
+      {filter === 'contacts' && gc.status !== 'ready' ? (
+        <div className="card flex items-center gap-3 p-4 text-sm text-stone-600 dark:text-stone-300">
+          <Contact size={19} className="shrink-0 text-sky-600" />
+          {gc.status === 'loading' ? 'Looking through your contacts…' : gc.error || 'Tap “In contacts” to look through your contacts. Nothing is saved.'}
+        </div>
+      ) : list.length === 0 && filter === 'contacts' ? (
+        <div className="card"><Empty icon={<Contact size={24} />} title="No one found">No one in your tree is in your contacts yet.</Empty></div>
+      ) : list.length === 0 ? (
         <div className="card"><Empty icon={<Search size={24} />} title="No one matches">Try a different word — search looks through every detail you’ve saved.</Empty></div>
       ) : (
         <div className="space-y-4">
@@ -212,47 +224,6 @@ export function PeoplePage() {
 
       {addButton}
     </div>
-  );
-}
-
-/** People in the tree who are also in your contacts (Google contacts on the web, the phone's in the app). */
-function FoundInContacts({ people, subtitle }: { people: Person[]; subtitle: (p: Person) => string }) {
-  const gc = useGoogleContacts();
-  const matches = useContactMatches();
-  const [all, setAll] = useState(false);
-  const found = useMemo(() => people.filter((p) => matches.has(p.id)).sort((a, b) => fullName(a).localeCompare(fullName(b))), [people, matches]);
-  const canLoad = googleContactsAvailable() || isNativeApp();
-  const load = () => void (isNativeApp() ? loadNativeContacts() : loadGoogleContacts());
-
-  if (gc.status !== 'ready') {
-    if (!canLoad) return null;
-    return (
-      <section className="mb-4" aria-label="Found in your contacts">
-        <button type="button" onClick={load} disabled={gc.status === 'loading'}
-          className="card flex w-full items-center gap-3 p-3 text-left transition hover:bg-stone-50 dark:hover:bg-stone-800/60">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700 dark:bg-sky-900/50 dark:text-sky-200"><Contact size={19} /></span>
-          <span className="min-w-0 flex-1">
-            <span className="block font-medium">{gc.status === 'loading' ? 'Looking through your contacts…' : 'Find family in your contacts'}</span>
-            <span className="block text-sm text-stone-500">{gc.error || 'See who in your tree is also in your contacts. Nothing is saved.'}</span>
-          </span>
-        </button>
-      </section>
-    );
-  }
-  const shown = all ? found : found.slice(0, 4);
-  return (
-    <section className="mb-4" aria-label="Found in your contacts">
-      <div className="mb-1 ml-2 flex items-center gap-1.5 section-title"><Contact size={13} /> Found in your contacts{found.length ? ` (${found.length})` : ''}</div>
-      <div className="card p-1.5">
-        {found.length === 0 && <p className="px-3 py-3 text-sm text-stone-500">No one in your tree is in your contacts yet.</p>}
-        {shown.map((p) => <PersonRow key={p.id} person={p} to={`/people/${p.id}`} subtitle={subtitle(p)} />)}
-        {found.length > 4 && (
-          <button type="button" className="w-full rounded-xl py-2 text-sm font-medium text-brand-700 hover:bg-stone-50 dark:text-brand-300 dark:hover:bg-stone-800/60" onClick={() => setAll(!all)}>
-            {all ? 'Show fewer' : `Show all ${found.length}`}
-          </button>
-        )}
-      </div>
-    </section>
   );
 }
 
