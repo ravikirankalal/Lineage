@@ -1,6 +1,6 @@
 import { CloudOff, Eye, GitBranch, Settings, Users } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
-import { HashRouter, Link, NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { HashRouter, Link, Navigate, NavLink, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { CloudNotice, GoogleButton, InviteBanner, SharedSpaceBanner, SpaceSwitcher } from './components/Cloud';
 import { Empty } from './components/Empty';
 import { PullToRefresh, UpdateBar } from './components/AppRefresh';
@@ -15,7 +15,6 @@ import { PersonEditPage } from './pages/PersonEditPage';
 import { PersonPage } from './pages/PersonPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { SharingPage } from './pages/SharingPage';
-import { TreePage } from './pages/TreePage';
 
 const NAV = [
   { to: '/', label: 'Family', icon: Users, end: true },
@@ -93,7 +92,7 @@ function Shell() {
           <Route path="/people/new" element={<EditOnly><PersonEditPage /></EditOnly>} />
           <Route path="/people/:id" element={<PersonPage />} />
           <Route path="/people/:id/edit" element={<EditOnly><PersonEditPage /></EditOnly>} />
-          <Route path="/people/:id/tree" element={<TreePage />} />
+          <Route path="/people/:id/tree" element={<OldTreeLink />} />
           <Route path="/family" element={<FamilyPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/sharing" element={<SharingPage />} />
@@ -181,4 +180,10 @@ export function App() {
       </DataProvider>
     </CloudProvider>
   );
+}
+
+/** The per-person tree page is gone (owner): old links open the person's profile. */
+function OldTreeLink() {
+  const { id } = useParams();
+  return <Navigate to={`/people/${id ?? ''}`} replace />;
 }

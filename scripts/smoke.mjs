@@ -277,12 +277,16 @@ async function run(name, viewport) {
   await page.getByRole('heading', { level: 2, name: /^Family\b/ }).waitFor();
   await page.getByText('Parents', { exact: true }).first().waitFor();
   const prof = await body();
-  // Parents, spouse and children come first, before the details; then brothers and sisters and the rest.
+  // Parents, spouse, children, brothers and sisters come first, before the details; then the rest.
   const at = (t) => prof.toUpperCase().indexOf(t);
-  const order = ['PARENTS', 'SPOUSE', 'CHILDREN', 'BIRTHDAY', 'BROTHERS AND SISTERS', 'EXTENDED FAMILY'].map(at);
+  const order = ['PARENTS', 'SPOUSE', 'CHILDREN', 'BROTHERS AND SISTERS', 'BIRTHDAY', 'EXTENDED FAMILY'].map(at);
   check(order.every((i, k) => i >= 0 && (k === 0 || i > order[k - 1])), `[${name}] profile order wrong (${order.join(', ')})`);
   for (const g of ['FRIENDS', 'COLLEAGUES', 'SAME CITY', 'STUDIED AT THE SAME PLACE', 'CONNECTIONS']) check(!prof.toUpperCase().includes(g), `[${name}] profile still shows ${g}`);
   check(!(await page.getByRole('link', { name: /^(Call|Text)$/ }).count()), `[${name}] profile still has Call / Text buttons`);
+  check(!(await page.getByRole('link', { name: 'Family tree', exact: true }).count()), `[${name}] profile still has a Family tree button`);
+  const profUrl = page.url();
+  await page.goto(profUrl + '/tree'); // the old per-person tree page now opens the profile
+  await page.waitForURL(profUrl);
   await shot('5-profile');
 
   // Add a relative through the sheet (family choices only).
@@ -325,6 +329,28 @@ async function run(name, viewport) {
   check(await page.locator('.tree-world [data-marker="contact"]').count() > 0, `[${name}] no contact marker on tree cards`);
   check(await page.locator('.tree-world [data-marker="deceased"]').count() > 0, `[${name}] no deceased marker on tree cards`);
   await shot('6c-tree-markers');
+  // A profile without parents offers "Add father" / "Add mother" in their place.
+  await page.goto(BASE + '#/');
+  await page.getByPlaceholder(/Search names/).fill('Amit Sharma');
+  await page.getByText('Amit Sharma', { exact: true }).first().click();
+  await page.waitForURL(/#\/people\/[^/]+$/);
+  await page.getByRole('button', { name: 'Add mother' }).waitFor();
+  check(await page.getByRole('button', { name: 'Add father' }).count() === 1, `[${name}] no "Add father" placeholder for a person without parents`);
+  await shot('6d-parent-placeholders');
+  await page.getByRole('button', { name: 'Add mother' }).click();
+  await page.getByRole('heading', { name: 'Amit’s mother' }).waitFor();
+  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click();
+  // Editing: a phone number can be picked from your contacts.
+  await page.getByRole('link', { name: 'Edit' }).click();
+  await page.getByRole('button', { name: 'From contacts' }).click();
+  const picker = page.getByRole('dialog');
+  await picker.getByLabel('Search your contacts').fill('contact');
+  await picker.getByRole('button', { name: 'Use +91 90000 77777' }).click();
+  await picker.waitFor({ state: 'detached' });
+  const phones = await page.locator('input[type="tel"]').evaluateAll((els) => els.map((e) => e.value));
+  check(phones.includes('+91 90000 77777'), `[${name}] picked contact number not added (${phones.join(', ')})`);
+  await page.locator('input[type="tel"]').first().scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${OUT}/${name}-6e-phone-from-contacts.png` });
   await page.goto(BASE + '#/');
 
   // Saved in the cloud, not the page: still there after a reload.

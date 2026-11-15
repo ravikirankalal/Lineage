@@ -35,7 +35,7 @@ describe('family only', () => {
   it('lists only relatives; old non-family links and shared places are ignored', () => {
     const ids = connectionsOf('me', list, rels, G).flatMap((g) => g.items.map((i) => i.person.id));
     expect(connectionsOf('me', list, rels, G).map((g) => g.key)).toEqual(['parents', 'spouse', 'children', 'siblings', 'extended']);
-    expect(connectionsOf('me', list, rels, G).filter((g) => g.core).map((g) => g.title)).toEqual(['Parents', 'Spouse', 'Children']);
+    expect(connectionsOf('me', list, rels, G).filter((g) => g.core).map((g) => g.title)).toEqual(['Parents', 'Spouse', 'Children', 'Brothers and sisters']);
     for (const x of ['dad', 'mom', 'bro', 'wife', 'son', 'cousin']) expect(ids).toContain(x);
     for (const x of ['pal', 'bestie', 'palsPal', 'boss', 'nbr', 'townie', 'stranger']) expect(ids).not.toContain(x);
   });

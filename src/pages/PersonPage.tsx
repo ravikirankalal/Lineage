@@ -1,10 +1,10 @@
 import {
-  ArrowLeft, Briefcase, Cake, GitBranch, GraduationCap, Home, Mail, MapPin, Merge, Pencil, Phone, Plus,
-  Sparkles, Trash2, Users, X,
+  ArrowLeft, Briefcase, Cake, GraduationCap, Home, Mail, MapPin, Merge, Pencil, Phone, Plus,
+  Sparkles, Trash2, UserPlus, Users, X,
 } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { AddRelationSheet } from '../components/AddRelationSheet';
+import { AddRelationSheet, type RelChoice } from '../components/AddRelationSheet';
 import { Avatar } from '../components/Avatar';
 import { KinLabel } from '../components/KinLabel';
 import { MergeSheet } from '../components/MergeSheet';
@@ -14,23 +14,31 @@ import { usePermissions } from '../lib/cloud/CloudProvider';
 import { connectionsOf, type ConnectionGroup } from '../lib/connections';
 import { deletePerson, deleteRelationship } from '../lib/db';
 import { useData } from '../lib/data';
-import { kinship } from '../lib/kinship';
+import { birthParents, kinship } from '../lib/kinship';
 import { age, displayName, formatPartialDate, formatPlace, missingDetails } from '../lib/person';
-import { isFamilyType } from '../lib/types';
 
 export function PersonPage() {
   const { id } = useParams();
   const nav = useNavigate();
   const { byId, people, rels, graph, me, loaded } = useData();
   const p = id ? byId.get(id) : undefined;
-  const [adding, setAdding] = useState(false);
+  // true: the add sheet's own choices; 'father' / 'mother': straight to that (the placeholders).
+  const [adding, setAdding] = useState<boolean | RelChoice>(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [merging, setMerging] = useState(false);
   const { canEdit, isShared } = usePermissions();
-  const hasFamily = useMemo(() => !!p && rels.some((r) => isFamilyType(r.type) && (r.fromId === p.id || r.toId === p.id)), [p, rels]);
 
   const groups = useMemo(() => (p ? connectionsOf(p.id, people, rels, graph) : []), [p, people, rels, graph]);
-  const core = groups.filter((g) => g.core);
+  // Missing father / mother: "Add father" / "Add mother" placeholders in Parents (editors only).
+  const missingParents = useMemo(() => {
+    if (!p || !canEdit) return [] as RelChoice[];
+    const has = birthParents(graph, byId, p.id);
+    return [...(has.father ? [] : ['father' as const]), ...(has.mother ? [] : ['mother' as const])];
+  }, [p, canEdit, graph, byId]);
+  const withParents = missingParents.length && !groups.some((g) => g.key === 'parents')
+    ? [{ key: 'parents', title: 'Parents', items: [], core: true } as ConnectionGroup, ...groups]
+    : groups;
+  const core = withParents.filter((g) => g.core);
   const rest = groups.filter((g) => !g.core);
   const toMe = useMemo(() => {
     if (!p || !me || p.id === me.id) return undefined;
@@ -68,11 +76,6 @@ export function PersonPage() {
         </div>
         {toMe?.path && <div className="mt-1 text-sm text-stone-500">{toMe.path}</div>}
 
-        <div className="mt-5 flex gap-2">
-          {hasFamily
-            ? <Link to={`/people/${p.id}/tree`} className="btn-secondary"><GitBranch size={16} /> Family tree</Link>
-            : canEdit && <button type="button" className="btn-ghost text-stone-500 dark:text-stone-400" onClick={() => setAdding(true)}><Plus size={16} /> Add family</button>}
-        </div>
       </div>
 
       {/* Family: parents, spouse and children first, then the details, then everyone else. */}
@@ -80,9 +83,9 @@ export function PersonPage() {
         <h2 className="text-lg font-semibold">Family {total > 0 && <span className="text-stone-400">· {total}</span>}</h2>
         {canEdit && <button className="btn-primary" onClick={() => setAdding(true)}><Plus size={17} /> Add</button>}
       </div>
-      {groups.length === 0 && !canEdit ? (
+      {withParents.length === 0 && !canEdit ? (
         <p className="card mt-3 px-6 py-8 text-center text-sm text-stone-500">No family recorded yet.</p>
-      ) : groups.length === 0 ? (
+      ) : withParents.length === 0 ? (
         <button onClick={() => setAdding(true)} className="card mt-3 flex w-full flex-col items-center px-6 py-10 text-center hover:bg-stone-50 dark:hover:bg-stone-800/60">
           <Users className="mb-2 text-stone-400" />
           <div className="font-medium">No family yet</div>
@@ -90,7 +93,8 @@ export function PersonPage() {
         </button>
       ) : (
         <div className="mt-3 space-y-4">
-          {(core.length ? core : rest).map((g) => <Group key={g.key} group={g} personId={p.id} personName={p.firstName} canEdit={canEdit} />)}
+          {(core.length ? core : rest).map((g) => <Group key={g.key} group={g} personId={p.id} personName={p.firstName} canEdit={canEdit}
+            placeholders={g.key === 'parents' ? missingParents : undefined} onPlaceholder={setAdding} />)}
         </div>
       )}
 
@@ -116,7 +120,7 @@ export function PersonPage() {
         </div>
       )}
 
-      {canEdit && <AddRelationSheet person={p} open={adding} onClose={() => setAdding(false)} />}
+      {canEdit && <AddRelationSheet person={p} open={!!adding} preset={typeof adding === 'string' ? adding : undefined} onClose={() => setAdding(false)} />}
       {canEdit && <MergeSheet person={p} open={merging} onClose={() => setMerging(false)} />}
       <Sheet open={canEdit && confirmDelete} onClose={() => setConfirmDelete(false)} title={`Delete ${p.firstName}?`}
         footer={<div className="flex justify-end gap-2">
@@ -129,7 +133,12 @@ export function PersonPage() {
   );
 }
 
-function Group({ group, personId, personName, canEdit }: { group: ConnectionGroup; personId: string; personName: string; canEdit: boolean }) {
+function Group({ group, personId, personName, canEdit, placeholders, onPlaceholder }: {
+  group: ConnectionGroup; personId: string; personName: string; canEdit: boolean;
+  /** "Add father" / "Add mother" rows where a parent is missing. */
+  placeholders?: RelChoice[];
+  onPlaceholder?: (c: RelChoice) => void;
+}) {
   const [all, setAll] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
   const LIMIT = 8;
@@ -138,7 +147,7 @@ function Group({ group, personId, personName, canEdit }: { group: ConnectionGrou
     <section>
       <div className="mb-1 flex items-baseline gap-2 px-1">
         <h3 className="section-title">{group.title}</h3>
-        <span className="text-xs text-stone-400">{group.items.length}</span>
+        {group.items.length > 0 && <span className="text-xs text-stone-400">{group.items.length}</span>}
       </div>
       <div className="card p-1.5">
         {items.map((it) => (
@@ -164,6 +173,13 @@ function Group({ group, personId, personName, canEdit }: { group: ConnectionGrou
               )
             )}
           </div>
+        ))}
+        {placeholders?.map((c) => (
+          <button key={c} type="button" onClick={() => onPlaceholder?.(c)}
+            className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left text-stone-500 transition hover:bg-stone-50 dark:text-stone-400 dark:hover:bg-stone-800/60">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 border-dashed border-stone-300 text-stone-400 dark:border-stone-600"><UserPlus size={19} /></span>
+            <span className="font-medium">Add {c}</span>
+          </button>
         ))}
         {group.items.length > LIMIT && (
           <button className="w-full rounded-xl py-2 text-sm font-medium text-brand-600 hover:bg-stone-50 dark:hover:bg-stone-800" onClick={() => setAll(!all)}>

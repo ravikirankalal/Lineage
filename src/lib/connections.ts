@@ -14,7 +14,7 @@ export interface ConnectionGroup {
   title: string;
   hint?: string;
   items: ConnectionItem[];
-  /** Parents, spouse and children: shown first on a profile, before the details. */
+  /** Parents, spouse, children, brothers and sisters: shown first on a profile, before the details. */
   core?: boolean;
 }
 
@@ -23,7 +23,7 @@ const CLOSE: { key: 'parents' | 'spouse' | 'children' | 'siblings'; title: (n: n
   { key: 'parents', title: () => 'Parents', core: true },
   { key: 'spouse', title: (n) => (n === 1 ? 'Spouse' : 'Spouses'), core: true },
   { key: 'children', title: () => 'Children', core: true },
-  { key: 'siblings', title: () => 'Brothers and sisters', core: false },
+  { key: 'siblings', title: () => 'Brothers and sisters', core: true },
 ];
 
 /**
