@@ -276,3 +276,10 @@ Read this before changing code. Append new learnings at the bottom.
   save menu, no full-screen button; `useFillHeight` reserves only the phone tab bar (58px). The "Add relative" bar is
   gone from every tree: add from a card's sheet or the ghost cards. Save image / full screen remain on
   `/people/:id/tree`. People links use `/` (not `/people`) so the People nav item stays highlighted.
+- **Auto-hiding tabs (2026-11-15, owner's request):** `src/components/tree/bottomTabs.ts`. On `/family`, phones only
+  (< md, where the tab bar shows): 3 s with no pointerdown/wheel/key → hidden (`translate-y-full`, `inert`,
+  `data-hidden`). Movement never shows them; a click on the tree (not on `[data-no-pan]` overlays) while hidden is
+  swallowed and shows them. The listener is added after `usePanZoom`'s, and skips `defaultPrevented` clicks, so a
+  drag's trailing click doesn't count. Leaving the page shows them again. In map view the tree is full height and the
+  zoom controls move up while the tabs show. Browser tests that tap tree cards on phones after 3 s idle must expect
+  the first tap to only show the tabs.

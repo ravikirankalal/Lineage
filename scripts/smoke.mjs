@@ -57,6 +57,17 @@ async function run(name, viewport) {
   const tb = await page.locator('.tree-viewport').boundingBox();
   const vw = page.viewportSize().width;
   check(tb && vw - tb.width <= 241 && tb.height > page.viewportSize().height * 0.7, `[${name}] tree does not fill the screen (${JSON.stringify(tb)})`);
+  if (vw < 768) {
+    // Phone: the bottom tabs slide away when idle; a tap on the tree only brings them back.
+    const tabs = page.locator('nav.fixed');
+    await page.waitForFunction(() => document.querySelector('nav.fixed')?.hasAttribute('data-hidden'), null, { timeout: 8000 });
+    check(tb.height >= page.viewportSize().height - 1, `[${name}] tree does not reach the bottom (${tb.height})`);
+    await page.locator('.tree-viewport button[title], .tree-viewport button').filter({ hasText: 'Ravi' }).first().click();
+    await page.waitForTimeout(300);
+    check(!(await tabs.getAttribute('data-hidden')), `[${name}] tap did not bring the tabs back`);
+    check(!(await page.getByRole('dialog').count()), `[${name}] the tap that showed the tabs also opened a card`);
+    await shot('2b-tabs-back');
+  }
   await page.goto(BASE + '#/family?tab=relatives');
   await page.getByPlaceholder('Search relatives').waitFor();
   // Show in tree from the Relatives list opens My Family with that person highlighted.

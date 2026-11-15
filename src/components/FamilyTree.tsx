@@ -9,6 +9,7 @@ import { avatarColors, renderTreePng, shareOrDownload } from './tree/exportImage
 import { cardName, GhostCard, TreeCard, type CardInfo } from './tree/TreeCard';
 import { TreeEdges } from './tree/TreeEdges';
 import { clampZoom, prefersReducedMotion, usePanZoom, type View } from './tree/usePanZoom';
+import { useAutoHideTabs, useBottomTabsHidden } from './tree/bottomTabs';
 
 const FIT_PAD = 20;
 const CONTROLS_W = 56; // the zoom buttons on the right; fitted views keep clear of them
@@ -59,6 +60,10 @@ export function FamilyTree({
   const overlay = useRef<HTMLDivElement>(null);
   const userMoved = useRef(false);
   const pz = usePanZoom(box, world);
+  // Registered after pan/zoom's click handler, so taps that ended a drag stay swallowed.
+  useAutoHideTabs(map, box);
+  const tabsHidden = useBottomTabsHidden();
+  const phoneTabs = usePhoneTabs();
   const height = useFillHeight(box, map);
   const [full, toggleFull] = useFullScreen();
 
@@ -329,7 +334,12 @@ export function FamilyTree({
 
       {/* Bottom-right controls, clear of the centre and of the phone's home indicator. */}
       <div data-no-pan className="absolute z-10 flex flex-col gap-1 rounded-2xl bg-white/90 p-1 shadow-card ring-1 ring-stone-200 backdrop-blur dark:bg-stone-800/90 dark:ring-stone-700 print:hidden"
-        style={{ right: 'calc(10px + env(safe-area-inset-right))', bottom: full ? 'calc(10px + env(safe-area-inset-bottom))' : 10 }}>
+        style={{
+          right: 'calc(10px + env(safe-area-inset-right))',
+          // Map view on phones: the tabs float over the tree, so sit above them while they show.
+          bottom: full || (map && phoneTabs) ? `calc(${map && phoneTabs && !tabsHidden ? 68 : 10}px + env(safe-area-inset-bottom))` : 10,
+          transition: 'bottom 200ms ease',
+        }}>
         {!map && (
           <button type="button" className="icon-btn" onClick={toggleFull} aria-pressed={full}
             aria-label={full ? 'Exit full screen' : 'Full screen'} title={full ? 'Exit full screen (Esc)' : 'Full screen'}>
@@ -401,6 +411,20 @@ function useFullScreen(): [boolean, () => void] {
 }
 
 /** Tree height: fill the viewport below the box, above the phone's bottom tabs. */
+/** True where the bottom tab bar is shown (below `md`). */
+function usePhoneTabs(): boolean {
+  const q = '(max-width: 767px)';
+  const [on, setOn] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.(q).matches);
+  useEffect(() => {
+    const mq = window.matchMedia?.(q);
+    if (!mq) return;
+    const f = () => setOn(mq.matches);
+    mq.addEventListener('change', f);
+    return () => mq.removeEventListener('change', f);
+  }, []);
+  return on;
+}
+
 function useFillHeight(box: React.RefObject<HTMLDivElement | null>, edge = false): string {
   const [top, setTop] = useState<number | null>(null);
   const [wide, setWide] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(min-width: 768px)').matches);
@@ -415,8 +439,9 @@ function useFillHeight(box: React.RefObject<HTMLDivElement | null>, edge = false
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
   }, [box]);
-  // Bottom tabs are ~58px plus the safe area on phones; desktop keeps a small margin (none in map view).
-  const reserve = wide ? (edge ? '0px' : '24px') : `calc(${edge ? 58 : 70}px + env(safe-area-inset-bottom))`;
+  // Bottom tabs are ~58px plus the safe area on phones; desktop keeps a small margin. In map view the
+  // tree runs to the bottom of the screen and the phone tabs float over it (and hide when idle).
+  const reserve = edge ? '0px' : wide ? '24px' : 'calc(70px + env(safe-area-inset-bottom))';
   return `max(360px, calc(100dvh - ${top ?? 200}px - ${reserve}))`;
 }
 
