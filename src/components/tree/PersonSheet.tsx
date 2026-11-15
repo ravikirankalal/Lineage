@@ -1,13 +1,18 @@
-import { ChevronRight, Crosshair, Minus, Plus, Route, User, UserPlus } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { Crosshair, Minus, Plus, Route, User } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
 import type { TreeNode } from '../../lib/graph/contract';
 import { displayName, formatPlace, lifespan } from '../../lib/person';
 import type { Person } from '../../lib/types';
+import { AddRelationBody, FAMILY_CHOICES, type RelChoice } from '../AddRelationSheet';
 import { Avatar } from '../Avatar';
 import { Sheet } from '../Sheet';
 
-/** What a tapped card offers: the full label (never truncated), then the next steps. */
-export function PersonSheet({ person, node, label, path, term, isEgo, isFocus, egoName, canEdit, onClose, onCentre, onProfile, onToggle, onRelate, onAdd }: {
+/**
+ * Everything you can do with a card, in one sheet: who they are, then Centre / How related / Show
+ * relatives, then "Add to <name>'s family". Picking Father, Son… opens the add steps in the same sheet
+ * (Back returns here); adding someone closes it.
+ */
+export function PersonSheet({ person, node, label, path, term, isEgo, isFocus, egoName, canEdit, onClose, onCentre, onProfile, onToggle, onRelate }: {
   person: Person;
   node: TreeNode;
   label?: string;
@@ -23,16 +28,35 @@ export function PersonSheet({ person, node, label, path, term, isEgo, isFocus, e
   onProfile: () => void;
   onToggle: () => void;
   onRelate: () => void;
-  onAdd: () => void;
 }) {
+  const [adding, setAdding] = useState<RelChoice | undefined>();
   const span = lifespan(person);
   const place = formatPlace(person.address, true) || formatPlace(person.origin, true);
   const canExpand = !!node.expandable && (node.expandable.up || node.expandable.down || node.expandable.side);
-  const first = person.firstName || 'them';
+  const first = person.nickname || person.firstName || 'them';
+  const relate = `How ${egoName === 'you' ? 'are we' : `is ${first}`} related${egoName === 'you' ? '' : ` to ${egoName}`}?`;
+
+  if (adding) {
+    return (
+      <Sheet open onClose={onClose} title={null}>
+        <AddRelationBody person={person} preset={adding} onClose={onClose} onBack={() => setAdding(undefined)} />
+      </Sheet>
+    );
+  }
+
+  const actions: { key: string; icon: ReactNode; short: string; full: string; onClick: () => void }[] = [];
+  if (!isFocus) actions.push({ key: 'centre', icon: <Crosshair size={20} />, short: 'Centre tree', full: `Centre the tree on ${first}`, onClick: onCentre });
+  if (!isEgo) actions.push({ key: 'relate', icon: <Route size={20} />, short: 'How related?', full: relate, onClick: onRelate });
+  if (canExpand) {
+    actions.push(node.expanded
+      ? { key: 'toggle', icon: <Minus size={20} />, short: 'Fewer relatives', full: `Hide ${first}’s extra relatives`, onClick: onToggle }
+      : { key: 'toggle', icon: <Plus size={20} />, short: 'More relatives', full: `Show ${first}’s relatives`, onClick: onToggle });
+  }
+
   return (
     <Sheet open onClose={onClose} title={displayName(person)}
       footer={<button type="button" className="btn-primary w-full" onClick={onProfile}><User size={18} /> Open profile</button>}>
-      <div className="mb-4 flex items-center gap-3">
+      <div className="flex items-center gap-3">
         <Avatar person={person} size={56} />
         <div className="min-w-0">
           {isEgo ? (
@@ -53,27 +77,30 @@ export function PersonSheet({ person, node, label, path, term, isEgo, isFocus, e
           )}
         </div>
       </div>
-      <div className="-mx-2 flex flex-col">
-        {!isFocus && <Action icon={<Crosshair size={19} />} onClick={onCentre}>Centre the tree on {first}</Action>}
-        {canExpand && (
-          <Action icon={node.expanded ? <Minus size={19} /> : <Plus size={19} />} onClick={onToggle}>
-            {node.expanded ? `Hide ${first}’s extra relatives` : `Show ${first}’s relatives`}
-          </Action>
-        )}
-        {!isEgo && <Action icon={<Route size={19} />} onClick={onRelate}>How {egoName === 'you' ? 'are we' : `is ${first}`} related{egoName === 'you' ? '' : ` to ${egoName}`}?</Action>}
-        {canEdit && <Action icon={<UserPlus size={19} />} onClick={onAdd}>Add a relative of {first}</Action>}
-      </div>
-    </Sheet>
-  );
-}
 
-function Action({ icon, children, onClick }: { icon: ReactNode; children: ReactNode; onClick: () => void }) {
-  return (
-    <button type="button" onClick={onClick}
-      className="flex min-h-[48px] w-full items-center gap-3 rounded-xl px-2 text-left text-[15px] font-medium hover:bg-stone-100 active:bg-stone-200/60 dark:hover:bg-stone-800">
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700 dark:bg-brand-900/40 dark:text-brand-200">{icon}</span>
-      <span className="flex-1">{children}</span>
-      <ChevronRight size={18} className="text-stone-300" />
-    </button>
+      {actions.length > 0 && (
+        <div className={`mt-5 grid gap-2 ${actions.length === 1 ? 'grid-cols-1' : actions.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+          {actions.map((a) => (
+            <button key={a.key} type="button" onClick={a.onClick} aria-label={a.full} title={a.full}
+              className="btn-secondary min-h-[64px] flex-col gap-1 px-2 py-2.5 text-[13px] leading-tight">
+              <span className="text-brand-700 dark:text-brand-300">{a.icon}</span>
+              {a.short}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {canEdit && (
+        <div className="mt-5">
+          <div className="section-title mb-2">Add to {first}’s family</div>
+          <div className="grid grid-cols-3 gap-2">
+            {FAMILY_CHOICES.map((c) => (
+              <button key={c.key} type="button" className="btn-secondary" onClick={() => setAdding(c.key)}
+                aria-label={`Add ${first}’s ${c.label.toLowerCase()}`}>{c.label}</button>
+            ))}
+          </div>
+        </div>
+      )}
+    </Sheet>
   );
 }

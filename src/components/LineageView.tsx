@@ -169,7 +169,6 @@ export function LineageView({ ego, egoLabel = 'You', map = false }: { ego: Perso
           onProfile={() => { setSheet(null); nav(`/people/${sheetPerson.id}`); }}
           onToggle={() => { setSheet(null); toggle(sheetPerson.id); }}
           onRelate={() => { setSheet(null); setPanTo({ id: sheetPerson.id, nonce: nonce() }); update({ hl: sheetPerson.id }, { push: true }); }}
-          onAdd={() => { setSheet(null); setAdding({ person: sheetPerson }); }}
         />
       )}
       {canEdit && adding && (

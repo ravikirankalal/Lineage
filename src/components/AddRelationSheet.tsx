@@ -21,7 +21,7 @@ export type RelChoice =
  * as a son or daughter of the parents, so they share the parents and every view draws them correctly.
  * Sibling links that already exist are still understood.
  */
-const FAMILY_CHOICES: { key: RelChoice; label: string }[] = [
+export const FAMILY_CHOICES: { key: RelChoice; label: string }[] = [
   { key: 'father', label: 'Father' },
   { key: 'mother', label: 'Mother' },
   { key: 'husband', label: 'Husband' },
@@ -54,7 +54,8 @@ export function AddRelationSheet({ person, open, onClose, preset }: {
   );
 }
 
-function AddRelationBody({ person, preset, onClose }: { person: Person; preset?: RelChoice; onClose: () => void }) {
+/** The add-a-relative steps (choose who, then search or type a name). `onBack` shows a back arrow to the caller. */
+export function AddRelationBody({ person, preset, onClose, onBack }: { person: Person; preset?: RelChoice; onClose: () => void; onBack?: () => void }) {
   const { people, graph, byId } = useData();
   const [choice, setChoice] = useState<RelChoice | undefined>(preset);
   const [q, setQ] = useState('');
@@ -197,7 +198,7 @@ function AddRelationBody({ person, preset, onClose }: { person: Person; preset?:
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        {!preset && <button className="icon-btn -ml-2" onClick={() => setChoice(undefined)} aria-label="Back"><ArrowLeft size={20} /></button>}
+        {(onBack || !preset) && <button className="icon-btn -ml-2" onClick={() => (onBack ? onBack() : setChoice(undefined))} aria-label="Back"><ArrowLeft size={20} /></button>}
         <h2 className="text-lg font-semibold">{name}’s {info.label}</h2>
       </div>
       <div className="relative">
