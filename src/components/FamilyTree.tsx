@@ -334,15 +334,6 @@ export function FamilyTree({
           <FindInTree candidates={candidates} onFind={onFind} />
           <LevelPicker level={level} onLevel={onLevel} />
           <OrientButton orient={orient} onOrient={onOrient} />
-          {canImplode && (
-            <button type="button" data-no-pan disabled={imp.state === 'moving'} aria-pressed={imp.state === 'imploded'}
-              onClick={imp.state === 'imploded' ? imp.explode : imp.implode}
-              title={imp.state === 'imploded' ? 'Explode back into the tree' : 'Implode: collapse the tree into stacks'}
-              className="map-glass pointer-events-auto flex h-10 items-center gap-1.5 rounded-full bg-white/95 px-3.5 text-[13px] font-semibold text-brand-700 shadow-card ring-1 ring-stone-200 disabled:opacity-60 dark:bg-stone-800/95 dark:text-brand-200 dark:ring-stone-700">
-              {imp.state === 'imploded' ? <Expand size={16} /> : <Shrink size={16} />}
-              {imp.state === 'imploded' ? 'Explode' : 'Implode'}
-            </button>
-          )}
           {!map && <SaveMenu onImage={saveImage} />}
         </div>
         {banner}
@@ -360,6 +351,14 @@ export function FamilyTree({
           <button type="button" className="icon-btn" onClick={toggleFull} aria-pressed={full}
             aria-label={full ? 'Exit full screen' : 'Full screen'} title={full ? 'Exit full screen (Esc)' : 'Full screen'}>
             {full ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+          </button>
+        )}
+        {canImplode && (
+          <button type="button" className="icon-btn text-brand-700 disabled:opacity-60 dark:text-brand-200" disabled={imp.state === 'moving'} aria-pressed={imp.state === 'imploded'}
+            onClick={imp.state === 'imploded' ? imp.explode : imp.implode}
+            aria-label={imp.state === 'imploded' ? 'Explode' : 'Implode'}
+            title={imp.state === 'imploded' ? 'Explode back into the tree' : 'Implode: collapse the tree into stacks'}>
+            {imp.state === 'imploded' ? <Expand size={18} /> : <Shrink size={18} />}
           </button>
         )}
         <button type="button" className="icon-btn" onClick={() => { userMoved.current = true; pz.zoomBy(1.3, undefined, true); }} aria-label="Zoom in" title="Zoom in"><Plus size={19} /></button>
