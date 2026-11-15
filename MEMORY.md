@@ -344,3 +344,8 @@ Read this before changing code. Append new learnings at the bottom.
 - Update checks start only when the app is fully loaded (`UpdateBar` computes `loaded` from useCloud). Auto-reload when coming back needs 60 s away: Google's sign-in sheet, the contact picker and permission prompts also hide the page. `document.body.dataset.signingIn` blocks reloads during sign-in.
 - Android startup shows `windowBackground` = `drawable/launch_background` (logo on green) between the system splash and the page; the splash plugin holds back drawing the page until `hideSplash()`.
 - Android launch: a native cover view (MainActivity, `drawable/launch_background`) sits on top of the web view until the page calls `LaunchCover.hide()` (hideSplash: after two animation frames, once auth is known), at most 10 s. Don't rely on window background or web view colours for the launch look; the web view covers the window. No splash plugin: it froze drawing.
+
+## Android app is frozen (owner, 2026-11-15)
+- Don't change the Android app (android/, capacitor.config.ts, native plugins, anything that needs a new APK) unless it's really needed, and ask the owner first. Current app: 1.0.13.
+- Everything else goes through the website: the app loads https://lineage-d575c.web.app, so web changes reach it without a reinstall (it picks them up once it has fully loaded, or on coming back after a minute).
+- Web code may call native features only if 1.0.13 already has them (ContactsReader, LaunchCover, SocialLogin, App), and must keep working when a call fails.
