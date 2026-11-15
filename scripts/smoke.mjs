@@ -108,14 +108,14 @@ async function run(name, viewport) {
       && fills.some((r) => r.top <= v.top) && fills.some((r) => r.bottom >= v.bottom);
   });
   check(cover, `[${name}] zoomed out, the background bands stop short of the screen edges`);
-  // Cards show less when small: fully zoomed out they're initials tiles (level 1); fully zoomed in, the
-  // detailed design (level 5) with years and age.
-  check(await page.locator('.tree-world').getAttribute('data-detail') === '1', `[${name}] zoomed out, cards are not the initials tiles`);
-  check((await page.locator('.tree-card-focus').innerText()).trim() === 'RR', `[${name}] the zoomed-out focus card doesn't show just initials`);
+  // Cards show less when small: fully zoomed out, just the name, large (level 1); fully zoomed in, the
+  // detailed design (level 4) with years and age.
+  check(await page.locator('.tree-world').getAttribute('data-detail') === '1', `[${name}] zoomed out, cards are not the name design`);
+  check((await page.locator('.tree-card-focus').innerText()).trim() === 'Ravi', `[${name}] the zoomed-out focus card doesn't show just the first name`);
   for (let i = 0; i < 14; i++) { await page.getByRole('button', { name: 'Zoom in' }).click(); await page.waitForTimeout(120); } // each click animates
   await page.waitForTimeout(500);
   const zin = await page.evaluate(() => [document.querySelector('.tree-world').dataset.detail, document.querySelector('.tree-world').style.transform]);
-  check(zin[0] === '5', `[${name}] zoomed in, cards are not the detailed design (${zin.join(' ')})`);
+  check(zin[0] === '4', `[${name}] zoomed in, cards are not the detailed design (${zin.join(' ')})`);
   check(/Ravi Rao[\s\S]*b\. 1988 · \d+/.test(await page.locator('.tree-card-focus').innerText()), `[${name}] the detailed focus card lacks full name or age`);
   await page.getByRole('button', { name: 'Fit the whole tree' }).click();
   await page.waitForTimeout(400);

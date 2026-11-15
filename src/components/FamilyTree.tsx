@@ -64,10 +64,10 @@ export function FamilyTree({
   const world = useRef<HTMLDivElement>(null);
   const overlay = useRef<HTMLDivElement>(null);
   const userMoved = useRef(false);
-  // Cards show more or less depending on how big they are on screen (five designs, detail.ts). Only a
+  // Cards show more or less depending on how big they are on screen (four designs, detail.ts). Only a
   // change of level re-renders them; panning and zooming within a level don't.
-  const [detail, setDetail] = useState<Detail>(4);
-  const detailRef = useRef<Detail>(4);
+  const [detail, setDetail] = useState<Detail>(3);
+  const detailRef = useRef<Detail>(3);
   const onView = useCallback((v: View) => {
     const d = detailFor(v.k, detailRef.current);
     if (d !== detailRef.current) { detailRef.current = d; setDetail(d); }
