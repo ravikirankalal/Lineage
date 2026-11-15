@@ -166,7 +166,9 @@ export function CloudProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!snap.loaded || isShared || role !== 'owner' || !uid || purged.current === uid) return;
     purged.current = uid;
-    void purgeLooseContacts().catch((e) => { purged.current = null; console.warn('[cloud] contact clean-up failed', e); });
+    void purgeLooseContacts()
+      .then((n) => { if (n > 0) setNotice(`Removed ${n.toLocaleString()} old imported contact${n === 1 ? '' : 's'} that weren’t part of the family.`); })
+      .catch((e) => { purged.current = null; console.warn('[cloud] contact clean-up failed', e); });
   }, [snap.loaded, isShared, role, uid]);
 
   const switchSpace = useCallback((id: string) => {
