@@ -134,6 +134,16 @@ async function main(browser) {
     await page.goto(BASE + '#/family');
     await page.getByText('Rohan K.').waitFor();
     await shot(page, '2-tree-son');
+    // A son picked from contact suggestions: created with the contact's phone, Meena as the other parent.
+    await openProfile(page, 'Arun Kumar');
+    await page.evaluate(() => window.__lineageTestContacts([{ resourceName: 'people/q1', names: [{ givenName: 'Dev', familyName: 'Kumar' }], phoneNumbers: [{ value: '+91 90000 55555' }] }]));
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    await page.getByRole('button', { name: 'Son', exact: true }).click();
+    await page.getByPlaceholder('Search people or type a new name').fill('dev');
+    await page.getByText('Dev Kumar').click();
+    await openProfile(page, 'Dev Kumar');
+    const dp = await body(page);
+    check(dp.includes('90000 55555') && /Meena Kumar\s*Mother/.test(dp), '[2] contact suggestion not added with phone and mother');
   });
 
   await flow('family only: no friends, colleagues or circles anywhere', async () => {

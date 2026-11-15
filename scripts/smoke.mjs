@@ -95,6 +95,18 @@ async function run(name, viewport) {
   await page.getByRole('button', { name: 'Son', exact: true }).click();
   check(await page.getByRole('group', { name: 'Other parent' }).getByText('Anjali Rao').isVisible(), `[${name}] other parent not prefilled with the wife`);
   await shot('5b-add-son');
+  // Contacts come up as suggestions (fictitious contacts loaded through the emulator-only hook).
+  await page.evaluate(() => window.__lineageTestContacts([
+    { resourceName: 'people/t1', names: [{ givenName: 'Contact', familyName: 'Cousin' }], phoneNumbers: [{ value: '+91 90000 77777' }] },
+    { resourceName: 'people/t2', names: [{ givenName: 'Anjali', familyName: 'Rao' }] },
+  ]));
+  await page.getByPlaceholder('Search people or type a new name').fill('contact');
+  await page.getByText('From your contacts').waitFor();
+  check(await page.getByText('Contact Cousin').isVisible(), `[${name}] contact not suggested`);
+  await page.getByPlaceholder('Search people or type a new name').fill('anjali');
+  check(!(await page.getByText('From your contacts').count()), `[${name}] a contact already in the tree was suggested`);
+  await page.getByPlaceholder('Search people or type a new name').fill('contact');
+  await shot('5c-contact-suggestions');
   await page.getByPlaceholder('Search people or type a new name').fill('Smoke Tester');
   await page.getByText('Add “Smoke Tester”').click();
   await page.getByText('Smoke Tester').first().waitFor();

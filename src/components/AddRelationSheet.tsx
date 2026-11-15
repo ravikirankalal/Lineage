@@ -1,6 +1,8 @@
-import { ArrowLeft, Search, UserPlus } from 'lucide-react';
+import { ArrowLeft, Contact, Search, Smartphone, UserPlus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { ops } from '../lib/db';
+import { googleContactsAvailable, loadGoogleContacts, phonePickerAvailable, pickPhoneContact, useGoogleContacts } from '../lib/cloud/googleContacts';
+import { contactName, contactToPerson, fromPicked, suggestContacts, type ContactSuggestion } from '../lib/contactSuggest';
 import { write } from '../lib/store';
 import { useData } from '../lib/data';
 import { emptyPerson, formatPlace, matchesQuery } from '../lib/person';
@@ -87,6 +89,22 @@ function AddRelationBody({ person, preset, onClose }: { person: Person; preset?:
     if (info?.gender) list.sort((a, b) => Number(b.gender === info.gender) - Number(a.gender === info.gender));
     return list.slice(0, 50);
   }, [people, person.id, q, info?.gender]);
+
+  // Contacts as suggestions while typing (Google Contacts, downloaded once per visit into memory).
+  const gc = useGoogleContacts();
+  const contactHits = useMemo(() => suggestContacts(gc.contacts, q, people, 5), [gc.contacts, q, people]);
+  const addContact = (c: ContactSuggestion) => !busy && link(contactToPerson(c, info?.gender ?? 'unknown'), true);
+  const [pickErr, setPickErr] = useState('');
+  async function fromPhone() {
+    setPickErr('');
+    try {
+      const c = await pickPhoneContact();
+      const s = c && fromPicked(c);
+      if (s) await addContact(s);
+    } catch {
+      setPickErr('Couldn’t open your contacts.');
+    }
+  }
 
   /** Writes every edge for linking `other` as one batch (optionally creating them first). */
   async function link(child: Person, create = false) {
@@ -203,6 +221,21 @@ function AddRelationBody({ person, preset, onClose }: { person: Person; preset?:
           picking={picking || !other} setPicking={setPicking} q={otherQ} setQ={setOtherQ} candidates={otherCandidates}
           married={married} setMarried={setMarried} showMarried={!!other && !otherIsSpouse} />
       )}
+      {(googleContactsAvailable() && gc.status !== 'ready') || phonePickerAvailable() ? (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {googleContactsAvailable() && gc.status !== 'ready' && (
+            <button type="button" className="chip" disabled={gc.status === 'loading'} onClick={() => void loadGoogleContacts()}>
+              <Contact size={14} className="mr-1 inline" />{gc.status === 'loading' ? 'Loading your contacts…' : 'Suggest from my Google contacts'}
+            </button>
+          )}
+          {phonePickerAvailable() && (
+            <button type="button" className="chip" disabled={busy || (isChild && !other)} onClick={() => void fromPhone()}>
+              <Smartphone size={14} className="mr-1 inline" />Pick from phone contacts
+            </button>
+          )}
+        </div>
+      ) : null}
+      {(gc.status === 'error' || pickErr) && <p className="text-xs text-red-600 dark:text-red-400">{pickErr || gc.error}</p>}
       {error && <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</div>}
       <div className={`-mx-2 ${isChild && !other ? 'pointer-events-none opacity-40' : ''}`} aria-disabled={isChild && !other}>
         {q.trim() && (
@@ -213,6 +246,22 @@ function AddRelationBody({ person, preset, onClose }: { person: Person; preset?:
               <div className="text-sm text-stone-500">Create a new person as {name}’s {info.label}</div>
             </div>
           </button>
+        )}
+        {contactHits.length > 0 && (
+          <div className="mb-1">
+            <div className="section-title px-2 pb-1 pt-2">From your contacts</div>
+            {contactHits.map((c) => (
+              <button key={c.key} type="button" disabled={busy} onClick={() => (!isChild || other) && addContact(c)}
+                className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left hover:bg-stone-50 dark:hover:bg-stone-800">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700 dark:bg-sky-900/50 dark:text-sky-200"><Contact size={19} /></div>
+                <div className="min-w-0">
+                  <div className="truncate font-medium">{contactName(c)}{c.nickname ? <span className="font-normal text-stone-500"> “{c.nickname}”</span> : null}</div>
+                  <div className="truncate text-sm text-stone-500">{c.phones[0] ?? c.emails[0] ?? 'Google contact'} · add as {name}’s {info.label}</div>
+                </div>
+              </button>
+            ))}
+            {candidates.length > 0 && <div className="section-title px-2 pb-1 pt-3">In your tree</div>}
+          </div>
         )}
         {candidates.map((p) => (
           <PersonRow key={p.id} person={p} onClick={() => !busy && (!isChild || other) && link(p)} subtitle={formatPlace(p.address, true) || p.occupation} />

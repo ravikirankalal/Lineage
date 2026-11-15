@@ -299,3 +299,10 @@ Read this before changing code. Append new learnings at the bottom.
   step-child gets `biological` from the other parent (they are the child's own parent). A non-spouse other parent
   gets a `married` spouse link unless "is X's spouse" is unticked. Replaces the old "Also <spouse>'s son" checkbox.
   Adding a parent (Father/Mother) is unchanged.
+- **Contacts as suggestions (2026-11-15, owner chose "both"):** `src/lib/contactSuggest.ts` (pure: map, match,
+  contact → person) and `src/lib/cloud/googleContacts.ts` (popup re-auth of the same user with
+  `contacts.readonly`, People API `connections` fetch, in-memory store `useGoogleContacts`, phone Contact Picker).
+  Nothing about contacts is persisted; the token is dropped after the download. A picked contact is created with
+  source 'manual' on purpose, so `purgeLooseContacts` never deletes it later. Emulator builds expose
+  `window.__lineageTestContacts(list)` to load fictitious contacts; Google itself can't run on the emulators.
+  Needs the People API enabled and the scope on the consent screen (FIREBASE_SETUP.md §10).

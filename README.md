@@ -14,6 +14,9 @@ with the relatives you choose. The tree lives in your Google account (Firebase),
   filled in), so half- and step-relations are never guessed. Relationships are parent, child and spouse (biological, adoptive, step,
   foster, divorced…). Brothers and sisters are added as children of the parents, so they always
   share them. (Sibling links from older data are still understood.)
+- **Contacts as suggestions** — when adding a relative, people from your Google Contacts show up
+  as you type (read-only, kept in memory for that visit, never saved), and on Android you can pick
+  from the phone's contacts. Only the person you choose is added.
 - **Merge duplicates** — combine two profiles of the same person. You see a preview first, and
   the dropped copy's name is kept as an other name.
 - **Each person's family** — their page lists immediate family, then extended family.
